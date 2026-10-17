@@ -231,7 +231,7 @@ def realize(host,event,result):
     if not getattr(host,'response_realization_enabled',False) or result.data.get('response_realization'):return result
     previous=host.state.receipts.get(event);reply=host.state.replies.get(event)
     if previous and previous.result.data.get('response_realization') and (reply and reply.status=='sent' or previous.result.data['response_realization'].get('core_hash')==identity(result)):return deepcopy(previous.result)
-    if result.status in {'denied','ignored','summary'} or result.status=='answer' and not result.data.get('tool_result'):return result
+    if result.status in {'denied','ignored'} or result.status=='summary' and not result.data.get('read_query') or result.status=='answer' and not result.data.get('tool_result'):return result
     started=monotonic();core_hash=identity(result)
     def fallback(reason):return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':{'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}})
     if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')

@@ -266,19 +266,34 @@ class SheetsApi:
         except Exception: return Reconciliation('unknown')
 
     def summary(self, start, end):
-        total = Decimal("0")
-        for row in self._rows()[1:]:
-            if not any(value not in ("", None) for value in row):
-                continue
-            row = normalized_row(row)
-            if type(row[0]) not in {int, float} or int(row[0]) != row[0] or type(row[2]) not in {int, float}:
-                raise NotReady("Existing numeric date/cost cannot be decoded")
-            if start <= serial_to_date(int(row[0])) <= end:
-                amount = Decimal(str(row[2]))
-                if not amount.is_finite() or amount <= 0:
-                    raise NotReady("Existing expense is not a positive amount")
-                total += amount
-        return {"income": "0.00", "expense": f"{total:.2f}"}
+        total = sum((Decimal(row['amount']) for row in self.saved_entries(start, end)), Decimal('0'))
+        return {"income": None, "income_supported": False, "expense": f"{total:.2f}"}
+
+    def saved_entries(self, start, end):
+        """Complete bounded read of the existing expense inputs; no append path."""
+        grid = self.metadata()[self.target.expense_tab]["properties"]["gridProperties"]
+        if (type(grid.get("rowCount")) is not int or not 1 <= grid["rowCount"] <= self.target.max_rows
+                or type(grid.get("columnCount")) is not int or grid["columnCount"] < 4):
+            raise NotReady("Complete expense read is outside configured grid bounds")
+        rows = self._rows()
+        if len(rows) > grid["rowCount"]:
+            raise NotReady("Expense response exceeds reviewed grid")
+        result = []
+        for raw in rows[1:]:
+            if not any(v not in ("", None) for v in raw):continue
+            row = normalized_row(raw)
+            if (len(row) != 4 or type(row[0]) not in {int, float} or type(row[2]) not in {int, float}
+                    or not isinstance(row[1], str) or not 1 <= len(row[1]) <= 200
+                    or not isinstance(row[3], str) or len(row[3]) > 500):
+                raise NotReady("Expense inputs cannot be decoded completely")
+            try:
+                if int(row[0]) != row[0]:raise ValueError()
+                day = serial_to_date(int(row[0]));amount = Decimal(str(row[2]))
+                if not amount.is_finite() or amount <= 0 or amount.quantize(Decimal('.01')) != amount:raise ValueError()
+            except (ValueError, OverflowError, InvalidOperation):
+                raise NotReady("Expense date or amount cannot be decoded") from None
+            if start <= day <= end:result.append({'date': day.isoformat(), 'item': row[1], 'amount': f'{amount:.2f}', 'note': row[3]})
+        return result
 
     def _identified_rows(self):
         metadata = self.target.transaction_id_metadata

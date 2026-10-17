@@ -9,7 +9,7 @@ EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
     'history_persistence','history_integration','production_history_state',
     'production_history','history_cloud_run','expense_evidence','draft_workflow','catalog_names',
     'expense_sources','validation_explanations','calendar_dates','calendar_provider','calendar_workflow',
-    'calendar_transport','calendar_sources','calendar_batches','response_realization','calendar_event_types'))+('scripts/verify_history_signed_startup.py','deploy/history-production.Dockerfile')
+    'calendar_transport','calendar_sources','calendar_batches','response_realization','calendar_event_types','read_queries'))+('scripts/verify_history_signed_startup.py','deploy/history-production.Dockerfile')
 INPUTS=base.BUILD_INPUTS+EXTRA
 
 def prepare(root,output):

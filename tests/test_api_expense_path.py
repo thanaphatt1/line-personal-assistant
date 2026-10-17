@@ -177,7 +177,7 @@ def test_catalog_and_summary_use_numeric_serial_dates_without_classification():
     assistant, _, providers = sandbox()
     assistant.handle(event())
     result = assistant.handle(event("สรุปวันนี้", "summary", 2))
-    assert result.data == {"income": "0.00", "expense": "65.00"}
+    assert result.data == {"income": None, "income_supported": False, "expense": "65.00"}
     providers.cells[("Database", 2, 2)] = "Reclassified"
     assert assistant.sheets.catalog().match("BTS").canonical == "BTS"
     assert assistant.sheets.summary(NOW.date(), NOW.date())["expense"] == "65.00"

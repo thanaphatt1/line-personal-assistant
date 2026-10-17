@@ -3,7 +3,7 @@
 No credential discovery or direct network client. Production must explicitly
 bind a guarded PilotPort; tests inject a MockTransport-backed RestClient.
 """
-from datetime import datetime,date,time
+from datetime import datetime,date,time,timedelta
 from copy import deepcopy
 from urllib.parse import quote
 import hashlib,json,re
@@ -97,3 +97,48 @@ class CalendarCreationApi:
             if page in seen:break
             seen.add(page)
         raise NotReady('Calendar conflict result is incomplete')
+
+    def saved_events(self,start,end):
+        """List saved appointments, including transparent/all-day occurrences.
+
+        Uses precisely the already permitted seven-day conflict GET surface.
+        Failure to finish pagination is not an empty calendar.
+        """
+        if start.utcoffset() is None or end.utcoffset() is None or not timedelta(0)<end-start<=timedelta(days=7):
+            raise NotReady('Calendar query requires an offset and at most seven days')
+        result={};page=None;seen=set()
+        for _ in range(3):
+            params={'timeMin':start.isoformat(),'timeMax':end.isoformat(),'singleEvents':'true','orderBy':'startTime','timeZone':'Asia/Bangkok','maxResults':20}
+            if page:params['pageToken']=page
+            value=self.client.request('GET',self.base,params=params)
+            items=value.get('items',[] if value.get('kind')=='calendar#events' else None)
+            if not isinstance(items,list) or len(items)>20:raise NotReady('Calendar page malformed')
+            for event in items:
+                if not isinstance(event,dict):raise NotReady('Calendar event malformed')
+                if event.get('status')=='cancelled':continue
+                try:
+                    identifier=event['id'];title=event.get('summary') or '(ไม่มีชื่อ)'
+                    if not isinstance(identifier,str) or not 1<=len(identifier)<=1024 or not isinstance(title,str) or len(title)>500:raise ValueError()
+                    all_day='date' in event['start']
+                    if all_day != ('date' in event['end']):raise ValueError()
+                    def boundary(field):
+                        point=event[field]
+                        if all_day:
+                            if 'dateTime' in point:raise ValueError()
+                            return datetime.combine(date.fromisoformat(point['date']),time.min,BANGKOK)
+                        instant=datetime.fromisoformat(point['dateTime'].replace('Z','+00:00'))
+                        if instant.utcoffset() is None:raise ValueError()
+                        return instant.astimezone(BANGKOK)
+                    a,b=boundary('start'),boundary('end')
+                    if b<=a:raise ValueError()
+                except (ValueError,TypeError,KeyError,OverflowError):raise NotReady('Calendar event boundaries unavailable') from None
+                if a<end and start<b:
+                    row={'title':title,'start':a.date().isoformat() if all_day else a.isoformat(),
+                         'end':b.date().isoformat() if all_day else b.isoformat(),'all_day':all_day}
+                    if identifier in result and result[identifier]!=row:raise NotReady('Calendar pages changed during read')
+                    result[identifier]=row
+            page=value.get('nextPageToken')
+            if not page:return sorted(result.values(),key=lambda e:(e['start'],e['title']))
+            if not isinstance(page,str) or len(page)>1024 or page in seen:break
+            seen.add(page)
+        raise NotReady('Calendar saved-event result is incomplete')

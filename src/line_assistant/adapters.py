@@ -132,6 +132,10 @@ class MockSheets:
                 totals[entry.kind] += Decimal(entry.amount)
         return {key: f"{value:.2f}" for key, value in totals.items()}
 
+    def saved_entries(self, start, end):
+        return [{'date': e.date.isoformat(), 'item': e.item, 'amount': e.amount, 'note': e.note}
+                for e in self.entries if e.kind == 'expense' and start <= e.date <= end]
+
     def reconcile(self, key: str, payload: dict) -> Reconciliation:
         return self.effects.reconcile(key, payload["entries"])
 

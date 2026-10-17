@@ -1128,14 +1128,16 @@ class HistoryFirstAssistant(Assistant):
                 source_range=read.validated_arguments()
                 if validated.start_date!=source_range.start_date or validated.end_date!=source_range.end_date:raise ValueError('summary_range_not_owner_requested')
                 totals=self.sheets.summary(validated.start_date,validated.end_date)
-                checked={k:str(Decimal(totals[k])) for k in ['income','expense']}
-                if any(not Decimal(v).is_finite() or Decimal(v)<0 for v in checked.values()):raise ValueError('invalid_summary_result')
-                return {'ok':True,'status':'summary','range':p.model_dump(),**checked}
+                from .read_queries import summary_output
+                return summary_output(totals,p.model_dump())
             raise ValueError('unknown_tool')
         except (ValueError,TypeError,KeyError) as e:return {'ok':False,'error':str(e).split('\n')[0][:160],'clarification_required':True}
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('status')=='summary':
+            from .read_queries import summary_result
+            return summary_result(tool_output)
         if tool_output and tool_output.get('domain')=='calendar':return self.calendar_flow.render(tool_output)
         if self.calendar_flow.enabled and re.search(r'(?:สร้าง|เพิ่ม|บันทึก).*?(?:นัด|ปฏิทิน).*?(?:แล้ว|เรียบร้อย)',model_text):
             return Result('clarification','ยังไม่มีผลยืนยันการสร้างนัดจากระบบ จึงยังไม่รายงานว่าสร้างแล้ว')
@@ -1237,8 +1239,6 @@ class HistoryFirstAssistant(Assistant):
                 drafts=tool_output['drafts']
                 message=('ร่างที่ค้างอยู่:\n'+'\n'.join(', '.join(semantic.display_item(e.get('item')) for e in d['entries']) for d in drafts)+'\nต้องการตรวจสอบรายการใดครับ?'
                          if drafts else 'ไม่มีร่างรายจ่ายที่ค้างอยู่')
-            elif tool_output.get('status')=='summary':
-                message=f"ช่วง {tool_output['range']['start_date']} ถึง {tool_output['range']['end_date']} รายจ่าย {tool_output['expense']} บาท รายรับ {tool_output['income']} บาท"
             else:message='ยังไม่ได้บันทึกรายจ่าย กรุณาระบุข้อมูลเพิ่มเติม'
             kind='summary' if tool_output.get('status')=='summary' else 'answer' if 'drafts' in tool_output or 'matches' in tool_output else 'clarification'
             return Result(kind,message,{'tool_result':tool_output})
@@ -1351,6 +1351,9 @@ class HistoryFirstAssistant(Assistant):
             if calendar_control is not None:return self._finish(event,at,calendar_control)
         if self.calendar_flow.enabled and re.search(r'นัด|ปฏิทิน',text) and re.search(r'บาท',text) and re.search(r'รายจ่าย|ค่าใช้จ่าย|ซื้อ|จ่าย|รายรับ|รับเงิน|เงินเข้า',text):
             return self._finish(event,at,Result('clarification','มีทั้งนัดและข้อมูลการเงินในข้อความเดียว ข้อมูลต้นฉบับยังอยู่ครบ กรุณาเลือกว่าจะเตรียมชุดนัดหรือรายจ่ายก่อน ยังไม่มีการบันทึก',{'domain_selection_required':True}))
+        from .read_queries import route as read_query
+        stored_query=read_query(self,shown_text,at)
+        if stored_query is not None:return self._finish(event,at,stored_query)
         if self.raw_history_enabled:
             from .validation_explanations import asks_why
             if asks_why(text):

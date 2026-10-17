@@ -58,6 +58,14 @@ class DurableMockSheets(MockSheets):
     def summary(self, start, end):
         return self._call("summary", start, end)
 
+    def saved_entries(self, start, end):
+        # Read the provider ledger without rewriting it or stale in-memory rows.
+        with self.store.transaction() as connection:
+            value = self.store.read(connection, "sheets")
+            entries = [Transaction.model_validate(e) for e in value['entries']] if value else []
+        return [{'date': e.date.isoformat(), 'item': e.item, 'amount': e.amount, 'note': e.note}
+                for e in entries if e.kind == 'expense' and start <= e.date <= end]
+
     def reconcile(self, key, payload):
         if not self.reconciliation_available:
             return Reconciliation("unknown")

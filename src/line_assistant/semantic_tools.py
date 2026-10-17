@@ -47,9 +47,8 @@ def summary(h,args):
             value,_,_,problem=resolve([(row['text'],at,row['source_ref'])],None,row['source_ref'],at)
             if not problem and value!=period.start_date.isoformat():raise ValueError('summary_date_evidence_mismatch')
     totals=h.sheets.summary(period.start_date,period.end_date)
-    checked={k:str(Decimal(totals[k])) for k in ['income','expense']}
-    if any(not Decimal(v).is_finite() or Decimal(v)<0 for v in checked.values()):raise ValueError('invalid_summary_result')
-    return {'ok':True,'status':'summary','range':period.model_dump(mode='json'),**checked}
+    from .read_queries import summary_output
+    return summary_output(totals,period.model_dump(mode='json'))
 
 def confirmed_date(h):
     rows=sorted((r for r in h.state.history if r['role']=='assistant' and datetime.fromisoformat(r['at'])>h.clock()-WINDOW),key=lambda r:r['at'],reverse=True)

@@ -5,7 +5,7 @@ A Thai, single-owner LINE assistant for expense tracking and Google Calendar dra
 ## Features
 
 - **Expenses:** prepare and correct multiple THB expenses, resolve catalog names, request missing information, and confirm a group once. New catalog entries require the owner's category choices.
-- **Summaries:** read spending over bounded date ranges in Asia/Bangkok without creating a write draft.
+- **Stored-data queries:** read expense totals or saved entries by date range, item/category/subcategory, and view saved Calendar events by day/week, including all-day events. Dates and amounts are computed by the server; queries create no write draft. See [query examples and bounds](docs/read-queries.md).
 - **Calendar:** prepare timed or single-date all-day events, including mixed groups. When a date has no time, ask “นัดนี้ทั้งวัน หรือเริ่มกี่โมงครับ?” Answers continue the same draft.
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.
 - **Conversation continuity:** persist raw messages separately from compact state, keep recent context and verified rolling summaries, and preserve pending or uncertain effects across restarts.
