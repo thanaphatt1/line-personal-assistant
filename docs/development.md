@@ -12,6 +12,8 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest tests -p no:cacheprovider
 
 The suite denies external sockets. Tests inject HTTP transports, synthetic owners, Sheets/Calendar services and model outputs. Files that create temporary databases or subprocess crash/restart workers use temporary directories. Do not replace these fixtures with production snapshots or recorded owner conversations.
 
+Behavior regressions share test-only adapters in `tests/behavior_support.py` and `tests/language_support.py`. They construct proposals from the current synthetic event and owned draft references. The wire-contract tests preserve literal JSON argument strings; routing, provenance, edits, cancellation, cold restore and confirmation tests check business effects independently. Historical paid-response files and release approval records are not test dependencies or model-quality evidence.
+
 ## Source bundle
 
 ```sh
