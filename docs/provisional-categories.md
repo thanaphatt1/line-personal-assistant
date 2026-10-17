@@ -72,6 +72,10 @@ requires an explicitly reviewed policy controlling other Database writers and
 structural edits. The process lease does not enforce that policy externally.
 Positive reconciliation can establish current mapping values, not unique
 attribution to this write. No new access or credentials are configured.
+An outside writer adding the same name after the check can still produce a
+duplicate append; subsequent uncertainty detection does not remove that row.
+The assistant's owner lease cannot lock external human or API edits. Keep
+permanent mapping OFF unless that external-writer policy has been reviewed.
 
 Flags are `PILOT_PROVISIONAL_CATEGORIES_ENABLED=false` and
 `PILOT_PROVISIONAL_MAPPING_ENABLED=false`. Mapping enablement also requires

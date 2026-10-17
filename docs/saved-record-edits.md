@@ -11,6 +11,10 @@ checks literal owner sources and renders the authoritative review. Several
 matches require an owner choice. Legacy expense rows without an existing
 `transaction_id` cannot be edited; the feature never assigns IDs to old rows.
 Unknown catalog names require clarification rather than a new mapping.
+An expense name change selects an existing catalog item; it cannot create a new
+category, change category assignments, edit Remark or delete a saved row. Edits
+apply to one identified record at a time. Expense selection uses the certified
+recent result or an explicit inclusive range of at most367dates.
 
 ```mermaid
 flowchart TD
@@ -47,6 +51,12 @@ fresh read and the write. Detection after writing cannot undo that race.
 Consequently expense editing additionally requires the explicitly reviewed
 `reviewed_single_writer` policy. Enable it only when other writers and structural
 edits are controlled; this code cannot enforce that policy for collaborators.
+The owner lease serializes this assistant's actions, not outside human or API
+writers. A row inserted after the ID check can cause an unintended row update
+before the returned-ID check reports uncertainty. A value changed after the
+check can be overwritten even when the stable ID and final readback match.
+These are remaining race windows, not conditions that another read can make
+atomic. Without a reviewed external-writer policy, keep expense editing OFF.
 [Sheets batch contract](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/batchUpdate)
 
 Calendar changes use the saved event ID and ETag, a conditional `PATCH` with
@@ -57,6 +67,13 @@ reminders, shared properties and other fields are preserved. Guest, recurring,
 conference and special event types are excluded. All-day end dates are
 exclusive internally and shown inclusively to the owner. Existing
 `calendar.events` access is used; no new scopes or access setup are added.
+Selection is limited to seven inclusive dates and at most three pages of20
+events; an incomplete read is rejected. A selected event's duration cannot
+exceed seven days. Events do not need a bot-created marker: normal events
+created outside the bot can be selected from the same configured Calendar when
+they pass all eligibility/version checks. Events explicitly reporting
+`organizer.self=false`, invited events, recurring instances and the unsupported
+types above are rejected. Rescheduling cannot change title or timed/all-day mode.
 [Conditional resource updates](https://developers.google.com/workspace/calendar/api/guides/version-resources),
 [PATCH contract](https://developers.google.com/workspace/calendar/api/v3/reference/events/patch).
 
