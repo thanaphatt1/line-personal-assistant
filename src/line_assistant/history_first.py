@@ -1074,6 +1074,9 @@ class HistoryFirstAssistant(Assistant):
     def tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name in {'query_expenses','query_calendar'}:
+                from .read_queries import execute
+                return execute(self,name,args)
             if name in self.calendar_flow.tool_names:return self.calendar_flow.tool(name,args)
             if self.raw_history_enabled and name in {'prepare_expenses','prepare_item_enrollment'}:
                 # Reads preserve old controls; attempted edits revoke the
@@ -1135,6 +1138,9 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('status')=='stored_query':
+            from .read_queries import result
+            return result(tool_output,datetime.fromisoformat(self._current['at']))
         if tool_output and tool_output.get('status')=='summary':
             from .read_queries import summary_result
             return summary_result(tool_output)
@@ -1351,9 +1357,6 @@ class HistoryFirstAssistant(Assistant):
             if calendar_control is not None:return self._finish(event,at,calendar_control)
         if self.calendar_flow.enabled and re.search(r'นัด|ปฏิทิน',text) and re.search(r'บาท',text) and re.search(r'รายจ่าย|ค่าใช้จ่าย|ซื้อ|จ่าย|รายรับ|รับเงิน|เงินเข้า',text):
             return self._finish(event,at,Result('clarification','มีทั้งนัดและข้อมูลการเงินในข้อความเดียว ข้อมูลต้นฉบับยังอยู่ครบ กรุณาเลือกว่าจะเตรียมชุดนัดหรือรายจ่ายก่อน ยังไม่มีการบันทึก',{'domain_selection_required':True}))
-        from .read_queries import route as read_query
-        stored_query=read_query(self,shown_text,at)
-        if stored_query is not None:return self._finish(event,at,stored_query)
         if self.raw_history_enabled:
             from .validation_explanations import asks_why
             if asks_why(text):
@@ -1421,6 +1424,8 @@ class HistoryFirstAssistant(Assistant):
                     date_targets=semantic.date_targets(self)
                     self._request_date_views={v['date_ref']:deepcopy(v) for v in date_targets}
                     definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets)
+                    from .read_queries import definitions as query_definitions,context as query_context
+                    definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
                     try:
@@ -1428,7 +1433,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,previous,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens)
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context=query_context(self))
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1494,7 +1499,7 @@ class HistoryFirstAssistant(Assistant):
                     if len(missing)==1:
                         output=self._enrollment_result(self._draft(view['draft_ref']),missing[0]['entry_ref'])
                         last={**output,'available_drafts':last['available_drafts']}
-                if last.get('status') in {'review','choose_draft','cancelled','no_pending'} or self.raw_history_enabled and last.get('status') in {'draft_read','needs_information','invalid_request'} or last.get('item_enrollment') or self.semantic_enabled and last.get('status')=='summary':
+                if last.get('status') in {'review','choose_draft','cancelled','no_pending'} or self.raw_history_enabled and last.get('status') in {'draft_read','needs_information','invalid_request','stored_query'} or last.get('item_enrollment') or self.semantic_enabled and last.get('status')=='summary':
                     self.phase_hook('history_review_pre_receipt',event)
                     return self._finish(event,at,self._result(last))
                 previous=(call,semantic.compact(last) if self.semantic_enabled else last)

@@ -4,20 +4,20 @@ A low-budget personal LINE assistant for occasional daily tasks. It is designed 
 
 [![A query enters the assistant framework, which exchanges tool requests and results with an expense sheet, category lookup and Calendar, then returns an output. Writes require confirmation.](docs/assets/assistant-overview.svg)](docs/system-flow.md)
 
-The framework combines conditional LLM interpretation with deterministic checks. It calls tools when needed, uses their results and asks for confirmation before a write. See the [detailed runtime diagrams and input/output map](docs/system-flow.md).
+The framework uses LLM interpretation with deterministic checks. It calls tools when needed, uses their results and asks for confirmation before a write. See the [detailed runtime diagrams and input/output map](docs/system-flow.md).
 
 ## Two main functions
 
 1. **Log expenses.** Prepare and correct THB expense entries, resolve catalog names, fill missing information and save after reviewing. New catalog entries require the owner's category choices.
 2. **Create Calendar appointments.** Prepare timed or single-date all-day appointments, including groups. Review the date, timing and conflicts, then confirm creation.
 
-Read-only expense and Calendar queries support these two workflows in the current release. They calculate dates and amounts in code and create no write draft. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
+Read-only expense and Calendar queries support these two workflows. In this source revision, the LLM interprets questions and follow-ups and selects bounded read tools; code validates arguments, reads complete data and calculates totals. Queries create no write draft. This revision requires a separate deployment to change a running service. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
 
 ## How it works
 
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.
 - **Conversation continuity:** persist raw messages separately from compact state, keep recent context and verified rolling summaries, and preserve pending or uncertain effects across restarts.
-- **Optional reply wording:** when enabled and a call slot remains, a model phase arranges immutable facts into a Thai reply. A bounded fallback returns the server's factual message if that phase fails or is slow.
+- **Optional reply wording:** when enabled and a call slot remains, a model phase composes concise natural Thai around structured facts. Query dates, amounts, counts and units stay grounded in the verified result. A bounded fallback returns the server's factual message if that phase fails or is slow.
 
 The production Calendar path creates events in one explicitly configured secondary calendar. It does not edit/delete saved events, invite guests, create recurring events or reminders, or interpret multi-day all-day ranges as a single date. Income and recorded-expense edits are unsupported. Conflict checks cover only the configured calendar. See [behavior and examples](docs/behavior.md).
 

@@ -200,6 +200,7 @@ class CalendarWorkflow:
     def single_definitions(self):
         nullable={'type':['string','null']}
         fields={name:{**nullable,'description':'Literal full owner event name, excluding leading request verbs unless explicitly quoted/named as title' if name=='title' else 'Literal owner date/time/duration wording; null retains the certified value'} for name in FIELDS}
+        fields['date_text']['description']='Copy only the literal date span, excluding clock/duration/all-day mode words even when adjacent. วันที่20ตุลาทั้งวัน -> วันที่20ตุลา; all_day=true separately.'
         return [{'type':'function','name':'prepare_calendar_event','strict':True,
             'description':'Prepare one appointment, never writes. all_day=true only for explicit owner all-day wording; requires a date, never times. Timed appointments need start and end/duration. Null retains existing mode/facts. One all-day date per event; clarify or split multi-day ranges. Use owned source refs/current version. No guests, recurrence or reminders.',
             'parameters':object_schema({'draft_ref':nullable,'draft_version':{'type':['integer','null']},**fields,'all_day':{'type':['boolean','null']},'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})},

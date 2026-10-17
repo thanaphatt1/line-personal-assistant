@@ -1,250 +1,162 @@
-"""Synthetic stored-data queries. Every external integration is a fake."""
+"""Model-selected query contracts; no fake semantic parser and no real network."""
 from copy import deepcopy
 from datetime import date, datetime, timedelta
-
+import json
 import httpx
 import pytest
-
 from line_assistant.calendar_provider import CalendarCreationApi
 from line_assistant.contracts import Transaction
-from line_assistant.read_queries import period
 from line_assistant.sheets_api import SheetsApi, SheetTarget
 from line_assistant.sheet_dates import date_to_serial
-from line_assistant.transport import RestClient, NotReady
+from line_assistant.transport import RestClient, NotReady, ApiError
 from test_calendar_mvp import Harness, NOW, TARGET
 from test_history_first import response
 
 
+def plan(domain='expense', start='2026-10-16', end=None, *, kind=None, value=None, listing=False, measure='expense', upcoming=False, date_mode='range', relative_offset=None, filter_text=None):
+    def choose(body):
+        context=json.loads(body['input'][0]['content'])
+        args={'start_date':start,'end_date':end if end is not None else start,'source_refs':[context['current_source_ref']],'date_mode':date_mode,'relative_offset':relative_offset}
+        args.update({'filter':{'kind':kind,'value':value} if kind else None,'view':'list' if listing else 'total','measure':measure} if domain=='expense' else {'upcoming':upcoming,'filter_text':filter_text})
+        return response(name='query_expenses' if domain=='expense' else 'query_calendar',args=args)
+    return choose
+
+
 def seed(h):
-    h.sheets.rows = [('กาแฟ', 'Food', ''), ('รถเมล์', 'Transportation', ''), ('ค่ากระดาษ', 'Work/Office', '')]
-    h.sheets.entries = [Transaction(item=item, amount=amount, kind='expense', date=day) for item, amount, day in (
-        ('กาแฟ', '0.10', '2026-10-16'), ('กาแฟ', '0.20', '2026-10-16'),
-        ('รถเมล์', '25.00', '2026-10-15'), ('ค่ากระดาษ', '120.00', '2026-10-01'),
-        ('กาแฟ', '90.00', '2026-09-30'), ('กาแฟ', '40.00', '2026-11-01'))]
+    h.sheets.rows=[('กาแฟ','Food',''),('รถเมล์','Transportation',''),('ค่ากระดาษ','Work/Office','')]
+    h.sheets.entries=[Transaction(item=item,amount=amount,kind='expense',date=day) for item,amount,day in (
+        ('กาแฟ','0.10','2026-10-16'),('กาแฟ','0.20','2026-10-16'),('รถเมล์','25.00','2026-10-15'),
+        ('ค่ากระดาษ','120.00','2026-10-01'),('กาแฟ','90.00','2026-09-30'),('กาแฟ','40.00','2026-11-01'))]
 
 
-@pytest.mark.parametrize('text,start,end', [
-    ('สรุปเดือนนี้', '2026-10-01', '2026-10-31'),
-    ('ดูสัปดาห์นี้', '2026-10-12', '2026-10-18'),
-    ('ดูสัปดาห์หน้า', '2026-10-19', '2026-10-25'),
-    ('ดูสัปดาห์ก่อน', '2026-10-05', '2026-10-11'),
-    ('เดือนก่อน', '2026-09-01', '2026-09-30'),
-    ('เดือนหน้า', '2026-11-01', '2026-11-30'),
-    ('2026-10-01 ถึง 2026-10-19', '2026-10-01', '2026-10-19'),
-    ('1/10/2569 ถึง 19/10/2569', '2026-10-01', '2026-10-19'),
-    ('19–25 ตุลาคม 2569', '2026-10-19', '2026-10-25'),
-    ('วันที่ 19 ตุลาคม 2569', '2026-10-19', '2026-10-19'),
-    ('ตุลาคม 2569', '2026-10-01', '2026-10-31'),
-    ('วันจันทร์หน้า', '2026-10-19', '2026-10-19'),
-    ('วันนี้', '2026-10-16', '2026-10-16'),
-])
-def test_date_resolution(text, start, end):
-    dates, _ = period(text, NOW)
-    assert tuple(d.isoformat() for d in dates) == (start, end)
+def event(identifier,start,end,*,all_day=False,**extra):
+    return {'id':identifier,'summary':'นัดจำลอง '+identifier,'start':{'date' if all_day else 'dateTime':start},'end':{'date' if all_day else 'dateTime':end},**extra}
 
 
-@pytest.mark.parametrize('text', ['วันนี้หรือพรุ่งนี้', '2026-10-30 ถึง 2026-10-01', '31/2/2569', 'วันนี้ UTC+08:00', '2026-01-01 ถึง 2028-01-01'])
-def test_unclear_or_unbounded_period_never_defaults(text):
-    with pytest.raises(ValueError):period(text, NOW)
-
-
-def test_bangkok_midnight_leap_month_and_year_rollover():
-    assert period('วันนี้', datetime.fromisoformat('2026-10-15T18:00:00+00:00'))[0] == (date(2026, 10, 16),) * 2
-    assert period('เดือนก่อน', datetime.fromisoformat('2024-03-01T00:00:00+07:00'))[0] == (date(2024, 2, 1), date(2024, 2, 29))
-    assert period('เดือนหน้า', datetime.fromisoformat('2026-12-31T00:00:00+07:00'))[0] == (date(2027, 1, 1), date(2027, 1, 31))
-
-
-def test_expense_totals_filters_and_delivered_followups_do_not_write():
-    h = Harness();seed(h);before = deepcopy(h.sheets.entries)
-    result = h.send('สรุปรายจ่ายเดือนนี้')
-    assert result.status == 'summary' and '145.30' in result.message
-    assert result.data['tool_result']['count'] == 4
-    result = h.send('เฉพาะหมวดอาหาร')
-    assert result.status == 'summary' and '0.30' in result.message and 'Food' in result.message
-    result = h.send('แยกรายการให้หน่อย')
-    assert len(result.data['tool_result']['entries']) == 2 and 'กาแฟ' in result.message
-    result = h.send('แล้วเดือนก่อนล่ะ')
-    assert '90.00' in result.message and 'Food' in result.message
-    result = h.send('ดูรายจ่ายเดือนนี้ทั้งหมด')
-    assert '145.30' in result.message and not result.data['read_query']['filter']
-    assert h.sheets.entries == before and not h.sheets.write_log and not h.state.actions and not h.state.drafts
-    assert not h.model.requests and not h.provider.calls
-
-
-def test_item_filter_empty_data_and_unknown_category_are_honest():
-    h = Harness();seed(h)
-    result = h.send('ดูรายการรายจ่ายวันนี้ กาแฟ')
-    assert '0.30' in result.message and len(result.data['tool_result']['entries']) == 2
-    result = h.send('สรุปรายจ่ายพรุ่งนี้')
-    assert '0.00' in result.message and result.data['tool_result']['complete'] is True
-    assert 'รายรับ' not in result.message
-    result = h.send('สรุปรายจ่ายวันนี้หมวดไม่รู้จัก')
-    assert result.status == 'clarification' and '0.00' not in result.message
-    result = h.send('สรุปรายรับวันนี้')
-    assert result.status == 'income_unconfigured' and '0.00' not in result.message
-
-
-def test_missing_period_then_date_only_answer_and_no_stale_scope():
-    h = Harness();seed(h)
-    assert h.send('สรุปรายจ่าย').status == 'clarification'
-    assert '145.30' in h.send('เดือนนี้').message
-    h.send('คุยเรื่องอื่น', response(text='เรื่องอื่นครับ'))
-    result = h.send('แล้วเมื่อวานล่ะ', response(text='ต้องการดูข้อมูลเรื่องไหนครับ'))
-    assert 'read_query' not in result.data
-
-
-def test_subcategory_ambiguity_and_unknown_stored_mapping_fail_closed():
-    h = Harness();seed(h)
-    h.sheets.rows = [('กาแฟ', 'Food/Drink', 'เช้า'), ('อาหาร', 'Food/Meal', 'เย็น'), ('รถเมล์', 'Transportation', 'เช้า')]
-    assert h.send('สรุปรายจ่ายวันนี้หมวดอาหาร').status == 'clarification'
-    assert h.send('ดูรายจ่ายเดือนนี้หมวดย่อยเช้า').status == 'unavailable'
-    h.sheets.rows = [('กาแฟ', 'Food', 'เครื่องดื่ม'), ('รถเมล์', 'Transportation', 'รถ')]
-    assert '0.30' in h.send('ดูรายจ่ายวันนี้หมวดย่อยเครื่องดื่ม').message
-
-
-def event(identifier, start, end, *, all_day=False, **extra):
-    return {'id': identifier, 'summary': 'นัดจำลอง ' + identifier,
-            'start': {'date' if all_day else 'dateTime': start},
-            'end': {'date' if all_day else 'dateTime': end}, **extra}
-
-
-def test_calendar_includes_transparent_all_day_overlap_and_exclusive_end():
-    h = Harness()
-    h.provider.events = {e['id']: e for e in [
-        event('day', '2026-10-17', '2026-10-18', all_day=True),
-        event('multi', '2026-10-16', '2026-10-19', all_day=True),
-        event('free', '2026-10-17T09:00:00+07:00', '2026-10-17T10:00:00+07:00', transparency='transparent'),
-        event('cancelled', '2026-10-17', '2026-10-18', all_day=True, status='cancelled'),
-        event('outside', '2026-10-18', '2026-10-19', all_day=True),
-    ]}
-    before = deepcopy(h.provider.events)
-    result = h.send('พรุ่งนี้มีนัดอะไรบ้าง')
-    assert result.status == 'answer' and result.data['tool_result']['count'] == 3
-    assert '2026-10-17 ทั้งวัน — นัดจำลอง day' in result.message
-    assert '2026-10-16 ถึง 2026-10-18 ทั้งวัน' in result.message
-    assert '09:00' in result.message and 'นัดจำลอง free' in result.message
-    assert 'นัดจำลอง cancelled' not in result.message and 'นัดจำลอง outside' not in result.message
-    assert h.provider.events == before and h.provider.posts == 0 and not h.state.actions and not h.state.calendar_drafts
-    assert all(method == 'GET' for method, _ in h.provider.calls)
-    result = h.send('แล้วสัปดาห์หน้าล่ะ')
-    assert result.data['read_query']['start'] == '2026-10-19' and result.data['tool_result']['count'] == 0
-
-
-def test_upcoming_window_uses_current_time_and_calendar_over_week_clarifies():
-    h = Harness()
-    h.provider.events = {e['id']: e for e in [
-        event('old', '2026-10-16T08:00:00+07:00', '2026-10-16T09:00:00+07:00'),
-        event('current', '2026-10-16T14:00:00+07:00', '2026-10-16T16:00:00+07:00'),
-    ]}
-    result = h.send('ดูนัดถัดไป')
-    assert result.data['tool_result']['count'] == 1 and 'นัดจำลอง current' in result.message
-    assert h.send('ดูนัดเดือนนี้').status == 'clarification'
-
-
-@pytest.mark.parametrize('text', ['พรุ่งนี้ powerbi', 'พรุ่งนี้ Workshop'])
-@pytest.mark.parametrize('previous', [None, 'สรุปรายรับวันนี้', 'ดูนัดสัปดาห์หน้า', 'สรุปรายจ่ายวันนี้'])
-def test_terse_dated_title_asks_intent_without_generic_evidence_failure(text, previous):
-    h = Harness()
-    if previous:h.send(previous)
-    result = h.send(text)
-    assert result.status == 'clarification' and 'เพิ่มนัด' in result.message and 'ดูนัดที่บันทึก' in result.message
-    assert '2026-10-17' in result.message and not h.model.requests and h.provider.posts == 0
-    assert not h.state.calendar_drafts and not h.state.actions
-
-
-def test_disabled_calendar_and_read_failures_do_not_report_empty(monkeypatch):
-    h = Harness(enabled=False)
-    assert h.send('ดูนัดพรุ่งนี้').status == 'unavailable'
-    h = Harness();h.provider.forbidden = True
-    result = h.send('ดูนัดพรุ่งนี้')
-    assert result.status == 'unavailable' and '0 รายการ' not in result.message
-    monkeypatch.setattr(h.sheets, 'saved_entries', lambda *a: (_ for _ in ()).throw(NotReady('incomplete')))
-    result = h.send('สรุปรายจ่ายวันนี้')
-    assert result.status == 'unavailable' and '0.00' not in result.message
-
-
-def test_saved_read_does_not_reuse_old_expense_review_consent():
-    from test_raw_history import Harness as ExpenseHarness
-    h = ExpenseHarness();assert h.prepare('ค่ากระดาษ 228 บาท').status == 'preview'
-    before = deepcopy(h.draft())
-    assert h.send('สรุปรายจ่ายวันนี้').status == 'summary'
-    assert h.draft() == before
-    assert h.send('ยืนยัน').status == 'clarification'
+@pytest.mark.parametrize('text',['เดือนนี้ค่าเดินทางเท่าไหร่','เดือนที่แล้วล่ะ','เมื่อวานจ่ายอะไรไปบ้าง','เดือน ต.ค. รวมให้หน่อย','food เมื่อวาน','พรุ่งนี้ Workshop','คุยเรื่องอื่น'])
+def test_original_language_reaches_model_without_semantic_preemption(text):
+    h=Harness();r=h.send(text,response(text='ขอรายละเอียดเพิ่มเติมครับ'))
+    assert len(h.model.requests)==1 and json.loads(h.model.requests[0]['input'][0]['content'])['message']==text
+    names={t['name'] for t in h.model.requests[0]['tools']}
+    assert {'query_expenses','query_calendar'}<=names and 'spending_summary' not in names
     assert not h.sheets.entries and not h.state.actions
 
 
-def test_listing_is_bounded_but_total_uses_all_rows():
-    h = Harness();seed(h)
-    h.sheets.entries = [h.sheets.entries[1]] * 25
-    result = h.send('ดูรายการรายจ่ายวันนี้')
-    assert '5.00' in result.message and result.data['tool_result']['count'] == 25
-    assert len(result.data['tool_result']['entries']) == 20 and '20 รายการแรกจากทั้งหมด 25' in result.message
+@pytest.mark.parametrize('start,end', [('2026-10-01','2026-10-31'),('2026-10-12','2026-10-18'),('2024-02-01','2024-02-29'),('2026-12-31','2027-01-01'),('2026-10-16','2026-10-16')])
+def test_typed_dates_are_explicit_not_reparsed_from_owner_words(start,end):
+    h=Harness();seed(h);r=h.send('ช่วงที่ต้องการ',plan(start=start,end=end))
+    assert r.data['read_query']['start']==start and r.data['read_query']['end']==end
+    assert r.data['tool_result']['complete']
 
 
-def test_explicit_new_query_clears_old_filter_and_labels_keep_read_words():
-    h = Harness();seed(h)
-    assert '0.30' in h.send('สรุปรายจ่ายวันนี้ กาแฟ').message
-    assert not h.send('สรุปรายจ่ายเดือนนี้').data['read_query']['filter']
-    h.sheets.rows.append(('ค่าดูแล', 'Work', ''))
-    h.sheets.entries.append(Transaction(item='ค่าดูแล', amount='7.00', date='2026-10-16', kind='expense'))
-    assert '7.00' in h.send('ดูรายการรายจ่ายวันนี้ ค่าดูแล').message
+@pytest.mark.parametrize('start,end', [('2026-10-30','2026-10-01'),('invalid','2026-10-16'),('2569-10-16','2569-10-16'),('2026-01-01','2028-01-01'),('2026-02-31','2026-02-31')])
+def test_bad_date_arguments_do_not_read_or_default(start,end,monkeypatch):
+    h=Harness();monkeypatch.setattr(h.sheets,'saved_entries',lambda *a:pytest.fail('invalid query read'))
+    r=h.send('ข้อความ',plan(start=start,end=end));assert r.status=='clarification'
+    assert r.data['tool_result']['error_code']=='date_bounds'
 
 
-def test_natural_ranges_category_shorthand_and_cross_domain_followup():
-    h = Harness();seed(h)
-    assert '0.30' in h.send('ค่าอาหารวันนี้เท่าไหร่').message
-    assert '25.00' in h.send('สรุปรายจ่ายตั้งแต่วันที่ 2026-10-14 ถึงวันที่ 2026-10-15').message
-    result = h.send('แล้วนัดล่ะ')
-    assert result.data['read_query']['start'] == '2026-10-14' and result.data['read_query']['end'] == '2026-10-15'
-    result = h.send('ส่วนรายจ่ายล่ะ')
-    assert '25.00' in result.message
-    assert h.send('ดูรายการที่บันทึกไว้วันนี้').data['tool_result']['count'] == 2
+def test_multiturn_explicit_arguments_carry_and_clear_scope_without_mutating_business_state():
+    h=Harness();seed(h);before=deepcopy(h.sheets.entries)
+    assert h.send('สรุปรายจ่ายเดือนนี้',plan(start='2026-10-01',end='2026-10-31')).data['tool_result']['expense']=='145.30'
+    assert h.send('เฉพาะหมวดอาหาร',plan(start='2026-10-01',end='2026-10-31',kind='category',value='Food')).data['tool_result']['expense']=='0.30'
+    r=h.send('เดือนที่แล้วล่ะ',plan(start='2026-09-01',end='2026-09-30',kind='category',value='Food'))
+    assert r.data['tool_result']['expense']=='90.00'
+    c=json.loads(h.model.requests[-1]['input'][0]['content']);assert c['previous_query']['filter']=={'category':'Food'}
+    r=h.send('เมื่อวานจ่ายอะไรไปบ้าง',plan(start='2026-10-15',listing=True))
+    assert r.data['read_query']['filter'] is None and r.data['tool_result']['count']==1
+    assert h.sheets.entries==before and not h.state.actions and not h.state.drafts and not h.sheets.write_log
 
 
-def test_signed_cold_restore_read_and_factual_realization_replay():
+def test_new_query_and_literal_catalog_words_are_not_stripped():
+    h=Harness();seed(h);h.sheets.rows.append(('ค่าดูแลรายการยอด','Work',''))
+    h.sheets.entries.append(Transaction(item='ค่าดูแลรายการยอด',amount='7.00',date='2026-10-16',kind='expense'))
+    r=h.send('ดูรายการยอดนี้',plan(kind='item',value='ค่าดูแลรายการยอด',listing=True));assert r.data['tool_result']['expense']=='7.00'
+    assert 'ค่าดูแลรายการยอด' in r.message
+
+
+@pytest.mark.parametrize('measure',['income','balance'])
+def test_income_never_fabricates_zero(measure):
+    h=Harness();r=h.send('ข้อมูลเงิน',plan(measure=measure))
+    assert r.status=='income_unconfigured' and '0.00' not in r.message and not r.data['tool_result']['complete']
+
+
+def test_unknown_filter_and_unmapped_historical_rows_have_distinct_honest_reasons():
+    h=Harness();seed(h)
+    r=h.send('หมวดใหม่',plan(kind='category',value='Unknown'));assert r.data['tool_result']['error_code']=='filter_unknown'
+    h.sheets.rows=[('กาแฟ','Food',''),('รถเมล์','Transportation','')]
+    r=h.send('เดือนนี้อาหาร',plan(start='2026-10-01',end='2026-10-31',kind='category',value='Food'))
+    assert r.data['tool_result']['error_code']=='mapping_incomplete' and 'expense' not in r.data['tool_result']
+    assert h.send('ทั้งหมด',plan(start='2026-10-01',end='2026-10-31')).data['tool_result']['expense']=='145.30'
+
+
+def test_complete_empty_and_bounded_listing():
+    h=Harness();seed(h)
+    r=h.send('วันว่าง',plan(start='2026-10-17'));assert r.data['tool_result']['expense']=='0.00' and r.data['tool_result']['complete']
+    h.sheets.entries=[h.sheets.entries[1]]*25
+    r=h.send('รายการทั้งหมด',plan(listing=True));assert r.data['tool_result']['count']==25 and r.data['tool_result']['expense']=='5.00'
+    assert len(r.data['tool_result']['entries'])==20 and '20 รายการแรก' in r.message
+
+
+@pytest.mark.parametrize('failure,reason',[(NotReady('private schema detail'),'schema_failure'),(ApiError(403),'provider_failure'),(ValueError('private detail'),'schema_failure')])
+def test_provider_failures_never_publish_details_or_zero(failure,reason,monkeypatch):
+    h=Harness()
+    def fail(*a):raise failure
+    monkeypatch.setattr(h.sheets,'saved_entries',fail)
+    r=h.send('อ่าน',plan());assert r.data['tool_result']['error_code']==reason and not r.data['tool_result']['complete']
+    assert 'private' not in r.message and '0.00' not in r.message
+
+
+def test_calendar_preserves_transparent_all_day_overlap_and_exclusive_end():
+    h=Harness();h.provider.events={e['id']:e for e in [event('day','2026-10-17','2026-10-18',all_day=True),event('multi','2026-10-16','2026-10-19',all_day=True),event('free','2026-10-17T09:00:00+07:00','2026-10-17T10:00:00+07:00',transparency='transparent'),event('cancelled','2026-10-17','2026-10-18',all_day=True,status='cancelled'),event('outside','2026-10-18','2026-10-19',all_day=True)]}
+    r=h.send('นัด',plan('calendar','2026-10-17'))
+    assert r.data['tool_result']['count']==3 and 'ทั้งวัน' in r.message and '18 ต.ค. 2026' in r.message and '09:00' in r.message
+    assert not h.provider.posts
+
+
+def test_calendar_bounds_disabled_and_upcoming():
+    h=Harness();assert h.send('ทั้งเดือน',plan('calendar','2026-10-01','2026-10-31')).data['tool_result']['error_code']=='date_bounds'
+    h.provider.events={'past':event('past','2026-10-16T09:00:00+07:00','2026-10-16T10:00:00+07:00'),'current':event('current','2026-10-16T14:00:00+07:00','2026-10-16T16:00:00+07:00')}
+    assert h.send('ถัดไป',plan('calendar','2026-10-16','2026-10-22',upcoming=True)).data['tool_result']['count']==1
+    assert Harness(enabled=False).send('นัด',plan('calendar')).data['tool_result']['error_code']=='calendar_disabled'
+
+
+def test_signed_cold_restore_realization_and_replay_are_factual():
     from test_response_realization import VoiceHosted
     from test_calendar_text_confirmation_v13 import turn
     from fastapi.testclient import TestClient
-    api = VoiceHosted()
-    api.calendar.events = {'day': event('day', '2026-10-17', '2026-10-18', all_day=True)}
-    result, original = turn(api, 'ดูนัดพรุ่งนี้')
-    assert result.status == 'answer' and result.data['tool_result']['count'] == 1
-    assert result.data['response_realization']['status'] == 'llm'
-    assert 'ทั้งวัน' in result.message and api.calendar.posts == api.google.sheet_writes == 0
-    before = len(api.model_bodies), len(api.calendar_requests)
-    with TestClient(api.app()) as client:assert api.send(client, deepcopy(original)).status_code == 200
-    assert (len(api.model_bodies), len(api.calendar_requests)) == before
-    result, _ = turn(api, 'แล้วเมื่อวานล่ะ')
-    assert result.data['read_query']['start'] == '2026-10-15' and result.data['tool_result']['count'] == 0
-    # A new factory performs the complete Sheets read behind the same fence.
-    serial = date_to_serial(date(2026, 10, 16))
-    for col, value in enumerate([serial, 'กาแฟ', 12.5, ''], 1):api.google.cells[('All Expenses', 2, col)] = value
-    result, _ = turn(api, 'ดูรายการรายจ่ายวันนี้')
-    assert result.status == 'summary' and '12.50' in result.message and result.data['response_realization']['status'] == 'llm'
-    assert api.calendar.posts == api.google.sheet_writes == 0
+    api=VoiceHosted();api.calendar.events={'day':event('day','2026-10-17','2026-10-18',all_day=True)}
+    r,original=turn(api,'ดูนัดพรุ่งนี้',plan('calendar','2026-10-17'))
+    assert r.data['tool_result']['count']==1 and r.data['response_realization']['status']=='llm'
+    assert set(r.data['query_facts'])=={'period','count','row1'} and '17 ต.ค. 2026' in r.message
+    before=len(api.model_bodies),len(api.calendar_requests)
+    with TestClient(api.app()) as client:assert api.send(client,deepcopy(original)).status_code==200
+    assert (len(api.model_bodies),len(api.calendar_requests))==before and not api.calendar.posts and not api.google.sheet_writes
 
 
-@pytest.mark.parametrize('fault', ['wrong_workbook', 'delivery_failed', 'expired'])
-def test_failed_or_foreign_delivery_is_not_query_context(fault):
+@pytest.mark.parametrize('fault',['wrong_workbook','delivery_failed','expired'])
+def test_failed_foreign_or_expired_delivery_not_admitted_as_scope(fault):
     from test_response_realization import VoiceHosted
-    from test_calendar_text_confirmation_v13 import turn, mutate
-    api = VoiceHosted();api.reject_reply = fault == 'delivery_failed'
-    result, original = turn(api, 'ดูนัดพรุ่งนี้')
-    api.reject_reply = False
-    if fault == 'wrong_workbook':mutate(api, lambda s: s.event_workbooks.__setitem__(original['webhookEventId'], 'other-book'))
-    if fault == 'expired':api.now += timedelta(hours=25)
-    result, _ = turn(api, 'แล้วเมื่อวานล่ะ', lambda b: response(text='ต้องการดูข้อมูลเรื่องไหนครับ'))
-    assert 'read_query' not in result.data
+    from test_calendar_text_confirmation_v13 import turn,mutate
+    api=VoiceHosted();api.reject_reply=fault=='delivery_failed'
+    _,original=turn(api,'นัดพรุ่งนี้',plan('calendar','2026-10-17'));api.reject_reply=False
+    if fault=='wrong_workbook':mutate(api,lambda s:s.event_workbooks.__setitem__(original['webhookEventId'],'other-book'))
+    if fault=='expired':api.now+=timedelta(hours=25)
+    turn(api,'แล้วล่ะ',response(text='ต้องการดูข้อมูลเรื่องไหนครับ'))
+    body=next(b for b in reversed(api.model_bodies) if b.get('tool_choice')=='auto')
+    assert json.loads(body['input'][0]['content'])['previous_query'] is None
 
 
-def test_read_does_not_carry_calendar_creation_consent():
+def test_query_cannot_reuse_prior_expense_or_calendar_confirmation():
+    from test_raw_history import Harness as ExpenseHarness
+    h=ExpenseHarness();assert h.prepare('ค่ากระดาษ 228 บาท').status=='preview';before=deepcopy(h.draft())
+    assert h.send('ดูรายจ่าย',plan()).status=='summary' and h.draft()==before
+    assert h.send('ยืนยัน').status=='clarification' and not h.sheets.entries and not h.state.actions
     from test_calendar_text_confirmation_v13 import turn
-    from test_calendar_factory import Hosted, prepare
-    api = Hosted()
-    assert turn(api, 'นัดตรวจฟันพรุ่งนี้บ่ายสอง 45 นาที', prepare)[0].status == 'preview'
-    assert turn(api, 'ดูนัดพรุ่งนี้')[0].status == 'answer'
-    result, _ = turn(api, 'ยืนยัน')
-    assert result.status in {'clarification', 'stale'} and not api.calendar.posts
+    from test_calendar_factory import Hosted,prepare
+    api=Hosted();assert turn(api,'นัดตรวจฟันพรุ่งนี้บ่ายสอง 45 นาที',prepare)[0].status=='preview'
+    assert turn(api,'ดูนัด',plan('calendar','2026-10-17'))[0].status=='answer'
+    assert turn(api,'ยืนยัน')[0].status in {'clarification','stale'} and not api.calendar.posts
 
 
 def test_calendar_pagination_deduplication_and_incomplete_fail_closed():

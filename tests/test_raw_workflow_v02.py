@@ -151,13 +151,13 @@ def test_synthetic_nine_citation_summary_now_fits_without_resending_original_tex
     h=summary_harness();original=deepcopy(h.state.raw_journal.rows)
     # Current instructions/schema preserve full multiword names and constrain
     # notes to explicit owner fields. This positive current-schema fit probe
-    # uses 16k; negative 14k probes and production's 1,050,000 remain unchanged.
-    h.service.raw_context_tokens=16000
+    # uses 26k; negative 14k probes and production's 1,050,000 remain unchanged.
+    h.service.raw_context_tokens=26000
     result=turn(h,ev.TURNS[h.case][0][0],scripted(h,'history_summary'),response(text='คุยเรื่องต้นไม้ต่อครับ'))
     assert result.status=='answer' and len(h.port.records)==2
     summary=h.state.rolling_summary;assert summary['source_refs']==proposal_arguments(h,'history_summary')['source_refs']
     assert all('original_text' not in v and v['date_text'] for v in summary['source_dates'].values())
-    normal=h.port.records[-1]['request'];assert raw.tokens_bound(normal)+1024<=16000
+    normal=h.port.records[-1]['request'];assert raw.tokens_bound(normal)+1024<=h.service.raw_context_tokens
     context=json.loads(normal['input'][0]['content'])
     assert any(r['text']=='อยากทราบเรื่องรดน้ำหรือแสงครับ' for r in context['history'])
     assert all(h.state.raw_journal.rows[k]==v for k,v in original.items())

@@ -45,7 +45,8 @@ def test_synthetic_prepare_and_read_decisions_allow_explicit_text_save_once(text
  replay=ev.cold_replay(h,event,done)
  assert replay['identical_result'] and replay['raw_originals_retained']
  assert replay['model_calls']==replay['fake_rows_added']==replay['fake_catalog_batches_added']==0
- h.port.values=[response(name='spending_summary',args={'start_date':'2026-10-13','end_date':'2026-10-13'})]
+ from test_read_queries import plan
+ h.port.values=[plan(start='2026-10-13')]
  _,totals,_=h.run_turn('สรุปยอดเมื่อวาน',1)
  assert totals.data['tool_result']['expense']=='50.00'
 

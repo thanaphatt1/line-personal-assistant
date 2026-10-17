@@ -4,7 +4,7 @@ See the [runtime diagrams and input/output map](system-flow.md) for the shared i
 
 ## Simplified write path
 
-Direct controls and stored-data queries can skip the model proposal below; the linked runtime diagrams show those paths separately.
+Verified direct controls can skip the model proposal below. Stored-data queries use model-selected typed tools; the linked runtime diagrams show their separate validation and grounded reply path.
 
 ```mermaid
 flowchart LR
@@ -32,6 +32,7 @@ flowchart LR
 | Expense drafts and evidence | `draft_workflow`, `expense_sources`, `expense_evidence`, `catalog_names` |
 | Calendar drafts and groups | `calendar_workflow`, `calendar_batches`, `calendar_event_types`, `calendar_sources` |
 | Persistence and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |
+| Typed stored-data queries | `read_queries` |
 | Provider adapters | `sheets_api`, `calendar_provider`, `line_api`, `model_api` |
 | Thai interpretation and factual replies | `language`, `history_dates`, `calendar_dates`, `response_realization` |
 | Mock adapters and legacy compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
