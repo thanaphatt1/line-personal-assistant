@@ -116,7 +116,9 @@ flowchart TD
     Model["LLM: interpret request and follow-up<br/>Choose query_expenses or query_calendar with typed arguments"]:::llm
     Scope["CODE: validate dates, exact filter and source references<br/>No language parsing; fixed workbook and calendar"]:::code
     Expense["EXT: Sheets GET<br/>Output: bounded input rows and current catalog mapping"]:::ext
-    Money["CODE: validate complete grid and rows; filter and sum Decimal<br/>Output: expense total, count and saved entries"]:::code
+    Money["CODE: validate complete grid and rows<br/>Resolve exact/alias/unique-spacing catalog identity; no fuzzy classification"]:::code
+    Mapping["CODE: verify category membership and sum Decimal<br/>Output: complete total/count or unresolved identities"]:::code
+    Partial["CODE: incomplete category result<br/>Output: named unresolved items + explicitly partial subtotal<br/>No complete total and no Sheet changes"]:::code
     Calendar["EXT: Calendar GET with pagination<br/>Output: saved timed and all-day occurrences"]:::ext
     Events["CODE: validate pages and offsets; apply overlap bounds<br/>Output: events with correct exclusive all-day end display"]:::code
     Error["CODE: honest clarification or unavailable result<br/>Output: no fabricated zero from an incomplete read"]:::code
@@ -124,12 +126,13 @@ flowchart TD
     Input --> Model
     Model -->|"Typed read arguments"| Scope
     Model -->|"Ambiguous intent or unsupported filter"| Error
-    Scope -->|"Expense range and item or category"| Expense --> Money
+    Scope -->|"Expense range and item or category"| Expense --> Money --> Mapping
     Scope -->|"Calendar day or week"| Calendar --> Events
     Scope -->|"Ambiguous, missing or unsupported scope"| Error
     Expense -->|"Unavailable or incomplete"| Error
     Calendar -->|"Unavailable or incomplete"| Error
-    Money --> Facts
+    Mapping -->|"Verified membership"| Facts
+    Mapping -->|"Missing, ambiguous or unassigned mapping"| Partial --> Facts
     Events --> Facts
     Error --> Facts
     classDef code fill:#E8F0FE,stroke:#1A73E8,color:#111;
@@ -139,7 +142,7 @@ flowchart TD
 
 There is no semantic keyword pre-router for queries. The LLM chooses typed calendar frames or explicit dates, filter and total/list mode from the current text and trusted context; it clarifies ambiguity. Code expands model-selected relative calendar frames, validates the typed range and exact catalog identity, performs complete reads and calculates every amount. The old competing `spending_summary` is absent from the raw planner tool set; compatibility applications retain their separate legacy contract. Expense queries use inclusive local dates and the **current** catalog mapping. Calendar queries cover at most seven dates and three pages of 20 events; unfinished pagination yields an unavailable response. Complete replies show at most 20 rows and disclose additional results. Saved all-day events can span several dates even though new all-day creation is single-date only.
 
-A complete empty read can report zero saved records. It does not establish availability in another calendar, income or a remaining balance. Reads create no business write, action, draft or nonce; normal conversation receipts and usage records still persist. Provider reads are bounded but are not a transactionally frozen snapshot across external edits. See [query examples and limits](read-queries.md).
+A complete empty read can report zero saved records. It does not establish availability in another calendar, income or a remaining balance. A mapping failure after a verified complete input read can show a separately labeled partial subtotal and actionable unresolved names; a provider/schema/incomplete-input failure cannot. Partial qualifiers and resolution instructions are immutable wording facts, and the server appends the unresolved-name rows. Reads create no business write, action, draft or nonce; normal conversation receipts and usage records still persist. Provider reads are bounded but are not a transactionally frozen snapshot across external edits. See [query examples and limits](read-queries.md).
 
 ## Boundary inputs and outputs
 

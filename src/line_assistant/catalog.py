@@ -52,13 +52,26 @@ class ItemCatalog:
         suggestions = tuple(item for score, item in scores[:3] if score >= 0.65)
         return Match(None, "possible_typo" if suggestions else "unknown", suggestions)
 
-    def resolve(self, value: str) -> Match:
-        exact = self.match(value)
-        if exact.status in {'exact', 'alias'}:
-            return exact
+    def identity(self, value: str) -> Match:
+        """Resolve only established identity rules, without fuzzy suggestions.
+
+        Reads and writes share exact/alias/unique-spacing identity. A possible
+        typo is never sufficient to classify a stored expense.
+        """
+        key = normalized(value)
+        if key in self.items:
+            return Match(self.items[key], 'exact')
+        if key in self.aliases:
+            target = self.aliases[key]
+            if self.items.get(normalized(target)) == target:
+                return Match(target, 'alias')
         names = tuple(item for item in self.items.values() if spacing_key(item) == spacing_key(value))
         if len(names) == 1:
             return Match(names[0], 'spacing')
         if names:
             return Match(None, 'ambiguous_spacing', names)
-        return exact
+        return Match(None, 'unknown')
+
+    def resolve(self, value: str) -> Match:
+        identity = self.identity(value)
+        return self.match(value) if identity.status == 'unknown' else identity

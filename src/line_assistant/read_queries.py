@@ -85,6 +85,54 @@ def error(output, code, outcome='unavailable'):
     return {**output,'ok':False,'complete':False,'outcome':outcome,'error_code':code}
 
 
+def filtered_entries(tax, entries, chosen):
+    """Use catalog identity, never guessed historical categories or fuzzy names.
+
+    Unresolved category membership can affect the requested total. Return a
+    separately named partial subtotal and diagnostics, never a complete total.
+    """
+    by_name={normalized(r.item):r for r in tax.rows}
+    matched=[];unresolved={};identity_counts={}
+    for entry in entries:
+        identity=tax.catalog.identity(entry['item'])
+        identity_counts[identity.status]=identity_counts.get(identity.status,0)+1
+        row=by_name.get(normalized(identity.canonical)) if identity.canonical else None
+        reason=None
+        if row is None:
+            # An exact item filter has a literal identity boundary. A spacing
+            # collision containing that item remains unresolved, not excluded.
+            if chosen.kind=='item' and chosen.value not in identity.suggestions:continue
+            reason='ambiguous_item_identity' if identity.status=='ambiguous_spacing' else 'missing_catalog_item'
+        else:
+            value=row.item if chosen.kind=='item' else getattr(row,chosen.kind)
+            if chosen.kind=='category' and not value.strip():reason='unassigned_category'
+            elif value==chosen.value:matched.append(entry)
+        if reason:
+            key=(entry['item'],reason)
+            if key not in unresolved:
+                unresolved[key]={'item':entry['item'],'reason':reason,'count':0,'expense':Decimal(0),
+                    'candidate_items':list(identity.suggestions[:3]),'candidate_count':len(identity.suggestions),
+                    'may_affect_filter':True}
+            unresolved[key]['count']+=1;unresolved[key]['expense']+=Decimal(entry['amount'])
+    issues=list(unresolved.values())
+    for item in issues:item['expense']=f"{item['expense']:.2f}"
+    return matched,issues,identity_counts
+
+
+def mapping_failure(output, matched, issues, identities, listing):
+    subtotal=sum((Decimal(e['amount']) for e in matched),Decimal(0))
+    unresolved_total=sum((Decimal(e['expense']) for e in issues),Decimal(0))
+    if not subtotal.is_finite() or not unresolved_total.is_finite():raise ValueError('invalid_subtotal')
+    matched.sort(key=lambda e:(e['date'],e['item']))
+    return {**error(output,'mapping_incomplete'),'input_read_complete':True,
+        'mapping_diagnostics':{'unresolved_item_count':len(issues),'unresolved_record_count':sum(e['count'] for e in issues),
+            'unresolved_expense':f'{unresolved_total:.2f}','items':issues[:20],'shown':min(20,len(issues)),
+            'may_affect_filter':True,'identity_matches':identities,'resolution':'review_expense_name_and_Database_mapping_no_automatic_changes'},
+        'partial':{'complete':False,'basis':'uniquely_identified_and_mapped_rows_only','expense':f'{subtotal:.2f}',
+            'count':len(matched),'entries':[],'shown':0,'requested_view':'list' if listing else 'total',
+            'excludes_unresolved_records':True}}
+
+
 def execute(host, name, args):
     domain = 'expense' if name=='query_expenses' else 'calendar'
     output = {'status':'stored_query','domain':domain,'read_only':True,'ok':True,'complete':False,
@@ -149,12 +197,8 @@ def execute(host, name, args):
             chosen=chosen.model_copy(update={'value':matches.pop()});output['scope']['filter']={chosen.kind:chosen.value}
         entries=host.sheets.saved_entries(a,b)
         if chosen:
-            if chosen.kind=='item':entries=[e for e in entries if normalized(e['item'])==normalized(chosen.value)]
-            else:
-                mappings={}
-                for r in tax.rows:mappings.setdefault(normalized(r.item),set()).add(getattr(r,chosen.kind))
-                if any(len(mappings.get(normalized(e['item']),set()))!=1 for e in entries):return error(output,'mapping_incomplete')
-                entries=[e for e in entries if chosen.value in mappings[normalized(e['item'])]]
+            entries,issues,identities=filtered_entries(tax,entries,chosen)
+            if issues:return mapping_failure(output,entries,issues,identities,p.view=='list')
         entries.sort(key=lambda e:(e['date'],e['item']))
         total=sum((Decimal(e['amount']) for e in entries),Decimal('0'))
         if not total.is_finite() or total<0:raise ValueError()
@@ -193,7 +237,23 @@ ERRORS = {
 
 
 def facts(output, at):
-    if not output['complete']:return {'reason':ERRORS[output['error_code']]}
+    if not output['complete']:
+        if output['error_code']!='mapping_incomplete' or not output.get('mapping_diagnostics'):return {'reason':ERRORS[output['error_code']]}
+        scope=output['scope'];diagnostics=output['mapping_diagnostics'];partial=output['partial']
+        label=label_text(next(iter(scope['filter'].values())))
+        kind=next(iter(scope['filter']))
+        impact='อาจตรงกับชื่อรายการที่ถาม' if kind=='item' else 'อาจอยู่ใน'+('หมวดย่อย' if kind=='subcategory' else 'หมวด')+'ที่ถาม'
+        values={'reason':f"{period_label(scope,at)} เฉพาะ {label} ยังยืนยันยอดครบไม่ได้ครับ",
+            'mapping_partial':f"ยอดบางส่วนเฉพาะรายการที่จับคู่ Database ได้ {partial['expense']} บาท จาก {partial['count']} รายการ ยังไม่รวม {diagnostics['unresolved_record_count']} รายการ ({diagnostics['unresolved_item_count']} ชื่อ) รวม {diagnostics['unresolved_expense']} บาท ซึ่ง{impact}ครับ",
+            'mapping_resolution':'โปรดตรวจชื่อรายการด้านล่างใน All Expenses และคู่ชื่อ–หมวดใน Database ให้ตรงกันก่อน แล้วถามใหม่ครับ ยังไม่ได้แก้ข้อมูลใดให้'}
+        reasons={'missing_catalog_item':'ไม่พบชื่อใน Database','ambiguous_item_identity':'ตรงกับชื่อที่ต่างกันเฉพาะช่องว่างมากกว่าหนึ่งชื่อ',
+            'unassigned_category':'ยังไม่มีหมวดใน Database','unassigned_subcategory':'ยังไม่มีหมวดย่อยใน Database'}
+        shown=diagnostics['items'][:10]
+        for i,item in enumerate(shown,1):
+            values[f'row{i}']=f"{label_text(item['item'])} — {item['count']} รายการ รวม {item['expense']} บาท ({reasons[item['reason']]})"
+            if item['candidate_items']:values[f'row{i}']+=' ตัวเลือกที่ต้องตรวจ: '+', '.join(label_text(x) for x in item['candidate_items'][:2])
+        if diagnostics['unresolved_item_count']>len(shown):values['truncation']='แสดงชื่อที่ยังจับคู่ไม่ได้ 10 ชื่อแรก จำนวนและยอดรายการที่ยังไม่รวมใช้ทั้งหมดที่อ่านครบแล้ว'
+        return values
     scope=output['scope'];values={'period':period_label(scope,at)}
     if scope['domain']=='expense':
         if scope.get('filter'):values['filter']=label_text(next(iter(scope['filter'].values())))
@@ -216,7 +276,7 @@ def facts(output, at):
 
 def result(output, at):
     values=facts(output,at)
-    if not output['complete']:message=values['reason']
+    if not output['complete']:message='\n'.join(v for k,v in values.items() if not k.startswith('row') and k!='truncation')
     elif output['domain']=='expense':
         message=values['period']+(' เฉพาะ '+values['filter'] if 'filter' in values else '')+f" ใช้ไป {values['total']} จาก {values['count']}ครับ"
     else:message=values['period']+f" มี {values['count']}ครับ"
