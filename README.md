@@ -2,6 +2,8 @@
 
 A Thai, single-owner LINE assistant for expense tracking and Google Calendar drafts. It uses typed model tools to interpret requests; the server validates facts and performs writes only after the owner confirms a delivered review.
 
+Start with the [runtime diagrams and input/output map](docs/system-flow.md) to see which steps use LLMs, deterministic code and external services.
+
 ## Features
 
 - **Expenses:** prepare and correct multiple THB expenses, resolve catalog names, request missing information, and confirm a group once. New catalog entries require the owner's category choices.

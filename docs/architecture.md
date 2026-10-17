@@ -1,6 +1,10 @@
 # Architecture
 
-## Request flow
+See the [runtime diagrams and input/output map](system-flow.md) for the shared ingress/history/reply path and separate expense-write, Calendar-write and stored-data query routes, with LLM/code/external-service boundaries.
+
+## Simplified write path
+
+Direct controls and stored-data queries can skip the model proposal below; the linked runtime diagrams show those paths separately.
 
 ```mermaid
 flowchart LR
