@@ -1,0 +1,4 @@
+# Test/runtime dependencies and a pinned backend for offline wheel checks.
+-r requirements.lock
+setuptools==84.0.0
+wheel==0.48.0

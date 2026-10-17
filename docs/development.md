@@ -14,6 +14,22 @@ The suite denies external sockets. Tests inject HTTP transports, synthetic owner
 
 Behavior regressions share test-only adapters in `tests/behavior_support.py` and `tests/language_support.py`. They construct proposals from the current synthetic event and owned draft references. The wire-contract tests preserve literal JSON argument strings; routing, provenance, edits, cancellation, cold restore and confirmation tests check business effects independently. Historical paid-response files and release approval records are not test dependencies or model-quality evidence.
 
+## Continuous integration
+
+The `CI` GitHub Actions workflow runs on pushes and pull requests using a GitHub-hosted Ubuntu 24.04 runner and Python 3.11. It runs the full offline suite, verifies a deterministic source bundle, builds and installs a local wheel without downloading dependencies, and starts both packages with synthetic integrations. Startup checks cover the local/durable mock, invalid signatures, and history-enabled OFF bridge/ON candidate configurations with zero provider calls.
+
+Run the same checks locally from the repository root:
+
+```sh
+python -m pip install -r requirements-ci.txt
+PYTHONDONTWRITEBYTECODE=1 python -m pytest tests -p no:cacheprovider
+python scripts/check_ci.py
+```
+
+Dependency installation needs package-index access; the tests and package/startup checks afterward are offline. Official checkout/setup-python actions use full commit SHA pins, checkout credentials are not persisted, and the workflow has only `contents: read`. It does not reference repository secrets, request OIDC/cloud permissions, upload/download workflow artifacts, or use privileged PR triggers. One job has a 20-minute limit; superseded runs on the same branch/PR are cancelled. Existing fork-PR approval policies are unchanged.
+
+CI results verify synthetic runtime and packaging contracts. They do not test a real LINE owner, establish model quality, build a cloud image or deploy. Branch protection and release approvals remain separate settings; this workflow does not change them.
+
 ## Source bundle
 
 ```sh
