@@ -1,5 +1,7 @@
 # Synthetic inference validation
 
+The focused [mapping-resolution development regression](../benchmarks/mapping-resolution-v2/README.md) separately records the newer identity/partial-result change. It uses only synthetic data and does not replace or tune the historical frozen v1 holdout. Its 54 turns are repeated development examples, not 54 independent unseen cases.
+
 Offline scripted tool outputs test the code contract, not the model's understanding of language. The synthetic corpus in [`tests/fixtures/query_inference.json`](../tests/fixtures/query_inference.json) defines separate real-inference scenarios, independent repetition counts and expected results. It contains no owner records or private event content.
 
 A separately authorized runner must bind the exact reviewed runtime archive and use the signed history factory with injected Google, LINE and state mocks. Only the selected model request may leave the machine. Keep the existing model, request timeout, output limits, call budget and response validator; extending development timeouts would hide a production fallback. Never point an evaluation at a live workbook or calendar.

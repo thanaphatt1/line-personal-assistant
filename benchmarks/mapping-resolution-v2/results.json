@@ -1,0 +1,98 @@
+{
+  "status": "development_regression_passed",
+  "model": "gpt-6-luna",
+  "source_commit": "b7635853bbac3780d68edad62650387901194595",
+  "runtime_archive_sha256": "361a61d375705cdf7de853ca552c2e26d4a156187b6e2c4839f18d1b94d82f11",
+  "corpus_sha256": "717f8212e0a56a64f565b345ab6ee516a4db0c5f0ae2dda345267bbb124dc943",
+  "unique_scenarios": 14,
+  "separate_fixture_episodes": 42,
+  "repetitions_each": 3,
+  "unique_turn_templates": 18,
+  "turns": 54,
+  "passed_turns": 54,
+  "turn_kind_counts": {
+    "query": 12,
+    "mapping_partial": 27,
+    "preview": 6,
+    "created": 3,
+    "recorded": 3,
+    "error": 3
+  },
+  "critical_business_effect_errors": 0,
+  "style_LLM_successes": 54,
+  "end_to_end_seconds": {
+    "p50": 3.1130640419432893,
+    "p95": 4.240966666955501,
+    "max": 5.77402999997139
+  },
+  "roles": {
+    "query_planner": {
+      "requests": 48,
+      "received_usage": 48,
+      "estimate_USD": "0.005420955",
+      "input_tokens": 233961,
+      "output_tokens": 4343,
+      "cached_tokens": 226018,
+      "cache_write_tokens": 7799,
+      "latency_seconds": {
+        "p50": 1.835840417072177,
+        "p95": 2.5540109999710694
+      }
+    },
+    "response_style": {
+      "requests": 54,
+      "received_usage": 54,
+      "estimate_USD": "0.004530785",
+      "input_tokens": 55692,
+      "output_tokens": 2230,
+      "cached_tokens": 27786,
+      "cache_write_tokens": 13893,
+      "latency_seconds": {
+        "p50": 1.3089957920601591,
+        "p95": 1.9874694589525461
+      }
+    }
+  },
+  "cost": {
+    "calls": 102,
+    "unique_received": 102,
+    "uncertain_or_failed": 0,
+    "input_tokens": 289653,
+    "output_tokens": 6573,
+    "estimated_usage_usd": "0.009951740",
+    "all_input_cache_write_ceiling_usd": "0.039493125",
+    "uncertain_request_holds_usd": "0",
+    "invoice_verified": false,
+    "automatic_retries": 0
+  },
+  "integrations": "Google/LINE/state are synthetic mocks; only model inference was real",
+  "live_inspection_records_used": false,
+  "production_builds": 0,
+  "deployments": 0,
+  "offline_tests": 2928,
+  "protocol": "Predefined development fixtures with per-turn normalized scope, subtotal, unresolved-name/disclosure, no-read-write, exact confirmed effect facts and two-call checks. This is not a fresh heldout accuracy estimate.",
+  "limitations": [
+    "Development regression data, not independent unseen heldout cases.",
+    "Repeated scenarios and turns within each episode are correlated.",
+    "No independent human naturalness or answer-level factual score.",
+    "Mocked provider timing does not establish a production delivery SLO.",
+    "Frozen v1 prompts/config/labels/results remain unchanged at their historical runtime."
+  ],
+  "examples": [
+    {
+      "case": "mapping_partial_total",
+      "owner_message": "รวมหมวด Transportation เดือนตุลาคมให้หน่อย",
+      "delivered_synthetic_reply": "1 ต.ค. 2026 ถึง 31 ต.ค. 2026 เฉพาะ Transportation ยังยืนยันยอดครบไม่ได้ครับ\nยอดบางส่วนเฉพาะรายการที่จับคู่ Database ได้ 12.30 บาท จาก 2 รายการ ยังไม่รวม 2 รายการ (1 ชื่อ) รวม 9.30 บาท ซึ่งอาจอยู่ในหมวดที่ถามครับ\nโปรดตรวจชื่อรายการด้านล่างใน All Expenses และคู่ชื่อ–หมวดใน Database ให้ตรงกันก่อน แล้วถามใหม่ครับ ยังไม่ได้แก้ข้อมูลใดให้\nUnlisted Badge — 2 รายการ รวม 9.30 บาท (ไม่พบชื่อใน Database)"
+    },
+    {
+      "case": "mapping_zero_known",
+      "owner_message": "เดือนก่อนหมวดเดินทางจ่ายเท่าไหร่",
+      "delivered_synthetic_reply": "1 ต.ค. 2026 ถึง 31 ต.ค. 2026 เฉพาะ Transportation ยังยืนยันยอดครบไม่ได้ครับ\nยอดบางส่วนเฉพาะรายการที่จับคู่ Database ได้ 0.00 บาท จาก 0 รายการ ยังไม่รวม 1 รายการ (1 ชื่อ) รวม 8.40 บาท ซึ่งอาจอยู่ในหมวดที่ถามครับ\nโปรดตรวจชื่อรายการด้านล่างใน All Expenses และคู่ชื่อ–หมวดใน Database ให้ตรงกันก่อน แล้วถามใหม่ครับ ยังไม่ได้แก้ข้อมูลใดให้\nUnlisted Badge — 1 รายการ รวม 8.40 บาท (ไม่พบชื่อใน Database)"
+    },
+    {
+      "case": "mapping_identity_collision",
+      "owner_message": "หมวด Transportation ตลอดเดือนก่อนรวมกี่บาท",
+      "delivered_synthetic_reply": "1 ต.ค. 2026 ถึง 31 ต.ค. 2026 เฉพาะ Transportation ยังยืนยันยอดครบไม่ได้ครับ\nยอดบางส่วนเฉพาะรายการที่จับคู่ Database ได้ 0.00 บาท จาก 0 รายการ ยังไม่รวม 1 รายการ (1 ชื่อ) รวม 7.00 บาท ซึ่งอาจอยู่ในหมวดที่ถามครับ\nโปรดตรวจชื่อรายการด้านล่างใน All Expenses และคู่ชื่อ–หมวดใน Database ให้ตรงกันก่อน แล้วถามใหม่ครับ ยังไม่ได้แก้ข้อมูลใดให้\nMetro  Token — 1 รายการ รวม 7.00 บาท (ตรงกับชื่อที่ต่างกันเฉพาะช่องว่างมากกว่าหนึ่งชื่อ) ตัวเลือกที่ต้องตรวจ: Metro Token, MetroToken"
+    }
+  ]
+}
