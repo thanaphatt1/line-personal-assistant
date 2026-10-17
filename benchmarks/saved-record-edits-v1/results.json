@@ -1,0 +1,215 @@
+{
+  "kind": "synthetic_development_not_heldout",
+  "synthetic_only": true,
+  "cases": 12,
+  "repetitions_each_final": 2,
+  "final_source_archive_sha256": "0e374f6b1fa557cbaca5a143de9aab49b391de4e36aecbf98cf36703d91b9446",
+  "corpus": "tests/fixtures/saved_record_edits_development.json",
+  "corpus_sha256": "ef139a91a4ba376cb014fd1609380cf2cb521e59760e940ad8e472368365d9b2",
+  "final_turns": 48,
+  "final_passed": 48,
+  "model": "gpt-6-luna",
+  "max_model_calls_per_turn": 2,
+  "offline_tests": 2993,
+  "new_provider_webhook_tests": 65,
+  "separate_process_OFF_bridge_cases": 4,
+  "live_records_used": false,
+  "production_operations": 0,
+  "runs": [
+    {
+      "run": 1,
+      "turns": 48,
+      "passed": 32,
+      "calls": 46,
+      "failed_turns": [
+        {
+          "case": "expense_amount-rep1",
+          "turn": 0,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_amount-rep1",
+          "turn": 1,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "expense_amount-rep2",
+          "turn": 0,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_amount-rep2",
+          "turn": 1,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "expense_ambiguity-rep1",
+          "turn": 1,
+          "problems": [
+            "before_after_review",
+            "after_amount",
+            "selected_stable_id"
+          ]
+        },
+        {
+          "case": "expense_ambiguity-rep1",
+          "turn": 2,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "expense_ambiguity-rep2",
+          "turn": 1,
+          "problems": [
+            "before_after_review",
+            "after_amount",
+            "selected_stable_id"
+          ]
+        },
+        {
+          "case": "expense_ambiguity-rep2",
+          "turn": 2,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep1",
+          "turn": 0,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep1",
+          "turn": 1,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep1",
+          "turn": 2,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep2",
+          "turn": 0,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep2",
+          "turn": 1,
+          "problems": [
+            "before_after_review",
+            "after_amount"
+          ]
+        },
+        {
+          "case": "expense_proposal_amend-rep2",
+          "turn": 2,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        },
+        {
+          "case": "calendar_all_day-rep1",
+          "turn": 0,
+          "problems": [
+            "after_end"
+          ]
+        },
+        {
+          "case": "calendar_all_day-rep2",
+          "turn": 0,
+          "problems": [
+            "after_end"
+          ]
+        }
+      ],
+      "execution_failure": null
+    },
+    {
+      "run": 2,
+      "turns": 48,
+      "passed": 46,
+      "calls": 46,
+      "failed_turns": [
+        {
+          "case": "calendar_time-rep1",
+          "turn": 0,
+          "problems": [
+            "before_after_review",
+            "after_start",
+            "after_end"
+          ]
+        },
+        {
+          "case": "calendar_time-rep1",
+          "turn": 1,
+          "problems": [
+            "verified_update",
+            "write_count",
+            "replay_wrote"
+          ]
+        }
+      ],
+      "execution_failure": null
+    },
+    {
+      "run": 3,
+      "turns": 48,
+      "passed": 48,
+      "calls": 46,
+      "failed_turns": [],
+      "execution_failure": null
+    }
+  ],
+  "all_runs_cost": {
+    "calls": 138,
+    "received": 138,
+    "estimated_usage_USD": "0.017573795",
+    "all_input_cache_write_ceiling_USD": "0.110124875",
+    "unknown_request_holds_USD": "0",
+    "automatic_retries": 0,
+    "invoice_verified": false
+  },
+  "limits": [
+    "Development oracles defined by Codex; not independent human adjudication",
+    "Failures informed development fixes; no heldout/general accuracy claim",
+    "Google, LINE and durable state are simulated",
+    "No actual owner edit, live permission probe, deployment or traffic rollback",
+    "Sheets collaborator race requires reviewed single-writer policy; no atomic CAS guarantee",
+    "Default-off bridge keeps Calendar access for read-only reconciliation"
+  ]
+}

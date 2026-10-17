@@ -17,6 +17,7 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         return self.legacy._route(text,event,stamp,at)
     def _route(self,text,event,stamp,at):
         self._legacy_turn=False
+        if self.saved_edits.has_pending() or self.saved_edits.is_control(text):return super()._route(text,event,stamp,at)
         if self.calendar_flow.batches.is_control(text) or self.calendar_flow.enabled and self.calendar_flow.batches.refresh_requested(text):
             # Batch postbacks and named text consent must reach Calendar even
             # when legacy expense work is pending. Its own owner/version/nonce
@@ -45,7 +46,7 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
                     lines.append('ยกเลิก '+d['draft_ref'])
                 return Result('clarification','\n'.join(lines))
             return self._legacy_route(text,event,stamp,at)
-        if not active and not calendar_active and re.match(r'^(?:แก้|เปลี่ยน|ล้าง)',text):
+        if not self.saved_edits.enabled and not active and not calendar_active and re.match(r'^(?:แก้|เปลี่ยน|ล้าง)',text):
             return Result('clarification','ไม่พบร่างที่ยังแก้ไขได้ กรุณาระบุรายการใหม่หากต้องการเพิ่มรายจ่าย')
         return super()._route(text,event,stamp,at)
     def _result(self,output,model_text=''):

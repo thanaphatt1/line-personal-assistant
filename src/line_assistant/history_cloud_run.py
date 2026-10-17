@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -32,6 +32,9 @@ class HistoryConfig:
     calendar_id: str|None=None
     response_realization_enabled: bool=False
     usage_gates_enabled: bool=True
+    saved_expense_enabled: bool=False
+    saved_calendar_enabled: bool=False
+    saved_expense_concurrency: str='off'
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -51,9 +54,23 @@ class HistoryConfig:
         usage=values.get('PILOT_MODEL_USAGE_GATES_ENABLED','true')
         if usage not in {'true','false'} or usage=='false' and s!='true':
             raise ConfigError('Observational usage requires explicit single-owner history state')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true')
+        expense=values.get('PILOT_SAVED_EXPENSE_EDITS_ENABLED','false');reschedule=values.get('PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','false')
+        concurrency=values.get('PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','off')
+        if (expense not in {'true','false'} or reschedule not in {'true','false'} or concurrency not in {'off','reviewed_single_writer'}
+            or (expense=='true' or reschedule=='true') and (h!='true' or s!='true')
+            or expense=='true' and concurrency!='reviewed_single_writer' or reschedule=='true' and calendar!='true'):
+            raise ConfigError('Saved-record edits require explicit flags, history and reviewed concurrency policy')
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency)
 
 class HistoryHttp(PilotHttp):
+    def request(self,service,method,path,*,body=None,params=None,headers=None):
+        if service=='calendar' and method=='PATCH':
+            from .saved_edit_transport import mutation
+            if not mutation(self,service,method,path,body,params,headers):raise LiveDisabled('Unconfirmed conditional reschedule')
+            token=self.google_token('calendar_events')
+            return self._json(self._http(method,'https://www.googleapis.com'+path,json=body,params=params,
+                headers={'Authorization':'Bearer '+token,**headers}))
+        return super().request(service,method,path,body=body,params=params,headers=headers)
     def _json(self,response):
         if getattr(self,'raw_history_enabled',False) and response.request.url.path.endswith(':runQuery'):
             value=response.json()
@@ -62,6 +79,9 @@ class HistoryHttp(PilotHttp):
         return super()._json(response)
     def allowed(self,service,method,path,body,params):
         from . import response_realization as voice
+        from .saved_edit_transport import mutation,calendar_read
+        if service=='sheets' and method=='POST' and mutation(self,service,method,path,body,params):return
+        if service=='calendar' and method=='GET' and body is None and params is None and calendar_read(self,path):return
         if (self.config.response_realization_enabled and service=='model' and method=='POST' and path=='/v1/responses'
             and params is None and isinstance(body,dict) and body.get('instructions')==voice.INSTRUCTIONS):
             if not voice.validate_body(body) or self.state is None or not self.state.holder:raise LiveDisabled('Unbound response realization')
@@ -89,7 +109,7 @@ class HistoryHttp(PilotHttp):
                         row=raw.valid(json.loads(fields['payload']['stringValue']))
                         if update.get('name')==journal.parent+'/assistant_raw_messages/'+raw.key(row) and fields==journal.fields(row):return
         raw_request=(getattr(self,'raw_history_enabled',False) and service=='model' and method=='POST' and path=='/v1/responses'
-                     and params is None and isinstance(body,dict) and body.get('instructions') in ({raw.RAW_INSTRUCTIONS,raw.SUMMARY_INSTRUCTIONS,raw.CALENDAR_INSTRUCTIONS} if self.config.calendar_enabled else {raw.RAW_INSTRUCTIONS,raw.SUMMARY_INSTRUCTIONS}))
+                     and params is None and isinstance(body,dict) and body.get('instructions') in {raw.SUMMARY_INSTRUCTIONS,raw.request_instructions(getattr(self.state,'raw_tool_definitions',None) or [],calendar=self.config.calendar_enabled)})
         history=(self.config.history_enabled and service=='model' and method=='POST' and path=='/v1/responses'
                  and params is None and isinstance(body,dict)
                  and body.get('tools') in [tools(enrollment=e,semantic=s,controls=c) for e in [False,True] for s,c in [(False,False),(True,False),(True,True)]]
@@ -103,7 +123,7 @@ class HistoryHttp(PilotHttp):
             if body.get('truncation')!='disabled' or not expected or body['tools']!=expected:raise LiveDisabled('Unbound raw tools')
             raw.reservation(body)
         if (set(body)!=keys or body['model']!=MODEL_ID or body['tool_choice']!=('required' if raw_request and body['instructions']==raw.SUMMARY_INSTRUCTIONS else 'auto') or body['parallel_tool_calls'] is not False
-                or body['store'] is not False or body['reasoning']!={'effort':'none'} or body['max_output_tokens']!=(raw.CALENDAR_MAX_OUTPUT_TOKENS if raw_request and body['instructions']==raw.CALENDAR_INSTRUCTIONS else MAX_OUTPUT_TOKENS)
+                or body['store'] is not False or body['reasoning']!={'effort':'none'} or body['max_output_tokens']!=(raw.CALENDAR_MAX_OUTPUT_TOKENS if raw_request and self.config.calendar_enabled and body['instructions']!=raw.SUMMARY_INSTRUCTIONS else MAX_OUTPUT_TOKENS)
                 or body['service_tier']!='default' or not raw_request and len(json.dumps(body,ensure_ascii=False,separators=(',',':')).encode())>MAX_BODY_BYTES
                 or self.state is None or not self.state.holder):raise LiveDisabled('Unbound history request')
         fingerprint=hashlib.sha256(json.dumps(body,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
@@ -115,7 +135,7 @@ class HistoryHttp(PilotHttp):
 
 def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None,clock=None,semantic_enabled=True,raw_history_enabled=True):
     values=values or {};config=HistoryConfig.from_mapping(values)
-    if (config.calendar_enabled or config.response_realization_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization requires raw history')
+    if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits require raw history')
     old=legacy_app({k:v for k,v in values.items() if k not in HISTORY_KEYS},transport=transport,secret_loader=secret_loader,clock=clock)
     if not config.history_state_enabled:return old
     previous=old.state.pilot_http
@@ -129,12 +149,16 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
                             max_calls_month=config.max_calls_month,clock=http.clock,enforce_usage_limits=config.usage_gates_enabled)
     if raw_history_enabled:
         from .response_realization import INSTRUCTIONS as VOICE_INSTRUCTIONS
-        guard.reservation_calculator=lambda body:raw.reservation(body) if body.get('instructions') in {raw.RAW_INSTRUCTIONS,raw.SUMMARY_INSTRUCTIONS,raw.CALENDAR_INSTRUCTIONS,VOICE_INSTRUCTIONS} else RESERVATION_MICRO_USD
+        guard.reservation_calculator=lambda body:raw.reservation(body) if body.get('instructions') in {raw.request_instructions(getattr(state,'raw_tool_definitions',None) or [],calendar=config.calendar_enabled),raw.SUMMARY_INSTRUCTIONS,VOICE_INSTRUCTIONS} else RESERVATION_MICRO_USD
     legacy=ConversationAssistant(settings,sheets,DisabledCalendar(),ItemCatalog([],{}),state=state,clock=clock,expense_label='ในชีตจริง')
     legacy.production=True;legacy.planner=IntentPlanner(PilotPort(http,'model'),guard,lambda:legacy._active_event_id)
     from .calendar_provider import CalendarCreationApi
     calendar=CalendarCreationApi(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=True,effect_guard=state.before_effect) if config.calendar_enabled else None
-    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id)
+    from .expense_edits import SavedExpenseEditor
+    from .calendar_reschedule import SavedCalendarEditor
+    expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
+    calendar_editor=SavedCalendarEditor(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=config.saved_calendar_enabled,effect_guard=state.before_effect) if config.calendar_enabled else None
+    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled)
     assistant.production=True;assistant.expense_label='ในชีตจริง';assistant.guard=guard
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)

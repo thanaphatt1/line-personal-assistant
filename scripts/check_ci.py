@@ -57,11 +57,14 @@ base = {
     'PILOT_CALENDAR_ID': 'synthetic-ci-calendar@group.calendar.google.com',
     'PILOT_MODEL_USAGE_GATES_ENABLED': 'false',
 }
-for enabled in (False, True):
+for enabled,saved in ((False,False),(True,False),(True,True)):
     flag = 'true' if enabled else 'false'
     result = run_checks({
         **base, 'PILOT_CALENDAR_ENABLED': flag,
         'PILOT_RESPONSE_REALIZATION_ENABLED': flag,
+        'PILOT_SAVED_EXPENSE_EDITS_ENABLED': 'true' if saved else 'false',
+        'PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED': 'true' if saved else 'false',
+        'PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY': 'reviewed_single_writer' if saved else 'off',
     }, secret_loader=lambda name: SecretStr('synthetic-' + name))
     assert result['status'] == 'passed' and result['provider_requests'] == 0
 

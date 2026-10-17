@@ -144,6 +144,10 @@ There is no semantic keyword pre-router for queries. The LLM chooses typed calen
 
 A complete empty read can report zero saved records. It does not establish availability in another calendar, income or a remaining balance. A mapping failure after a verified complete input read can show a separately labeled partial subtotal and actionable unresolved names; a provider/schema/incomplete-input failure cannot. Partial qualifiers and resolution instructions are immutable wording facts, and the server appends the unresolved-name rows. Reads create no business write, action, draft or nonce; normal conversation receipts and usage records still persist. Provider reads are bounded but are not a transactionally frozen snapshot across external edits. See [query examples and limits](read-queries.md).
 
+## Saved-record changes
+
+See the [saved-record flow diagram and provider limits](saved-record-edits.md). Dedicated find/propose tools are available only with explicit feature flags. They retain stable IDs and provider versions on the server; the model receives opaque candidate references. A new signed owner confirmation of the latest delivered before/after review creates the durable Action. Calendar PATCH requires the reviewed ETag; expense edits require fresh ID/input checks and a reviewed policy for other writers. Uncertain effects are reconciled by reads and never automatically reissued. The same-image OFF bridge preserves pending work and raw history while denying new mutations.
+
 ## Boundary inputs and outputs
 
 | Boundary | Input | Output | Decides or performs |

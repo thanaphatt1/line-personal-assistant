@@ -13,6 +13,8 @@ The framework uses LLM interpretation with deterministic checks. It calls tools 
 
 Read-only expense and Calendar queries support these two workflows. In this source revision, the LLM interprets questions and follow-ups and selects bounded read tools; code validates arguments, reads complete data and calculates totals. Queries create no write draft. This revision requires a separate deployment to change a running service. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
 
+Development also includes [saved expense corrections and appointment rescheduling](docs/saved-record-edits.md), disabled by default. These select stable saved records, show before/after values and require a new owner confirmation. Calendar uses conditional ETag updates; expense edits additionally require a reviewed policy controlling other Sheets writers.
+
 ## How it works
 
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.

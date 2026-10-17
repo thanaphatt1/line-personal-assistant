@@ -1,0 +1,21 @@
+{
+  "version": "saved-record-edits-development-v1",
+  "synthetic_only": true,
+  "anchor": "2026-11-06T01:00:00+00:00",
+  "repetitions": 2,
+  "scope": "Development fixtures and Codex-defined oracles, not a held-out benchmark or owner-data replay",
+  "cases": [
+    {"name":"expense_amount","fixture":"expense","turns":[{"text":"รายจ่ายกาแฟที่บันทึกวันที่ 5 พ.ย. ยอดผิด แก้เป็น 35 บาท","expect":"review","after":{"amount":"35.00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"expense_name","fixture":"expense","turns":[{"text":"รายจ่ายที่บันทึกวันที่ 5 พ.ย. เปลี่ยนชื่อจากกาแฟเป็นชา ยอดกับวันเดิม","expect":"review","after":{"item":"ชา","amount":"12.50","date":"2026-11-05"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"expense_date","fixture":"expense","turns":[{"text":"ช่วยแก้วันที่ของรายจ่ายกาแฟที่บันทึกวันที่ 5 พ.ย. ให้เป็นวันที่ 4 พ.ย. ยอดเดิม","expect":"review","after":{"date":"2026-11-04","amount":"12.50"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"expense_ambiguity","fixture":"two_expenses","turns":[{"text":"แก้รายจ่ายกาแฟวันที่ 5 พ.ย. เป็น 35 บาท","expect":"selection","count":2},{"text":"รายการที่สอง ให้เป็น 35 บาท","expect":"review","selected_id":"synthetic_saved_b","after":{"amount":"35.00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"expense_legacy_no_id","fixture":"legacy","turns":[{"text":"แก้ยอดรายจ่ายกาแฟที่บันทึกวันที่ 5 พ.ย. เป็น 35 บาท","expect":"no_review","writes":0}]},
+    {"name":"expense_proposal_amend","fixture":"expense","turns":[{"text":"รายจ่ายกาแฟที่บันทึกวันที่ 5 พ.ย. แก้ยอดเป็น 35 บาท","expect":"review","after":{"amount":"35.00"}},{"text":"ขอเปลี่ยนยอดเป็น 40 บาทแทน ยังไม่ต้องแก้นะ ขอเช็กรายละเอียดก่อน","expect":"review","after":{"amount":"40.00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"calendar_date","fixture":"calendar","turns":[{"text":"เลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย. เวลาเดิม","expect":"review","after":{"start":"2026-11-09T09:00:00+07:00","end":"2026-11-09T10:00:00+07:00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"calendar_time","fixture":"calendar","turns":[{"text":"นัดที่บันทึกไว้วันที่ 5 พ.ย. ช่วยเลื่อนเป็นบ่ายสองของวันเดิม ใช้ระยะเวลาเท่าเดิม","expect":"review","after":{"start":"2026-11-05T14:00:00+07:00","end":"2026-11-05T15:00:00+07:00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"calendar_all_day","fixture":"all_day","turns":[{"text":"เลื่อนนัดทั้งวันที่บันทึกไว้เริ่มวันที่ 5 พ.ย. ไปเริ่มวันที่ 9 พ.ย. คงจำนวนวันเท่าเดิม","expect":"review","after":{"start":"2026-11-09","end":"2026-11-11","all_day":true}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"calendar_ambiguity","fixture":"two_events","turns":[{"text":"เลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย.","expect":"selection","count":2},{"text":"เลือกนัดที่สอง เลื่อนไปวันที่ 9 พ.ย. เวลาเดิม","expect":"review","selected_id":"synthetic_saved_second","after":{"start":"2026-11-09T11:00:00+07:00","end":"2026-11-09T12:00:00+07:00"}},{"text":"ยืนยัน","expect":"updated","writes":1}]},
+    {"name":"calendar_guest_refusal","fixture":"guest","turns":[{"text":"ช่วยเลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย.","expect":"no_review","writes":0}]},
+    {"name":"saved_deletion_unsupported","fixture":"expense","turns":[{"text":"ลบรายจ่ายกาแฟที่บันทึกวันที่ 5 พ.ย. ทิ้งเลย","expect":"no_review","writes":0}]}
+  ]
+}

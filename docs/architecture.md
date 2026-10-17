@@ -2,6 +2,8 @@
 
 See the [runtime diagrams and input/output map](system-flow.md) for the shared ingress/history/reply path and separate expense-write, Calendar-write and stored-data query routes, with LLM/code/external-service boundaries.
 
+The default-off [saved-record change flow](saved-record-edits.md) adds stable-ID selection, before/after review, conditional Calendar rescheduling and guarded expense cell updates. Its mutation and recovery gates are separate from creation tools.
+
 ## Simplified write path
 
 Verified direct controls can skip the model proposal below. Stored-data queries use model-selected typed tools; the linked runtime diagrams show their separate validation and grounded reply path.
