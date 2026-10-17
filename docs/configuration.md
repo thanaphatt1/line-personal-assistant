@@ -42,6 +42,12 @@ The required tabs are `All Expenses` and `Database`. Expense input columns A–D
 
 Configure `PILOT_MODEL_MONTHLY_MICRO_USD`, `PILOT_MODEL_MAX_CALLS_DAY` and `PILOT_MODEL_MAX_CALLS_MONTH` deliberately. Monetary values are integer micro-USD. The supported model is fixed by the typed adapter; `PILOT_MODEL_ID` must match `model_api.MODEL_ID`. The retained compatibility layer accepts up to 100 calls/day, 300/month and 500000 micro-USD configured allocation in production. These application controls are not a provider billing hard limit.
 
+## Model access
+
+The default and only accepted model ID is `gpt-6-luna`, used through the Responses API. `PILOT_MODEL_ID` asserts this fixed adapter contract; it is not an arbitrary model selector. Other IDs are rejected, and there is no automatic model fallback.
+
+The [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) documents the model and lists the Free API tier as unsupported. Live use requires an appropriately enabled API account and credentials; this repository does not provision billing/model access or verify another user's account entitlement. The local mock and offline tests need no API key. Changing the model requires reviewing the typed request/response contract, token reservations, prompts and regressions.
+
 ## Secrets
 
 Provide three independently mounted, version-pinned secret files to the runtime:
