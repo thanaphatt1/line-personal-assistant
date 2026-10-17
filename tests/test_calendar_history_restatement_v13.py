@@ -42,7 +42,7 @@ def test_restatement_still_preserves_an_event_omitted_by_the_model():
  assert 'confirm_command' not in r.data and h.provider.posts==0
 
 def test_cold_history_migration_with_same_request_remains_two_slots():
- h=retained();saved=history_snapshot(h.state);state=HistoryState();state.raw_journal=h.state.raw_journal;restore_history(state,saved,'mock-owner')
+ h=retained();saved=history_snapshot(h.state);state=HistoryState();state.clock=lambda:h.now;state.raw_journal=h.state.raw_journal;restore_history(state,saved,'mock-owner')
  cold=Harness(state=state);cold.now=h.now;cold.counter=h.counter
  r=multi_refs(cold);assert_two(cold,r)
 
