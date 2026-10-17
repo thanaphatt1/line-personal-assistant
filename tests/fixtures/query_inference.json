@@ -1143,14 +1143,28 @@
           "expect": {
             "kind": "preview",
             "domain": "expense",
-            "entries": 1
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              }
+            ]
           }
         },
         {
           "text": "ยืนยัน",
           "expect": {
             "kind": "recorded",
-            "rows_added": 1
+            "rows_added": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              }
+            ]
           }
         }
       ]
@@ -1165,14 +1179,38 @@
           "expect": {
             "kind": "preview",
             "domain": "expense",
-            "entries": 2
+            "entries": 2,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              },
+              {
+                "item": "รถเมล์",
+                "amount": "25.00",
+                "date": "2026-10-16"
+              }
+            ]
           }
         },
         {
           "text": "ยืนยัน",
           "expect": {
             "kind": "recorded",
-            "rows_added": 2
+            "rows_added": 2,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              },
+              {
+                "item": "รถเมล์",
+                "amount": "25.00",
+                "date": "2026-10-16"
+              }
+            ]
           }
         }
       ]
@@ -1187,7 +1225,14 @@
           "expect": {
             "kind": "preview",
             "domain": "expense",
-            "entries": 1
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-17"
+              }
+            ]
           }
         },
         {
@@ -1195,14 +1240,28 @@
           "expect": {
             "kind": "preview",
             "domain": "expense",
-            "entries": 1
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "50.00",
+                "date": "2026-10-17"
+              }
+            ]
           }
         },
         {
           "text": "ยืนยัน",
           "expect": {
             "kind": "recorded",
-            "rows_added": 1
+            "rows_added": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "50.00",
+                "date": "2026-10-17"
+              }
+            ]
           }
         }
       ]
@@ -1217,14 +1276,38 @@
           "expect": {
             "kind": "preview",
             "domain": "calendar",
-            "entries": 2
+            "entries": 2,
+            "calendar_facts": [
+              {
+                "title": "ประชุมทดสอบ",
+                "start": "2026-10-20T09:00:00+07:00",
+                "end": "2026-10-20T10:00:00+07:00"
+              },
+              {
+                "title": "อ่านหนังสือ",
+                "start": "2026-10-21T14:00:00+07:00",
+                "end": "2026-10-21T15:00:00+07:00"
+              }
+            ]
           }
         },
         {
           "text": "ยืนยันชุดนัดนี้",
           "expect": {
             "kind": "created",
-            "events_added": 2
+            "events_added": 2,
+            "calendar_facts": [
+              {
+                "title": "ประชุมทดสอบ",
+                "start": "2026-10-20T09:00:00+07:00",
+                "end": "2026-10-20T10:00:00+07:00"
+              },
+              {
+                "title": "อ่านหนังสือ",
+                "start": "2026-10-21T14:00:00+07:00",
+                "end": "2026-10-21T15:00:00+07:00"
+              }
+            ]
           }
         }
       ]
@@ -1232,21 +1315,35 @@
     {
       "name": "calendar_all_day_write",
       "fixture": "normal",
-      "repetitions": 3,
+      "repetitions": 5,
       "turns": [
         {
           "text": "เพิ่มนัดกิจกรรมจำลองวันที่20ตุลาทั้งวัน",
           "expect": {
             "kind": "preview",
             "domain": "calendar",
-            "entries": 1
+            "entries": 1,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมจำลอง",
+                "start": "2026-10-20",
+                "end": "2026-10-21"
+              }
+            ]
           }
         },
         {
           "text": "ยืนยัน",
           "expect": {
             "kind": "created",
-            "events_added": 1
+            "events_added": 1,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมจำลอง",
+                "start": "2026-10-20",
+                "end": "2026-10-21"
+              }
+            ]
           }
         }
       ]
@@ -1261,7 +1358,14 @@
           "expect": {
             "kind": "preview",
             "domain": "expense",
-            "entries": 1
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-17"
+              }
+            ]
           }
         },
         {
@@ -1279,6 +1383,84 @@
         },
         {
           "text": "ยืนยัน",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูค่าอาหาร",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "รายจ่ายรวมเท่าไหร่",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ช่วยสรุปยอดที่จ่ายไปให้หน่อย",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอรายการค่าใช้จ่าย",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ใช้เงินไปเท่าไรแล้ว",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_5",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สรุปค่าเดินทางให้ที",
           "expect": {
             "kind": "clarification"
           }
