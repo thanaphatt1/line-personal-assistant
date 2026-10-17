@@ -1,0 +1,214 @@
+{
+  "synthetic_only": true,
+  "version": "provisional-categories-development-v2",
+  "anchor": "2026-11-06T01:00:00+00:00",
+  "repetitions": 2,
+  "scope": "Codex-defined synthetic development oracles, not heldout or owner-data fixtures",
+  "cases": [
+    {
+      "name": "query_only",
+      "fixture": "standard",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. เท่าไร ถ้ามีชื่อที่ยังไม่รู้หมวดช่วยเสนอแยกให้ตรวจก่อน อย่าเพิ่งบันทึก",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__query_confirm__",
+          "expect": "query_only",
+          "combined": "30.00",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "permanent_mapping",
+      "fixture": "standard",
+      "turns": [
+        {
+          "text": "สรุปค่าเดินทางวันที่ 5 พ.ย. และเสนอหมวดที่ขาดให้ตรวจหน่อย ยังไม่ต้องบันทึก",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__mapping_confirm__",
+          "expect": "mapping_saved",
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "query_then_new_permanent_review",
+      "fixture": "standard",
+      "turns": [
+        {
+          "text": "ขอดูค่าเดินทางวันที่ 5 พ.ย. พร้อมข้อเสนอหมวดของชื่อที่ขาด โดยแยกยอดไว้ก่อน",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__query_confirm__",
+          "expect": "query_only",
+          "combined": "30.00",
+          "writes": 0
+        },
+        {
+          "text": "อยากจำหมวดถาวรแล้ว ขอตรวจข้อเสนออีกครั้งก่อนยืนยัน",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__mapping_confirm__",
+          "expect": "mapping_saved",
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "mistaken_alias",
+      "fixture": "alias",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. เท่าไร เสนอหมวดให้ดูด้วย แต่ชื่อคล้ายกันอย่าเพิ่งถือว่าเป็นรายการเดียวกัน",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "0.00",
+          "ambiguous": [
+            "RailPas",
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__mapping_confirm__",
+          "expect": "no_write",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "ambiguous_only",
+      "fixture": "ambiguous",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. เท่าไร ชื่อที่ไม่ทราบหมวดให้เสนอแยก ถ้าไม่ชัดก็ถาม อย่าเดาเป็นข้อเท็จจริง",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "0.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "stale_catalog",
+      "fixture": "standard",
+      "turns": [
+        {
+          "text": "ดูค่าเดินทางวันที่ 5 พ.ย. พร้อมข้อเสนอหมวดที่ขาดให้ตรวจ",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__mapping_confirm__",
+          "mutate": "catalog",
+          "expect": "stale",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "repeated_confirmation",
+      "fixture": "standard",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. ช่วยเสนอหมวดที่ขาดให้ตรวจด้วย",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "20.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "__mapping_confirm__",
+          "expect": "mapping_saved",
+          "writes": 1
+        },
+        {
+          "text": "__repeat_mapping__",
+          "expect": "stale",
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "incomplete_data",
+      "fixture": "bad_data",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. เท่าไร ถ้าชื่อยังไม่มีหมวดช่วยเสนอให้ดู",
+          "expect": "no_review",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "ambiguity_owner_choice",
+      "fixture": "ambiguous",
+      "turns": [
+        {
+          "text": "ค่าเดินทางวันที่ 5 พ.ย. เท่าไร ชื่อที่ไม่ชัดเจนให้แยกไว้ก่อน อย่าเดา",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "0.00",
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "Mystery Token เป็นค่าข้าวครับ เสนอเป็น Food หมวดย่อยว่าง ขอเช็กรายละเอียดก่อนบันทึก",
+          "expect": "review",
+          "confirmed": "10.00",
+          "proposed": "0.00",
+          "ambiguous": []
+        },
+        {
+          "text": "__mapping_confirm__",
+          "expect": "mapping_saved",
+          "writes": 1,
+          "mapping_rows": [
+            {
+              "item": "Mystery Token",
+              "category": "Food",
+              "subcategory": ""
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "primary_unmapped_name": "Metro Rail Ticket",
+  "revises": "v1 strict positive oracles required categorizing a label prefixed Unknown; preserve those results and use an unambiguous synthetic positive label plus an explicit owner-clarification episode. No runtime change or heldout claim."
+}

@@ -176,11 +176,11 @@ class SavedEdits:
     def output(self,status,message,domain,**data):return {'saved_record_edit':True,'read_only':True,'write_authorized':False,'status':status,'domain':domain,'message':message,**data}
     def selection_output(self,v,*,continue_model=False):
         domain=v['domain'];rows=v['candidates']
-        message='กรุณาเลือกรายการที่จะ'+('แก้ไข' if domain=='expense' else 'เลื่อน')+'ครับ ยังไม่ได้เปลี่ยนข้อมูลใด\n'
+        message=('พบรายการที่ตรงเพียงรายการเดียวครับ เตรียมก่อน–หลังจากข้อมูลที่ขอแก้ได้ ยังไม่ได้เปลี่ยนข้อมูลใด\n' if continue_model else 'กรุณาเลือกรายการที่จะ'+('แก้ไข' if domain=='expense' else 'เลื่อน')+'ครับ ยังไม่ได้เปลี่ยนข้อมูลใด\n')
         message+='\n'.join(f"{i+1}. "+describe(r['record'],domain) for i,r in enumerate(rows)) if rows else 'ไม่พบรายการที่แก้ไขได้ตามขอบเขตนี้ครับ ยังไม่ได้เปลี่ยนข้อมูลใด'
         if v['uneditable_count']:message+=f"\nอีก {v['uneditable_count']} รายการยังแก้ผ่านบอทไม่ได้ เพราะไม่มีรหัสหรือเป็นชนิดที่ไม่รองรับ"
         if v['count']>len(rows):message+='\nแสดง 10 รายการแรก กรุณาจำกัดช่วงวันหรือชื่อให้ชัดขึ้น'
-        return self.output('saved_edit_candidates',message,domain,continue_model=continue_model,selection_ref=v['ref'],
+        return self.output('saved_edit_candidates',message,domain,continue_model=continue_model,owner_choice_required=not continue_model,selection_ref=v['ref'],
             candidates=[{'candidate_ref':r['ref'],'ordinal':i+1,**visible_record(r['record'],domain)} for i,r in enumerate(rows)],count=v['count'])
     def selected(self,ref,domain):
         p=self.pending();v=p.payload

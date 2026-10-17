@@ -148,6 +148,10 @@ A complete empty read can report zero saved records. It does not establish avail
 
 See the [saved-record flow diagram and provider limits](saved-record-edits.md). Dedicated find/propose tools are available only with explicit feature flags. They retain stable IDs and provider versions on the server; the model receives opaque candidate references. A new signed owner confirmation of the latest delivered before/after review creates the durable Action. Calendar PATCH requires the reviewed ETag; expense edits require fresh ID/input checks and a reviewed policy for other writers. Uncertain effects are reconciled by reads and never automatically reissued. The same-image OFF bridge preserves pending work and raw history while denying new mutations.
 
+## Provisional category suggestions
+
+The [provisional category diagram](provisional-categories.md) adds a separate optional proposal step after a complete category query reports missing mappings. The model suggests bounded existing category pairs; code checks names, ambiguity and exact amounts. Confirmed and proposed subtotals remain separate. Explicit owner consent either includes proposals only in that query or, separately, adds reviewed mappings through a durable fenced Database action. An uncertain mapping write is never automatically repeated.
+
 ## Boundary inputs and outputs
 
 | Boundary | Input | Output | Decides or performs |

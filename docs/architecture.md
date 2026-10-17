@@ -4,6 +4,8 @@ See the [runtime diagrams and input/output map](system-flow.md) for the shared i
 
 The default-off [saved-record change flow](saved-record-edits.md) adds stable-ID selection, before/after review, conditional Calendar rescheduling and guarded expense cell updates. Its mutation and recovery gates are separate from creation tools.
 
+The separate default-off [category proposal flow](provisional-categories.md) keeps inferred labels outside confirmed totals and distinguishes query-only inclusion from permanent Database mapping consent.
+
 ## Simplified write path
 
 Verified direct controls can skip the model proposal below. Stored-data queries use model-selected typed tools; the linked runtime diagrams show their separate validation and grounded reply path.

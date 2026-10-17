@@ -1,0 +1,340 @@
+{
+  "kind": "synthetic_development_not_heldout",
+  "synthetic_only": true,
+  "final_source_archive_sha256": "3753ecea3eb9e7a72ef5f0515a086959b5cb7ebd69c8064fa6e4965afb498ed9",
+  "final_corpus": "tests/fixtures/provisional_categories_development_v2.json",
+  "final_corpus_sha256": "62b3d750f20e42afeb1d1b105ead807c5ddc089a73742b45a17476eedfe6cddc",
+  "scenarios": 9,
+  "repetitions_each_final": 2,
+  "final_turns": 40,
+  "final_passed": 40,
+  "offline_tests": 3026,
+  "new_provisional_tests": 33,
+  "separate_process_OFF_bridge_cases": 8,
+  "runtime_model_calls_max": 2,
+  "live_records_used": false,
+  "production_operations": 0,
+  "v2_rationale": "The strict v1 positive oracle required a proposal for a label prefixed Unknown. Preserve those results; v2 uses a clear synthetic positive label and adds an explicit owner-clarification episode. Runtime is unchanged between final v1 and v2, and no heldout/general accuracy is claimed.",
+  "runs": [
+    {
+      "run": "luna-development-01",
+      "corpus_sha256": "101405668e2c6f34b8bcf130f67c0775edd8afe4db039757862a5446a04833d6",
+      "turns": 34,
+      "passed": 13,
+      "calls": 32,
+      "execution_failure": null,
+      "failed_turns": [
+        {
+          "case": "query_only-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_only-rep1",
+          "turn": 1,
+          "problems": [
+            "separate_partial_totals"
+          ]
+        },
+        {
+          "case": "query_only-rep2",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_only-rep2",
+          "turn": 1,
+          "problems": [
+            "separate_partial_totals"
+          ]
+        },
+        {
+          "case": "permanent_mapping-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "permanent_mapping-rep1",
+          "turn": 1,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "permanent_mapping-rep2",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "permanent_mapping-rep2",
+          "turn": 1,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep1",
+          "turn": 1,
+          "problems": [
+            "separate_partial_totals"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep1",
+          "turn": 2,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep1",
+          "turn": 3,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep2",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep2",
+          "turn": 1,
+          "problems": [
+            "separate_partial_totals"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep2",
+          "turn": 2,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "query_then_new_permanent_review-rep2",
+          "turn": 3,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "stale_catalog-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "stale_catalog-rep2",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 1,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 2,
+          "problems": [
+            "write_count"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "luna-development-02",
+      "corpus_sha256": "101405668e2c6f34b8bcf130f67c0775edd8afe4db039757862a5446a04833d6",
+      "turns": 7,
+      "passed": 6,
+      "calls": 7,
+      "execution_failure": "TypeError",
+      "failed_turns": [
+        {
+          "case": "permanent_mapping-rep2",
+          "turn": 0,
+          "problems": [
+            "typed_review",
+            "confirmed_amount",
+            "proposed_amount",
+            "ambiguity_honesty"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "luna-development-03",
+      "corpus_sha256": "101405668e2c6f34b8bcf130f67c0775edd8afe4db039757862a5446a04833d6",
+      "turns": 34,
+      "passed": 31,
+      "calls": 32,
+      "execution_failure": null,
+      "failed_turns": [
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 0,
+          "problems": [
+            "proposed_amount"
+          ]
+        },
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 1,
+          "problems": [
+            "permanent_receipt",
+            "only_reviewed_unambiguous_mapping",
+            "write_count"
+          ]
+        },
+        {
+          "case": "repeated_confirmation-rep1",
+          "turn": 2,
+          "problems": [
+            "write_count"
+          ]
+        }
+      ]
+    },
+    {
+      "run": "luna-development-v2-01",
+      "corpus_sha256": "62b3d750f20e42afeb1d1b105ead807c5ddc089a73742b45a17476eedfe6cddc",
+      "turns": 40,
+      "passed": 40,
+      "calls": 38,
+      "execution_failure": null,
+      "failed_turns": []
+    }
+  ],
+  "all_runs_cost": {
+    "calls": 109,
+    "received": 109,
+    "estimated_usage_USD": "0.016351375",
+    "all_input_cache_write_ceiling_USD": "0.082821500",
+    "unknown_request_holds_USD": "0",
+    "automatic_retries": 0,
+    "invoice_verified": false
+  },
+  "limits": [
+    "Proposals need owner review; model abstention and filter interpretation can vary",
+    "Strict v1 results remain failed, not retrospectively relabeled passed",
+    "Codex-defined development labels, no independent human adjudication",
+    "No live permissions, mappings or traffic rollback tested",
+    "Permanent mapping requires reviewed external writer policy; Sheets has no atomic CAS",
+    "No numerical confidence estimates or implicit permanent consent"
+  ],
+  "combined_source_archive_sha256": "5942602ae0e7cbe556ca6437cda4e8a05f6272243bbd8f7e1db4f32e1866bb98",
+  "label_component_invariance": {
+    "status": "passed",
+    "label_tested_archive": "3753ecea3eb9e7a72ef5f0515a086959b5cb7ebd69c8064fa6e4965afb498ed9",
+    "combined_archive": "5942602ae0e7cbe556ca6437cda4e8a05f6272243bbd8f7e1db4f32e1866bb98",
+    "label_implementation_and_integration_files_byte_identical": [
+      "provisional_categories.py",
+      "history_first.py",
+      "history_cloud_run.py",
+      "production_history.py",
+      "sheets_api.py"
+    ],
+    "label_only_prompt_sha256": "b4c598ccbe9789e0b19bf33db0640054db11ed450bbcaaadcc29c3c88de8a196",
+    "conditional_saved_edit_prompt_and_unique_selection_message_only_changed": true,
+    "no_paid_calls": true
+  },
+  "combined_saved_regressions": {
+    "selected_scenarios": [
+      "expense_amount",
+      "calendar_all_day"
+    ],
+    "all_new_tools_enabled": true,
+    "final_turns": 8,
+    "final_passed": 8,
+    "source_archive_sha256": "5942602ae0e7cbe556ca6437cda4e8a05f6272243bbd8f7e1db4f32e1866bb98",
+    "runs": [
+      {
+        "turns": 8,
+        "passed": 6,
+        "failures": [
+          {
+            "case": "expense_amount-rep1",
+            "turn": 0,
+            "problems": [
+              "before_after_review",
+              "after_amount"
+            ]
+          },
+          {
+            "case": "expense_amount-rep1",
+            "turn": 1,
+            "problems": [
+              "verified_update",
+              "write_count",
+              "replay_wrote"
+            ]
+          }
+        ],
+        "cost": {
+          "calls": 8,
+          "estimated_usage_usd": "0.001781775",
+          "all_input_cache_write_ceiling_usd": "0.007058000",
+          "uncertain_request_holds_usd": "0"
+        }
+      },
+      {
+        "turns": 8,
+        "passed": 8,
+        "failures": [],
+        "cost": {
+          "calls": 8,
+          "estimated_usage_usd": "0.001822150",
+          "all_input_cache_write_ceiling_usd": "0.007147250",
+          "uncertain_request_holds_usd": "0"
+        }
+      }
+    ],
+    "all_runs_cost": {
+      "calls": 16,
+      "estimated_usage_USD": "0.003603925",
+      "all_input_cache_write_ceiling_USD": "0.014205250",
+      "unknown_request_holds_USD": "0"
+    }
+  }
+}

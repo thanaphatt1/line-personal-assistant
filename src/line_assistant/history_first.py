@@ -180,7 +180,7 @@ def no_save_correction(text):
     return match[1] if match and intent_guard(match[1]) is None else None
 
 class HistoryFirstAssistant(Assistant):
-    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False):
+    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False):
         if type(response_realization_enabled) is not bool:raise ValueError('Explicit response realization flag required')
         self.response_realization_enabled=response_realization_enabled
         if history_first_enabled is not True:raise ValueError('History-first prototype defaults off')
@@ -213,6 +213,9 @@ class HistoryFirstAssistant(Assistant):
         from .saved_edits import SavedEdits
         if (saved_expense_enabled or saved_calendar_enabled) and not raw_history_enabled:raise ValueError('Saved-record changes require raw history')
         self.saved_edits=SavedEdits(self,expense_editor=saved_expense_editor,calendar_editor=saved_calendar_editor,expense_enabled=saved_expense_enabled,calendar_enabled=saved_calendar_enabled)
+        from .provisional_categories import ProvisionalCategories
+        if provisional_categories_enabled and not raw_history_enabled:raise ValueError('Provisional categories require raw history')
+        self.provisional_categories=ProvisionalCategories(self,enabled=provisional_categories_enabled,mapping_enabled=provisional_mapping_enabled,single_writer_reviewed=mapping_single_writer_reviewed)
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
@@ -1079,9 +1082,12 @@ class HistoryFirstAssistant(Assistant):
             args=json.loads(call['arguments']);name=call['name']
             from .saved_edits import NAMES
             if self.raw_history_enabled and name in NAMES:return self.saved_edits.tool(name,args)
+            from .provisional_categories import NAMES as LABEL_NAMES
+            if self.raw_history_enabled and name in LABEL_NAMES:return self.provisional_categories.tool(name,args)
             if self.raw_history_enabled and name in {'query_expenses','query_calendar'}:
                 from .read_queries import execute
-                return execute(self,name,args)
+                output=execute(self,name,args)
+                return self.provisional_categories.observe(args,output) if name=='query_expenses' else output
             if name in self.calendar_flow.tool_names:return self.calendar_flow.tool(name,args)
             if self.raw_history_enabled and name in {'prepare_expenses','prepare_item_enrollment'}:
                 # Reads preserve old controls; attempted edits revoke the
@@ -1143,10 +1149,13 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('provisional_categories'):return self.provisional_categories.result(tool_output)
         if tool_output and tool_output.get('saved_record_edit'):return self.saved_edits.result(tool_output)
         if tool_output and tool_output.get('status')=='stored_query':
             from .read_queries import result
-            return result(tool_output,datetime.fromisoformat(self._current['at']))
+            rendered=result(tool_output,datetime.fromisoformat(self._current['at']))
+            if tool_output.get('category_proposals_available'):rendered.data['provisional_basis']=deepcopy(self.provisional_categories.current_basis)
+            return rendered
         if tool_output and tool_output.get('status')=='summary':
             from .read_queries import summary_result
             return summary_result(tool_output)
@@ -1258,6 +1267,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _resume(self,key):
         action=self.state.actions[key]
+        if action.metadata.get('provisional_mapping'):return self.provisional_categories.resume(key)
         if action.metadata.get('saved_record_edit'):return self.saved_edits.resume(key)
         if action.metadata.get('calendar_batch'):return self.calendar_flow.batches.resume(key)
         if action.metadata.get('calendar_mvp') and action.status!='completed' and not self.calendar_flow.can_resume(action):
@@ -1353,6 +1363,7 @@ class HistoryFirstAssistant(Assistant):
         self._patch_stamp=stamp;self.trace=[];self.context_stats=[]
         self._request_views={};self._read_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set()
         self.saved_edits.request_candidates={}
+        self.provisional_categories.current_basis=None
         shown_text='เลือกการทำงานกับร่างผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|')) else text
         if self.raw_history_enabled:
             from .raw_history import RAW_SOURCE
@@ -1360,6 +1371,8 @@ class HistoryFirstAssistant(Assistant):
             if original and original[0]==event and isinstance(original[1],str):shown_text=original[1]
         self._current={'role':'user','source_ref':source_ref(event),'text':shown_text,'at':at.isoformat()}
         self.state.append('user',event,at,text=shown_text)
+        category_control=self.provisional_categories.control(text)
+        if category_control is not None:return self._finish(event,at,category_control)
         saved_control=self.saved_edits.control(text)
         if saved_control is not None:return self._finish(event,at,saved_control)
         if self.calendar_flow.enabled or self.state.calendar_drafts or self.calendar_flow.batches.is_control(text):
@@ -1438,13 +1451,14 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     definitions_for_request+=self.saved_edits.definitions()
+                    definitions_for_request+=self.provisional_categories.definitions()
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
                     try:
                         request,self.visible,stats=raw.request(self.state,self._current['text'],at,event,
                             definitions_for_request,previous,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**self.saved_edits.context()})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**self.saved_edits.context(),**self.provisional_categories.context()})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1488,6 +1502,10 @@ class HistoryFirstAssistant(Assistant):
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('provisional_categories'):return self._finish(event,at,self._result(last))
+                if step==0 and last.get('category_proposals_available'):
+                    proposal_context=deepcopy(last);proposal_context['scope']={k:v for k,v in proposal_context['scope'].items() if k not in {'workbook','calendar'}}
+                    previous=(call,proposal_context);continue
                 if last.get('saved_record_edit'):
                     if step==0 and last.get('continue_model'):
                         previous=(call,last);continue

@@ -15,6 +15,8 @@ Read-only expense and Calendar queries support these two workflows. In this sour
 
 Development also includes [saved expense corrections and appointment rescheduling](docs/saved-record-edits.md), disabled by default. These select stable saved records, show before/after values and require a new owner confirmation. Calendar uses conditional ETag updates; expense edits additionally require a reviewed policy controlling other Sheets writers.
 
+Optional [provisional category suggestions](docs/provisional-categories.md) separately show confirmed, proposed and ambiguous labels. Query-only inclusion and permanent mapping require different confirmations; proposed amounts never silently enter confirmed totals. Both suggestion and mapping flags default OFF.
+
 ## How it works
 
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.
