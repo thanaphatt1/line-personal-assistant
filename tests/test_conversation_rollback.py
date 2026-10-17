@@ -49,4 +49,3 @@ def test_maintenance_rollback_disables_all_provider_and_credential_access():
  with TestClient(app) as client:
   assert client.get('/health').json()['live_requests_enabled'] is False
   assert client.post('/webhooks/line',content=b'{}').status_code==503
-

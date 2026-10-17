@@ -174,4 +174,3 @@ def test_corrupt_history_frame_blocks_before_paid_model_or_write(field):
     doc['fields']['snapshot']['stringValue']=json.dumps(raw);count=api.models
     with TestClient(api.app()) as client:assert api.send(client,api.event(text=r.data['confirm_command'])).status_code==503
     assert api.models==count and not api.google.sheet_writes
-
