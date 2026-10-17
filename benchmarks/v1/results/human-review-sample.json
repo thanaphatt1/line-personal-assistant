@@ -1,0 +1,433 @@
+{
+  "status": "pending_human_review",
+  "rubric": {
+    "naturalness": "1 robotic/confusing, 3 understandable, 5 natural everyday Thai",
+    "conciseness": "1 repetitive/excessive, 3 acceptable, 5 direct with necessary details",
+    "factual_match": "Compare against fixture; identify invented/missing details and any incorrect action status"
+  },
+  "samples": [
+    {
+      "case": "held_calendar_day",
+      "owner_message": "เช็กนัด 4 ก.พ. นี้ให้หน่อย",
+      "expected": {
+        "kind": "query",
+        "domain": "calendar",
+        "start": "2027-02-04",
+        "end": "2027-02-04",
+        "count": 1
+      },
+      "candidate": "ช่วง พรุ่งนี้ (4 ก.พ. 2027) มี 1 นัดครับ\n4 ก.พ. 2027 ทั้งวัน — กิจกรรมสังเคราะห์หนึ่ง",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_calendar_next_week",
+      "owner_message": "ช่วยลิสต์นัดของวีกหน้าหน่อย",
+      "expected": {
+        "kind": "query",
+        "domain": "calendar",
+        "start": "2027-02-08",
+        "end": "2027-02-14",
+        "count": 2
+      },
+      "candidate": "ช่วง 8 ก.พ. 2027 ถึง 14 ก.พ. 2027 มี 2 นัดครับ\n9 ก.พ. 2027 ทั้งวัน — กิจกรรมสังเคราะห์สาม\n11 ก.พ. 2027 09:00 ถึง 10:00 — กิจกรรมสังเคราะห์สี่",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_calendar_this_week",
+      "owner_message": "ปฏิทินอาทิตย์นี้มีรายการใด",
+      "expected": {
+        "kind": "query",
+        "domain": "calendar",
+        "start": "2027-02-01",
+        "end": "2027-02-07",
+        "count": 2
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 7 ก.พ. 2027 มี 2 นัดครับ\n4 ก.พ. 2027 ทั้งวัน — กิจกรรมสังเคราะห์หนึ่ง\n5 ก.พ. 2027 13:10 ถึง 13:55 — กิจกรรมสังเคราะห์สอง",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_category_typo",
+      "owner_message": "เดือนกุมภา หมวด transporation รวมเท่าไร",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 2,
+        "expense": "50.00",
+        "filter": {
+          "kind": "category",
+          "value": "Transportation"
+        },
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 เฉพาะ Transportation ใช้ไป 50.00 บาท จาก 2 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_empty",
+      "owner_message": "รายการวันที่15กุมภาพันธ์2570มีอะไร",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-15",
+        "end": "2027-02-15",
+        "count": 0,
+        "expense": "0.00",
+        "filter": null,
+        "listing": true
+      },
+      "candidate": "ช่วง 15 ก.พ. 2027 ใช้ไป 0.00 บาท จาก 0 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_expense_write",
+      "owner_message": "เมื่อวานข้าวจานจำลอง 42 บาท",
+      "expected": {
+        "kind": "preview",
+        "domain": "expense",
+        "entries": 1,
+        "expense_facts": [
+          {
+            "item": "ข้าวจานจำลอง",
+            "amount": "42.00",
+            "date": "2027-02-02"
+          }
+        ]
+      },
+      "candidate": "ร่างรายจ่ายมี 1 รายการ พร้อมให้ตรวจสอบครับ\n1. ข้าวจานจำลอง — 42 บาท\nวันที่ 2027-02-02\nตรวจรายการ จำนวนเงิน และวันที่ ถ้าถูกต้องยืนยันร่างนี้ทางข้อความได้ครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_follow_reset",
+      "owner_message": "ค่ารถในเดือนนี้กี่บาท",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 2,
+        "expense": "50.00",
+        "filter": {
+          "kind": "category",
+          "value": "Transportation"
+        },
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 เฉพาะ Transportation ใช้ไป 50.00 บาท จาก 2 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_food_synonym",
+      "owner_message": "ค่ากินเดือนนี้รวมเป็นเงินเท่าใด",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 2,
+        "expense": "100.00",
+        "filter": {
+          "kind": "category",
+          "value": "Food"
+        },
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 เฉพาะ Food ใช้ไป 100.00 บาท จาก 2 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_income",
+      "owner_message": "สรุปเงินเข้าเดือนกุมภาให้หน่อย",
+      "expected": {
+        "kind": "error",
+        "reason": "income_unconfigured"
+      },
+      "candidate": "ยังไม่มีข้อมูลรายรับที่รองรับครับ จึงสรุปรายรับหรือยอดคงเหลือไม่ได้",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_item",
+      "owner_message": "รายการปากกาจำลองเฉพาะวันที่3ก.พ.2570",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-03",
+        "end": "2027-02-03",
+        "count": 1,
+        "expense": "35.00",
+        "filter": {
+          "kind": "item",
+          "value": "ปากกาจำลอง"
+        },
+        "listing": true
+      },
+      "candidate": "ช่วง วันนี้ (3 ก.พ. 2027) เฉพาะ ปากกาจำลอง ใช้ไป 35.00 บาท จาก 1 รายการครับ\n3 ก.พ. 2027 — ปากกาจำลอง 35.00 บาท",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_item_typo",
+      "owner_message": "ยอดปากกาจำลองงของเดือนนี้",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 1,
+        "expense": "35.00",
+        "filter": {
+          "kind": "item",
+          "value": "ปากกาจำลอง"
+        },
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 เฉพาะ ปากกาจำลอง ใช้ไป 35.00 บาท จาก 1 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_mapping_incomplete",
+      "owner_message": "หมวด Transportation เดือนนี้เป็นเงินเท่าไร",
+      "expected": {
+        "kind": "error",
+        "reason": "mapping_incomplete"
+      },
+      "candidate": "มีรายการในช่วงนี้ที่จับคู่หมวดไม่ได้ครับ จึงยังรวมยอดเฉพาะหมวดนี้ให้ครบไม่ได้",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_missing_period",
+      "owner_message": "อยากดูยอดข้าวจานจำลอง",
+      "expected": {
+        "kind": "clarification"
+      },
+      "candidate": "ต้องการดูช่วงวันไหนครับ?",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_mixed_calendar_write",
+      "owner_message": "เพิ่มนัดกิจกรรมใหม่หนึ่งวันที่6กุมภาพันธ์10:00-11:00 และกิจกรรมใหม่สองวันที่7กุมภาพันธ์ทั้งวัน",
+      "expected": {
+        "kind": "preview",
+        "domain": "calendar",
+        "entries": 2,
+        "calendar_facts": [
+          {
+            "title": "กิจกรรมใหม่หนึ่ง",
+            "start": "2027-02-06T10:00:00+07:00",
+            "end": "2027-02-06T11:00:00+07:00"
+          },
+          {
+            "title": "กิจกรรมใหม่สอง",
+            "start": "2027-02-07",
+            "end": "2027-02-08"
+          }
+        ]
+      },
+      "candidate": "ร่างชุดนี้มี 2 นัดที่รอยืนยัน พร้อมให้ตรวจสอบครับ\nปฏิทิน: LINE Assistant\n1. กิจกรรมใหม่หนึ่ง\nเริ่ม 6 ก.พ. 2027 10:00 (Asia/Bangkok)\nสิ้นสุด 6 ก.พ. 2027 11:00 (Asia/Bangkok)\n2. กิจกรรมใหม่สอง\nทั้งวัน 7 ก.พ. 2027\nตรวจรายละเอียดทุกนัด ถ้าถูกต้องพิมพ์ “ยืนยันชุดนัดนี้” เพื่อสร้างทั้งชุดครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_month_abbreviation",
+      "owner_message": "ค่าใช้จ่ายตลอด ก.พ.70 รวมกี่บาท",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 5,
+        "expense": "185.00",
+        "filter": null,
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 ใช้ไป 185.00 บาท จาก 5 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_month_full_frame",
+      "owner_message": "ตั้งแต่ต้นเดือนนี้จนถึงสิ้นเดือน รายจ่ายรวมเท่าใด",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 5,
+        "expense": "185.00",
+        "filter": null,
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 ใช้ไป 185.00 บาท จาก 5 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_provider_failure",
+      "owner_message": "รวมเงินออกกุมภาพันธ์นี้",
+      "expected": {
+        "kind": "error",
+        "reason": "provider_failure"
+      },
+      "candidate": "ตอนนี้เชื่อมต่อแหล่งข้อมูลไม่สำเร็จครับ เลยยังสรุปผลให้ไม่ได้",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_subcategory",
+      "owner_message": "เดือนนี้หมวดย่อย Meals เท่าไร",
+      "expected": {
+        "kind": "query",
+        "domain": "expense",
+        "start": "2027-02-01",
+        "end": "2027-02-28",
+        "count": 2,
+        "expense": "100.00",
+        "filter": {
+          "kind": "subcategory",
+          "value": "Meals"
+        },
+        "listing": false
+      },
+      "candidate": "ช่วง 1 ก.พ. 2027 ถึง 28 ก.พ. 2027 เฉพาะ Meals ใช้ไป 100.00 บาท จาก 2 รายการครับ",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_unknown_category",
+      "owner_message": "เดือนนี้หมวดของแต่งห้องจ่ายกี่บาท",
+      "expected": {
+        "kind": "clarification"
+      },
+      "candidate": "ยังจับคู่ชื่อหรือหมวดที่ต้องการกับฐานข้อมูลไม่ได้ครับ ช่วยระบุให้ชัดอีกนิด",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    },
+    {
+      "case": "held_upcoming",
+      "owner_message": "มีนัดอะไรที่กำลังจะมาถึงบ้าง",
+      "expected": {
+        "kind": "query",
+        "domain": "calendar",
+        "start": "2027-02-03",
+        "end": "2027-02-09",
+        "count": 3
+      },
+      "candidate": "ช่วง 3 ก.พ. 2027 ถึง 9 ก.พ. 2027 มี 3 นัดครับ\nเฉพาะนัดที่ยังไม่จบตั้งแต่เวลาปัจจุบัน\n4 ก.พ. 2027 ทั้งวัน — กิจกรรมสังเคราะห์หนึ่ง\n5 ก.พ. 2027 13:10 ถึง 13:55 — กิจกรรมสังเคราะห์สอง\n9 ก.พ. 2027 ทั้งวัน — กิจกรรมสังเคราะห์สาม",
+      "human_ratings": {
+        "naturalness_1_to_5": null,
+        "conciseness_1_to_5": null,
+        "factual_match": null,
+        "reviewer": null,
+        "notes": null
+      }
+    }
+  ]
+}

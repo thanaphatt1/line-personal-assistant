@@ -1,0 +1,20 @@
+{
+  "version": "v1-adapter-fix-02",
+  "recorded_at": "2026-10-17T14:09:20.104690+00:00",
+  "original_runner_sha256": "7bb6ee4f871d82b45981c9772bb971ba9719b9da002617c5523820b0b8c165bf",
+  "corrected_runner_sha256": "dca5d232868b8844a19c09420370be5ed2b4d716f0b9ea538b8cd690a7bc5d7e",
+  "reason": "Application can finalize an already-finalized Result again. The development hook must reuse response_critic metadata and never issue a second critic request. Preserve prior composed-run results as invalid adapter experiments, retain their costs.",
+  "labels_prompts_config_runtime_unchanged": true,
+  "no_model_prompt_or_label_tuning": true,
+  "affected_runs": [
+    "heldout-critic-02-0",
+    "heldout-critic-02-1",
+    "heldout-critic-02-2"
+  ],
+  "replacement_runs": [
+    "heldout-critic-03-0",
+    "heldout-critic-03-1",
+    "heldout-critic-03-2"
+  ],
+  "protocol": "Execution-only idempotency repair. Original freeze manifest and frozen model-facing files remain immutable."
+}

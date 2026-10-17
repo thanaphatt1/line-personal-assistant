@@ -1,0 +1,21 @@
+{
+  "version": "v1-adapter-fix-01",
+  "recorded_at": "2026-10-17T14:03:46.075150+00:00",
+  "original_runner_sha256": "6f5731d221e6d6fcada4b74d76dc6e5ed1ba72ce69db4f3f3ecae7f6f2e07f89",
+  "corrected_runner_sha256": "7bb6ee4f871d82b45981c9772bb971ba9719b9da002617c5523820b0b8c165bf",
+  "reason": "Development critic hook was attached to synthetic state instead of the assistant object. All three composed-run setup attempts stopped before any model call. Correct only that test-adapter binding; preserve originals.",
+  "model_calls_before_setup_failure": 0,
+  "labels_prompts_config_runtime_unchanged": true,
+  "no_model_response_used_for_this_repair": true,
+  "affected_runs": [
+    "heldout-critic-01-0",
+    "heldout-critic-01-1",
+    "heldout-critic-01-2"
+  ],
+  "replacement_runs": [
+    "heldout-critic-02-0",
+    "heldout-critic-02-1",
+    "heldout-critic-02-2"
+  ],
+  "protocol": "Execution-only tooling amendment, not prompt/label tuning. Original freeze manifest remains immutable."
+}

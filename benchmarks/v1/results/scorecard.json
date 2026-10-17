@@ -1,0 +1,484 @@
+{
+  "benchmark_version": "v1",
+  "runtime_archive_sha256": "a8299562e8be1776342d5e1f11ed258b18c3cdd3906507928785e4d3ce791581",
+  "freeze_commit": "c4b594cebf7b558e9e80de04988f2f76fe1fe983",
+  "model_roles": {
+    "query_planner": "gpt-6-luna",
+    "response_style": "gpt-6-luna",
+    "critic": "gpt-6-luna"
+  },
+  "labels": "Predefined synthetic oracle labels authored by Codex before evaluation; no independent human adjudication is claimed.",
+  "baseline_two_call": {
+    "unique_scenarios": 22,
+    "independent_scenario_repetitions": 66,
+    "turns": 81,
+    "semantic_success": {
+      "n": 81,
+      "success": 81,
+      "rate": 1.0,
+      "wilson95": [
+        0.9547219145675847,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "scenario_macro_all_repetitions_success": {
+      "n": 22,
+      "success": 22,
+      "rate": 1.0,
+      "wilson95": [
+        0.8513451253913791,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "query_tool_selection": {
+      "n": 63,
+      "success": 63,
+      "rate": 1.0,
+      "wilson95": [
+        0.9425288004111484,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "query_argument_acceptance": {
+      "n": 54,
+      "success": 54,
+      "rate": 1.0,
+      "wilson95": [
+        0.9335864119091037,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "normalized_date_accuracy": {
+      "n": 54,
+      "success": 54,
+      "rate": 1.0,
+      "wilson95": [
+        0.9335864119091037,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "normalized_filter_accuracy": {
+      "n": 42,
+      "success": 42,
+      "rate": 1.0,
+      "wilson95": [
+        0.916201209134296,
+        0.9999999999999999
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "critical_business_effect_errors": 0,
+    "end_to_end_seconds": {
+      "p50": 3.3334728750633076,
+      "p95": 4.69891249993816,
+      "max": 5.322042917017825
+    },
+    "delivered_character_count": {
+      "p50": 83,
+      "p95": 223
+    },
+    "response_fallbacks": 0,
+    "fallback_reasons": {},
+    "critic_attempts": 0,
+    "critic_outcomes": {},
+    "cost": {
+      "calls": 156,
+      "unique_received": 156,
+      "uncertain_or_failed": 0,
+      "input_tokens": 452655,
+      "output_tokens": 10313,
+      "estimated_usage_usd": "0.015553670",
+      "all_input_cache_write_ceiling_usd": "0.061738375",
+      "uncertain_request_holds_usd": "0",
+      "invoice_verified": false
+    },
+    "roles": {
+      "query_planner": {
+        "calls": 75,
+        "received_with_usage": 75,
+        "unknown": 0,
+        "latency_seconds": {
+          "p50": 1.9381033749086782,
+          "p95": 2.7602650420740247
+        },
+        "estimated_usage_usd": "0.008078345",
+        "tokens": {
+          "input_tokens": 365772,
+          "output_tokens": 6587,
+          "cached_tokens": 355922,
+          "cache_write_tokens": 9625
+        },
+        "uncached_normalized_estimate_usd": "0.0398707"
+      },
+      "response_style": {
+        "calls": 81,
+        "received_with_usage": 81,
+        "unknown": 0,
+        "latency_seconds": {
+          "p50": 1.3954447500873357,
+          "p95": 2.1446617919718847
+        },
+        "estimated_usage_usd": "0.007475325",
+        "tokens": {
+          "input_tokens": 86883,
+          "output_tokens": 3726,
+          "cached_tokens": 39690,
+          "cache_write_tokens": 19845
+        },
+        "uncached_normalized_estimate_usd": "0.0105513"
+      },
+      "critic": {
+        "calls": 0,
+        "received_with_usage": 0,
+        "unknown": 0,
+        "latency_seconds": {
+          "p50": null,
+          "p95": null
+        },
+        "estimated_usage_usd": "0",
+        "tokens": {
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "uncached_normalized_estimate_usd": "0"
+      }
+    },
+    "cost_per_semantically_successful_turn_usd": "0.0001920206172839506172839506173",
+    "observed_max_model_calls_per_turn": 2,
+    "automatic_retries": 0,
+    "semantic_failures": [],
+    "style_exact_contract_replay": {
+      "n": 81,
+      "passed": 81,
+      "method": "Replayed the frozen strict response parser on actual recorded model JSON and compared with delivered mock LINE wording; this is not a human naturalness score."
+    }
+  },
+  "development_three_call": {
+    "unique_scenarios": 22,
+    "independent_scenario_repetitions": 66,
+    "turns": 81,
+    "semantic_success": {
+      "n": 81,
+      "success": 80,
+      "rate": 0.9876543209876543,
+      "wilson95": [
+        0.9333311840195164,
+        0.9978173499414611
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "scenario_macro_all_repetitions_success": {
+      "n": 22,
+      "success": 21,
+      "rate": 0.9545454545454546,
+      "wilson95": [
+        0.7820195416134267,
+        0.991930572378736
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "query_tool_selection": {
+      "n": 63,
+      "success": 62,
+      "rate": 0.9841269841269841,
+      "wilson95": [
+        0.915414745405616,
+        0.9971925057861307
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "query_argument_acceptance": {
+      "n": 54,
+      "success": 53,
+      "rate": 0.9814814814814815,
+      "wilson95": [
+        0.9022856251121808,
+        0.9967235122817709
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "normalized_date_accuracy": {
+      "n": 54,
+      "success": 53,
+      "rate": 0.9814814814814815,
+      "wilson95": [
+        0.9022856251121808,
+        0.9967235122817709
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "normalized_filter_accuracy": {
+      "n": 42,
+      "success": 41,
+      "rate": 0.9761904761904762,
+      "wilson95": [
+        0.8767879842623334,
+        0.9957845958655673
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "critical_business_effect_errors": 0,
+    "end_to_end_seconds": {
+      "p50": 4.333342375000939,
+      "p95": 5.804204249987379,
+      "max": 6.273889499949291
+    },
+    "delivered_character_count": {
+      "p50": 83,
+      "p95": 223
+    },
+    "response_fallbacks": 1,
+    "fallback_reasons": {
+      "timeout": 1
+    },
+    "critic_attempts": 80,
+    "critic_outcomes": {
+      "passed": 80
+    },
+    "cost": {
+      "calls": 236,
+      "unique_received": 235,
+      "uncertain_or_failed": 1,
+      "input_tokens": 488496,
+      "output_tokens": 11827,
+      "estimated_usage_usd": "0.01672415",
+      "all_input_cache_write_ceiling_usd": "0.066975500",
+      "uncertain_request_holds_usd": "0.001658",
+      "invoice_verified": false
+    },
+    "roles": {
+      "query_planner": {
+        "calls": 75,
+        "received_with_usage": 75,
+        "unknown": 0,
+        "latency_seconds": {
+          "p50": 1.7384735000086948,
+          "p95": 2.7860762079944834
+        },
+        "estimated_usage_usd": "0.00697347",
+        "tokens": {
+          "input_tokens": 365772,
+          "output_tokens": 6591,
+          "cached_tokens": 365547,
+          "cache_write_tokens": 0
+        },
+        "uncached_normalized_estimate_usd": "0.0398727"
+      },
+      "response_style": {
+        "calls": 81,
+        "received_with_usage": 80,
+        "unknown": 1,
+        "latency_seconds": {
+          "p50": 1.3198794580530375,
+          "p95": 2.112176708993502
+        },
+        "estimated_usage_usd": "0.00521048",
+        "tokens": {
+          "input_tokens": 85322,
+          "output_tokens": 3636,
+          "cached_tokens": 57108,
+          "cache_write_tokens": 0
+        },
+        "uncached_normalized_estimate_usd": "0.0103502"
+      },
+      "critic": {
+        "calls": 80,
+        "received_with_usage": 80,
+        "unknown": 0,
+        "latency_seconds": {
+          "p50": 1.1980209170142189,
+          "p95": 1.5094340000068769
+        },
+        "estimated_usage_usd": "0.0045402",
+        "tokens": {
+          "input_tokens": 37402,
+          "output_tokens": 1600,
+          "cached_tokens": 0,
+          "cache_write_tokens": 0
+        },
+        "uncached_normalized_estimate_usd": "0.0045402"
+      }
+    },
+    "cost_per_semantically_successful_turn_usd": "0.000209051875",
+    "observed_max_model_calls_per_turn": 3,
+    "automatic_retries": 0,
+    "semantic_failures": [
+      {
+        "case": "held_item",
+        "replicate": 1,
+        "turn": 1,
+        "problems": [
+          "typed_query_tool_not_used",
+          "complete",
+          "domain",
+          "start",
+          "end",
+          "count",
+          "expense",
+          "filter",
+          "view"
+        ],
+        "delivered_message": "ยังไม่ได้บันทึก: ชื่อที่โมเดลเสนอไม่ครอบคลุมชื่อเต็มในข้อความต้นฉบับ\nข้อความต้นฉบับยังอยู่ ไม่ต้องส่งประโยคเดิมซ้ำ"
+      }
+    ]
+  },
+  "standalone_critic": {
+    "valid_output": {
+      "n": 36,
+      "success": 36,
+      "rate": 1.0,
+      "wilson95": [
+        0.9035813714055363,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "detection_recall": {
+      "n": 24,
+      "success": 24,
+      "rate": 1.0,
+      "wilson95": [
+        0.8620237953250198,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "rejection_precision": {
+      "n": 24,
+      "success": 24,
+      "rate": 1.0,
+      "wilson95": [
+        0.8620237953250198,
+        1
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "false_accept": {
+      "n": 24,
+      "success": 0,
+      "rate": 0.0,
+      "wilson95": [
+        1.3877787807814457e-17,
+        0.13797620467498017
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "false_reject": {
+      "n": 12,
+      "success": 0,
+      "rate": 0.0,
+      "wilson95": [
+        2.7755575615628914e-17,
+        0.24249400665524085
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "safe_gate_valid_admission": {
+      "n": 12,
+      "success": 11,
+      "rate": 0.9166666666666666,
+      "wilson95": [
+        0.646120088858883,
+        0.9851349055950829
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "latency_seconds": {
+      "p50": 1.2787681670160964,
+      "p95": 2.0105749999638647
+    },
+    "by_severity": {
+      "critical": {
+        "n": 9,
+        "false_accepts": 0
+      },
+      "high": {
+        "n": 15,
+        "false_accepts": 0
+      },
+      "normal": {
+        "n": 12,
+        "false_accepts": 0
+      }
+    },
+    "literal_span_baseline_false_accepts": 3,
+    "literal_span_plus_critic_false_accepts": 0,
+    "gate_false_reject_including_timeout": {
+      "n": 12,
+      "success": 1,
+      "rate": 0.08333333333333333,
+      "wilson95": [
+        0.014865094404917095,
+        0.35387991114111694
+      ],
+      "uncertainty_note": "Descriptive per-attempt interval; repetitions of the same scenario are correlated."
+    },
+    "gate_reasons": {
+      "critic_rejected": 23,
+      "passed": 11,
+      "timeout": 2
+    },
+    "cost": {
+      "calls": 36,
+      "unique_received": 36,
+      "uncertain_or_failed": 0,
+      "input_tokens": 13986,
+      "output_tokens": 838,
+      "estimated_usage_usd": "0.0018176",
+      "all_input_cache_write_ceiling_usd": "0.002167250",
+      "uncertain_request_holds_usd": "0",
+      "invoice_verified": false
+    }
+  },
+  "thresholds": {
+    "query_scope_accuracy_min": 0.95,
+    "end_to_end_semantic_success_min": 0.95,
+    "critical_action_errors_max": 0,
+    "delivered_factual_correctness_min": 1.0,
+    "critic_critical_false_accepts_max": 0,
+    "critic_detection_recall_min": 0.95,
+    "critic_false_reject_max": 0.1,
+    "critic_valid_output_min": 0.99,
+    "critic_foreground_p95_seconds_max": 2.1,
+    "development_three_call_p95_seconds_max": 20,
+    "naturalness_human_review": "pending; no model-self-judge score substitutes for a human rating"
+  },
+  "human_style_review": {
+    "status": "pending_human_review",
+    "sample_count": 20,
+    "naturalness_score": null,
+    "conciseness_score": null
+  },
+  "limitations": [
+    "Only Luna was evaluated; no other model availability or superiority is claimed.",
+    "Small synthetic held-out set; repetitions within scenarios are correlated.",
+    "Classifier metrics describe supplied-fact fidelity, not correctness of the planner-selected scope.",
+    "A same-model critic can share writer errors and is not proof of correctness.",
+    "Google/LINE/state services are mocked; measured model-chain time does not guarantee live-provider or LINE delivery latency.",
+    "Observed two-call baseline is compared with an independently repeated three-call cohort; candidate wording and cache hit rates vary.",
+    "Corrupt standalone text was injected after rendering; its literal-span baseline is weaker than the production strict renderer.",
+    "Critic is a development-only prototype; production factory/configuration and two-call policy remain unchanged.",
+    "Two execution-only adapter repairs are recorded separately; no frozen prompts, labels or model config were tuned.",
+    "A provider-incomplete style response stopped one composed run; its safe fallback and hold are retained and only unexecuted scenarios were continued.",
+    "Frozen helper comment saying human-authored means predefined fixture oracle labels; it is not a human-adjudication claim."
+  ],
+  "observed_threshold_checks": {
+    "baseline_semantic": true,
+    "three_call_semantic": true,
+    "critical_action_errors": true,
+    "critic_critical_false_accepts": true,
+    "critic_recall": true,
+    "critic_gate_false_reject": true,
+    "critic_valid_output": true,
+    "critic_p95": true,
+    "three_call_p95": true,
+    "human_style": "pending"
+  }
+}
