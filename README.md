@@ -41,7 +41,7 @@ python -m uvicorn line_assistant.main:app --host 127.0.0.1 --port 8000
 PYTHONDONTWRITEBYTECODE=1 python -m pytest tests -p no:cacheprovider
 ```
 
-The checked-in suite contains synthetic fixtures, denies external sockets and exercises signed ingress, persistence, consent, expense behavior, Calendar groups, all-day events and response fallback. Packaging tests also start the exact source archive in an isolated subprocess. No paid API access is needed. Historical private model traces and release-operation evidence are not part of this repository.
+The checked-in suite contains synthetic fixtures, denies external sockets and exercises signed ingress, persistence, consent, expense behavior, Calendar groups, all-day events and response fallback. Packaging tests also start the exact source archive in an isolated subprocess. No paid API access is needed. The [role benchmark protocol](benchmarks/PROTOCOL.md) separates development cases from frozen held-out evaluation and keeps the optional critic prototype in development. The [inference validation protocol](docs/inference-validation.md) explains the separate synthetic real-model corpus and exact effect checks. Historical private model traces and release-operation evidence are not part of this repository.
 
 ## Documentation
 

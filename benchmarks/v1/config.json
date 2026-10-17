@@ -1,0 +1,38 @@
+{
+  "version": "v1-luna-baseline",
+  "roles": {
+    "query_planner": "gpt-6-luna",
+    "response_style": "gpt-6-luna",
+    "critic": "gpt-6-luna"
+  },
+  "authorized_models": [
+    "gpt-6-luna"
+  ],
+  "prices_usd_per_million": {
+    "gpt-6-luna": {
+      "input": ".10",
+      "cached_input": ".01",
+      "cache_write": ".125",
+      "output": ".50"
+    }
+  },
+  "pricing_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  "pricing_verified_at": "2026-10-17",
+  "production_max_calls_per_turn": 2,
+  "development_critic_max_calls_per_turn": 3,
+  "critic_timeout_seconds": 2,
+  "repetitions": 3,
+  "thresholds": {
+    "query_scope_accuracy_min": 0.95,
+    "end_to_end_semantic_success_min": 0.95,
+    "critical_action_errors_max": 0,
+    "delivered_factual_correctness_min": 1.0,
+    "critic_critical_false_accepts_max": 0,
+    "critic_detection_recall_min": 0.95,
+    "critic_false_reject_max": 0.1,
+    "critic_valid_output_min": 0.99,
+    "critic_foreground_p95_seconds_max": 2.1,
+    "development_three_call_p95_seconds_max": 20,
+    "naturalness_human_review": "pending; no model-self-judge score substitutes for a human rating"
+  }
+}

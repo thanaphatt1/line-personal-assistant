@@ -1,0 +1,610 @@
+{
+  "synthetic_only": true,
+  "split": "held_out_v1",
+  "anchor": "2027-02-03T08:10:00+00:00",
+  "dataset": {
+    "anchor": "2027-02-03T08:10:00+00:00",
+    "catalog": [
+      [
+        "ข้าวจานจำลอง",
+        "Food",
+        "Meals"
+      ],
+      [
+        "รถไฟจำลอง",
+        "Transportation",
+        "Rail"
+      ],
+      [
+        "ปากกาจำลอง",
+        "Work/Office",
+        "Supplies"
+      ]
+    ],
+    "expenses": [
+      [
+        "2027-02-01",
+        "ข้าวจานจำลอง",
+        43.25
+      ],
+      [
+        "2027-02-02",
+        "ข้าวจานจำลอง",
+        56.75
+      ],
+      [
+        "2027-02-02",
+        "รถไฟจำลอง",
+        19.5
+      ],
+      [
+        "2027-02-03",
+        "รถไฟจำลอง",
+        30.5
+      ],
+      [
+        "2027-02-03",
+        "ปากกาจำลอง",
+        35
+      ],
+      [
+        "2027-01-09",
+        "ข้าวจานจำลอง",
+        11.25
+      ],
+      [
+        "2027-01-09",
+        "รถไฟจำลอง",
+        18.75
+      ]
+    ],
+    "events": [
+      {
+        "id": "h1",
+        "summary": "กิจกรรมสังเคราะห์หนึ่ง",
+        "start": {
+          "date": "2027-02-04"
+        },
+        "end": {
+          "date": "2027-02-05"
+        }
+      },
+      {
+        "id": "h2",
+        "summary": "กิจกรรมสังเคราะห์สอง",
+        "start": {
+          "dateTime": "2027-02-05T13:10:00+07:00"
+        },
+        "end": {
+          "dateTime": "2027-02-05T13:55:00+07:00"
+        }
+      },
+      {
+        "id": "h3",
+        "summary": "กิจกรรมสังเคราะห์สาม",
+        "start": {
+          "date": "2027-02-09"
+        },
+        "end": {
+          "date": "2027-02-10"
+        }
+      },
+      {
+        "id": "h4",
+        "summary": "กิจกรรมสังเคราะห์สี่",
+        "start": {
+          "dateTime": "2027-02-11T09:00:00+07:00"
+        },
+        "end": {
+          "dateTime": "2027-02-11T10:00:00+07:00"
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "held_month_abbreviation",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ค่าใช้จ่ายตลอด ก.พ.70 รวมกี่บาท",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 5,
+            "expense": "185.00",
+            "filter": null,
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_month_full_frame",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ตั้งแต่ต้นเดือนนี้จนถึงสิ้นเดือน รายจ่ายรวมเท่าใด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 5,
+            "expense": "185.00",
+            "filter": null,
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_yesterday_ellipsis",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "วานนี้เสียเงินเป็นค่าอะไรมั่ง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-02",
+            "end": "2027-02-02",
+            "count": 2,
+            "expense": "76.25",
+            "filter": null,
+            "listing": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_category_typo",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนกุมภา หมวด transporation รวมเท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "50.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_food_synonym",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ค่ากินเดือนนี้รวมเป็นเงินเท่าใด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "100.00",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_item",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "รายการปากกาจำลองเฉพาะวันที่3ก.พ.2570",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-03",
+            "end": "2027-02-03",
+            "count": 1,
+            "expense": "35.00",
+            "filter": {
+              "kind": "item",
+              "value": "ปากกาจำลอง"
+            },
+            "listing": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_follow_reset",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ค่ารถในเดือนนี้กี่บาท",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "50.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false
+          }
+        },
+        {
+          "text": "ย้อนกลับไปเดือนก่อนให้หน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-01-01",
+            "end": "2027-01-31",
+            "count": 1,
+            "expense": "18.75",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false
+          }
+        },
+        {
+          "text": "วันนี้รายการจ่ายทั้งหมดมีอะไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-03",
+            "end": "2027-02-03",
+            "count": 2,
+            "expense": "65.50",
+            "filter": null,
+            "listing": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_view_follow",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "หมวด Food ของเดือนนี้มีเท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "100.00",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false
+          }
+        },
+        {
+          "text": "ขอชื่อแต่ละรายการด้วย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "100.00",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_calendar_this_week",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ปฏิทินอาทิตย์นี้มีรายการใด",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2027-02-01",
+            "end": "2027-02-07",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_calendar_next_week",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ช่วยลิสต์นัดของวีกหน้าหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2027-02-08",
+            "end": "2027-02-14",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_calendar_day",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เช็กนัด 4 ก.พ. นี้ให้หน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2027-02-04",
+            "end": "2027-02-04",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_upcoming",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "มีนัดอะไรที่กำลังจะมาถึงบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2027-02-03",
+            "end": "2027-02-09",
+            "count": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_missing_period",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "อยากดูยอดข้าวจานจำลอง",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_unknown_category",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้หมวดของแต่งห้องจ่ายกี่บาท",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_income",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สรุปเงินเข้าเดือนกุมภาให้หน่อย",
+          "expect": {
+            "kind": "error",
+            "reason": "income_unconfigured"
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_provider_failure",
+      "fixture": "sheet_provider",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "รวมเงินออกกุมภาพันธ์นี้",
+          "expect": {
+            "kind": "error",
+            "reason": "provider_failure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_mapping_incomplete",
+      "fixture": "unmapped",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "หมวด Transportation เดือนนี้เป็นเงินเท่าไร",
+          "expect": {
+            "kind": "error",
+            "reason": "mapping_incomplete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_expense_write",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานข้าวจานจำลอง 42 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "ข้าวจานจำลอง",
+                "amount": "42.00",
+                "date": "2027-02-02"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "recorded",
+            "rows_added": 1,
+            "expense_facts": [
+              {
+                "item": "ข้าวจานจำลอง",
+                "amount": "42.00",
+                "date": "2027-02-02"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_mixed_calendar_write",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เพิ่มนัดกิจกรรมใหม่หนึ่งวันที่6กุมภาพันธ์10:00-11:00 และกิจกรรมใหม่สองวันที่7กุมภาพันธ์ทั้งวัน",
+          "expect": {
+            "kind": "preview",
+            "domain": "calendar",
+            "entries": 2,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมใหม่หนึ่ง",
+                "start": "2027-02-06T10:00:00+07:00",
+                "end": "2027-02-06T11:00:00+07:00"
+              },
+              {
+                "title": "กิจกรรมใหม่สอง",
+                "start": "2027-02-07",
+                "end": "2027-02-08"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยันชุดนัดนี้",
+          "expect": {
+            "kind": "created",
+            "events_added": 2,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมใหม่หนึ่ง",
+                "start": "2027-02-06T10:00:00+07:00",
+                "end": "2027-02-06T11:00:00+07:00"
+              },
+              {
+                "title": "กิจกรรมใหม่สอง",
+                "start": "2027-02-07",
+                "end": "2027-02-08"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_item_typo",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ยอดปากกาจำลองงของเดือนนี้",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 1,
+            "expense": "35.00",
+            "filter": {
+              "kind": "item",
+              "value": "ปากกาจำลอง"
+            },
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_subcategory",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้หมวดย่อย Meals เท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-01",
+            "end": "2027-02-28",
+            "count": 2,
+            "expense": "100.00",
+            "filter": {
+              "kind": "subcategory",
+              "value": "Meals"
+            },
+            "listing": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "held_empty",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "รายการวันที่15กุมภาพันธ์2570มีอะไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2027-02-15",
+            "end": "2027-02-15",
+            "count": 0,
+            "expense": "0.00",
+            "filter": null,
+            "listing": true
+          }
+        }
+      ]
+    }
+  ]
+}

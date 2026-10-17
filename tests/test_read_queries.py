@@ -16,7 +16,7 @@ from test_history_first import response
 def plan(domain='expense', start='2026-10-16', end=None, *, kind=None, value=None, listing=False, measure='expense', upcoming=False, date_mode='range', relative_offset=None, filter_text=None):
     def choose(body):
         context=json.loads(body['input'][0]['content'])
-        args={'start_date':start,'end_date':end if end is not None else start,'source_refs':[context['current_source_ref']],'date_mode':date_mode,'relative_offset':relative_offset}
+        args={'start_date':start,'end_date':end if end is not None else start,'source_refs':[context['current_source_ref']],'date_mode':date_mode,'relative_offset':relative_offset,'period_text':context['message'][:120]}
         args.update({'filter':{'kind':kind,'value':value} if kind else None,'view':'list' if listing else 'total','measure':measure} if domain=='expense' else {'upcoming':upcoming,'filter_text':filter_text})
         return response(name='query_expenses' if domain=='expense' else 'query_calendar',args=args)
     return choose

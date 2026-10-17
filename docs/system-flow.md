@@ -45,7 +45,9 @@ flowchart TD
 
 History includes original owner messages and delivered assistant replies. A rolling 24-hour context window does not delete stored originals. The interpretation request carries owner source references, message timestamps, draft views and date references. Verified older-context summaries are conditional; the system stops rather than silently clipping required context.
 
-All LLM roles use the configured model, with **at most two provider calls per owner turn in total**. A verified direct control can use zero interpretation calls. Stored-data queries use one interpretation call and, when enabled with a slot remaining, one grounded wording call. A proposal may need another tool-result step. General conversation can return plain interpretation text without any business tool. Optional wording runs only when enabled and a call slot remains; a failed, rejected or slow response uses the code-produced message. Wording receives admitted facts and short relevant snippets, not the full interpretation history, and cannot call business tools.
+The development-only critic benchmark is separate from this production flow: it can add one two-second Luna review after exact validation, with a trusted fallback on rejection or timeout. The production factory and two-call limit remain unchanged; see the [benchmark protocol](../benchmarks/PROTOCOL.md).
+
+All production LLM roles use the configured model, with **at most two provider calls per owner turn in total**. A verified direct control can use zero interpretation calls. Stored-data queries use one interpretation call and, when enabled with a slot remaining, one grounded wording call. A proposal may need another tool-result step. General conversation can return plain interpretation text without any business tool. Optional wording runs only when enabled and a call slot remains; a failed, rejected or slow response uses the code-produced message. Wording receives admitted facts and short relevant snippets, not the full interpretation history, and cannot call business tools.
 
 ## 2. Expense write: proposal, review, then effect
 

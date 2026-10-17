@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "frozen_before_any_heldout_inference": true,
+  "frozen_at": "2026-10-17T13:59:29.588497+00:00",
+  "runtime_archive_sha256": "a8299562e8be1776342d5e1f11ed258b18c3cdd3906507928785e4d3ce791581",
+  "files": {
+    "benchmarks/v1/config.json": "b96ad65d0512758201571b8df8635409394e63522c582d21aff16117fbf0304e",
+    "benchmarks/v1/development/queries.json": "7a27f2b0cbe1db0538eba60829cfadbf278918c310bd4d1b87dcbd0960922592",
+    "benchmarks/v1/development/critic.json": "f90e11dc173f2df8fe9426f91c576bb79ceb345423fdd833d1cdf2a2e40c3470",
+    "benchmarks/v1/evaluation/queries.json": "f28252a2b81cb0324f27639f36c6c572a53c1c1a3df773886265500fcac091d6",
+    "benchmarks/v1/evaluation/critic.json": "e5ef482dfd2bb35c8192df0ac9f6b9579df1f69e31d88d4d5398a6c57c284da6",
+    "scripts/response_critic.py": "8cdd6efdc1b79dbce4694136e02224faca8257f27a44733b7edf26bdd0bfec1f",
+    "scripts/benchmark_roles.py": "19552d5392331409c8a2089a2e7ee7351e550c94b011038fb8a5e2ed12e9a2d3",
+    "scripts/benchmark_driver.py": "59a9f409e06d15e3de646d25d9010e883a90b9e5a011316fedaafcd0f9944c91"
+  },
+  "operator_adapter_hashes": {
+    "run_luna.py": "6f5731d221e6d6fcada4b74d76dc6e5ed1ba72ce69db4f3f3ecae7f6f2e07f89",
+    "run_critic.py": "d278422049e7a12b97555775758eb46967ccfe63174732c40e3478ab245adca0"
+  },
+  "holdout_rule": "Do not tune prompts/config on this split after evaluation. Any used failure moves to development; a new holdout version is required."
+}

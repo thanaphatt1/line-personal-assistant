@@ -101,3 +101,44 @@ def test_absolute_frame_needs_only_start_anchor_not_redundant_end(mode,start,end
         v['output'][0]['arguments']=json.dumps(args);return v
     r,_=turn(api,'ช่วงที่โมเดลเลือก',choose)
     assert r.data['tool_result']['complete'] and r.data['read_query']['end']==end
+
+
+
+def test_query_schema_enums_do_not_contain_provider_rejected_control_literals():
+    schema=voice.query_schema(['period','count','upcoming','truncation'])
+    def inspect(value):
+        if isinstance(value,dict):
+            if 'enum' in value:assert all(not isinstance(v,str) or not any(ord(c)<32 for c in v) for v in value['enum'])
+            for v in value.values():inspect(v)
+        elif isinstance(value,list):
+            for v in value:inspect(v)
+    inspect(schema)
+
+
+
+def test_model_can_select_verified_previous_period_without_copying_dates():
+    api=VoiceHosted();turn(api,'เดือนนี้รวม',plan(start=None,date_mode='calendar_month',relative_offset=0))
+    r,_=turn(api,'แยกรายการ',plan(start=None,date_mode='previous',listing=True))
+    assert r.data['read_query']['start']=='2026-10-01' and r.data['read_query']['end']=='2026-10-31'
+    assert r.data['read_query']['listing'] is True
+
+
+def test_previous_period_without_a_verified_scope_never_defaults():
+    api=VoiceHosted();r,_=turn(api,'แยกรายการ',plan(start=None,date_mode='previous',listing=True))
+    assert r.data['tool_result']['error_code']=='date_required' and not r.data['tool_result']['complete']
+
+
+
+def test_current_clock_is_not_evidence_for_an_omitted_owner_period():
+    api=VoiceHosted()
+    def choose(body):
+        v=plan()(body);args=json.loads(v['output'][0]['arguments']);args['period_text']=None
+        v['output'][0]['arguments']=json.dumps(args);return v
+    r,_=turn(api,'สรุปรายจ่ายหน่อย',choose)
+    assert r.status=='clarification' and r.data['tool_result']['error_code']=='date_required'
+
+
+def test_model_selected_upcoming_mode_computes_the_bounded_window():
+    api=VoiceHosted();r,_=turn(api,'นัดถัดไป',plan('calendar',start=None,date_mode='upcoming'))
+    assert r.data['read_query']['start']=='2026-10-16' and r.data['read_query']['end']=='2026-10-22'
+    assert r.data['read_query']['upcoming'] is True

@@ -67,7 +67,7 @@ def query_options(key,ids):
     before={'period':['','ช่วง ','สำหรับ '],'filter':['เฉพาะ ','หมวด '],
             'total':['ใช้ไป ','รายจ่ายรวม ','รวม '],
             'count':['จาก ','รวม '] if 'total' in ids else ['มี ','พบ '],
-            'reason':['']}.get(key,['\n'])
+            'reason':['']}.get(key,[''])
     after=['ครับ','นะครับ'] if key=='count' else [' '] if key in {'period','filter','total'} else ['']
     return before,after
 
@@ -231,7 +231,7 @@ def parse(value,body):
         for key,fact in facts.items():
             part=document['parts'][key];before,after=query_options(key,list(facts))
             if not isinstance(part,dict) or set(part)!={'before','after'} or part['before'] not in before or part['after'] not in after:raise ValueError('query_phrase')
-            chunks.append(part['before']+fact+part['after'])
+            chunks.append(('\n' if key in {'upcoming','truncation'} else '')+part['before']+fact+part['after'])
         result=''.join(chunks).strip()
         if payload.get('locked_rows'):result+='\n'+'\n'.join(payload['locked_rows'])
         if not result or len(result.encode('utf-16-le'))>9000:raise ValueError('reply_size')

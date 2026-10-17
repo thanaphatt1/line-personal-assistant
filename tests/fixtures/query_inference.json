@@ -1466,6 +1466,43 @@
           }
         }
       ]
+    },
+    {
+      "name": "upcoming_events",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูนัดถัดไปหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-17",
+            "end": "2026-10-23",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "large_listing",
+      "fixture": "large",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง ขอรายการทั้งหมด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "25.00",
+            "count": 25,
+            "filter": null,
+            "listing": true
+          }
+        }
+      ]
     }
   ]
 }

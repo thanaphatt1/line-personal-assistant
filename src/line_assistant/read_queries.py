@@ -30,7 +30,8 @@ class Query(BaseModel):
     start_date: str | None = Field(max_length=10)
     end_date: str | None = Field(max_length=10)
     source_refs: list[str] = Field(min_length=1, max_length=16)
-    date_mode: Literal['range','calendar_month','calendar_week','calendar_year'] = 'range'
+    date_mode: Literal['range','calendar_month','calendar_week','calendar_year','previous','upcoming'] = 'range'
+    period_text: str | None = Field(default=None,max_length=120)
     relative_offset: int | None = Field(default=None,ge=-120,le=120)
 
 class Expenses(Query):
@@ -44,8 +45,8 @@ class Calendar(Query):
 
 
 def definitions():
-    common = {'relative_offset':{'type':['integer','null'],'description':'For THIS/NEXT/LAST calendar week/month/year use0/+1/-1; server computes from current Bangkok clock. Use null for named/absolute periods or range. Do not calculate relative frame dates yourself.'},'date_mode':{'type':'string','enum':['calendar_month','calendar_week','calendar_year','range'],'description':'Interpret the intended interval: unqualified month/monthly uses calendar_month, week uses calendar_week, year uses calendar_year. Server expands the start date to the WHOLE calendar frame. Use range for one day, explicit date spans, or explicitly month-to-date.'},
-              'start_date': {'type':['string','null'], 'description':'Inclusive Bangkok ISO date; interpret natural dates using bangkok_datetime. Null for relative calendar frames or when unclear.'},
+    common = {'period_text':{'type':['string','null'],'description':'Copy the literal DATE/PERIOD phrase from a cited owner message (e.g. เมื่อวาน, เดือนนี้, 1-7 ต.ค., นัดถัดไป). Null when no period was stated; the current clock is NOT date evidence. For a filter/view-only follow-up choose date_mode=previous instead. Do not invent date wording.'},'relative_offset':{'type':['integer','null'],'description':'For THIS/NEXT/LAST calendar week/month/year use0/+1/-1; server computes from current Bangkok clock. Use null for named/absolute periods or range. Do not calculate relative frame dates yourself.'},'date_mode':{'type':'string','enum':['calendar_month','calendar_week','calendar_year','previous','upcoming','range'],'description':'For next/upcoming appointments with no explicit period choose upcoming (server uses now through next6dates). For a filter/view-only follow-up choose previous: the server reuses the latest verified query dates, no date copy needed. Otherwise interpret the intended interval: unqualified month/monthly uses calendar_month, week uses calendar_week, year uses calendar_year. Server expands the start date to the WHOLE calendar frame. Use range for one day, explicit date spans, or explicitly month-to-date.'},
+              'start_date': {'type':['string','null'], 'description':'Bangkok ISO anchor date. For a NAMED/absolute calendar frame with relative_offset=null, MUST supply an anchor such as2026-10-01; period_text is evidence, not a parsed date. Null only for a relative_offset frame, previous/upcoming, or genuinely missing period.'},
               'end_date': {'type':['string','null'], 'description':'Inclusive Bangkok ISO end; weeks Monday-Sunday. Expense max367 dates, Calendar max7.'},
               'source_refs': {'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}}
     return [
@@ -91,10 +92,19 @@ def execute(host, name, args):
               'scope':{'domain':domain,'workbook':host.sheets.target.spreadsheet_id,'calendar':host.calendar_flow.calendar_id}}
     try:
         p = (Expenses if domain=='expense' else Calendar).model_validate(args)
-        host._owner_sources(p.source_refs)
+        sources=host._owner_sources(p.source_refs)
     except (ValueError,TypeError,KeyError):return error(output,'invalid_arguments','clarification')
     if domain=='expense' and p.measure!='expense':return error(output,'income_unconfigured','income_unconfigured')
+    if p.date_mode=='previous':
+        previous=context(host)['previous_query']
+        if not previous or not previous.get('start') or not previous.get('end') or p.relative_offset is not None:return error(output,'date_required','clarification')
+        p=p.model_copy(update={'start_date':previous['start'],'end_date':previous['end'],'date_mode':'range'})
     if domain=='calendar' and p.filter_text:return error(output,'calendar_filter_unsupported','clarification')
+    if args.get('date_mode')!='previous' and (not p.period_text or not any(p.period_text in row['text'] for row in sources)):return error(output,'date_required','clarification')
+    if p.date_mode=='upcoming':
+        if domain!='calendar':return error(output,'invalid_arguments','clarification')
+        today=datetime.fromisoformat(host._current['at']).astimezone(BANGKOK).date()
+        p=p.model_copy(update={'date_mode':'range','relative_offset':None,'start_date':today.isoformat(),'end_date':(today+timedelta(days=6)).isoformat(),'upcoming':True})
     if p.relative_offset is not None and p.date_mode=='range':return error(output,'invalid_arguments','clarification')
     relative=p.relative_offset is not None and p.date_mode!='range'
     if not relative and (not p.start_date or p.date_mode=='range' and not p.end_date):return error(output,'date_required','clarification')

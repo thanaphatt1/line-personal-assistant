@@ -1,0 +1,1508 @@
+{
+  "synthetic_only": true,
+  "anchor": "2026-10-17T12:53:00+00:00",
+  "cases": [
+    {
+      "name": "month_0",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เดือนนี้ใช้เงินไปเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_1",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "ขอยอดจ่ายเดือนนี้หน่อยครับ",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_2",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "ต.ค. นี้หมดไปกี่บาทแล้ว",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_3",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "ตุลา 69 จ่ายไปทั้งหมดเท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_4",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เดือนตุลาคม 2569 รวมค่าใช้จ่ายให้หน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_5",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เงินออกเดือนนี้รวมเป็นเท่าใด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_6",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "ดูยอดรายจ่ายตั้งแต่ 1/10/2569 ถึง 31/10/2569",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_7",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "รวมยอด ๑–๓๑ ต.ค. ๒๕๖๙",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_8",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เดือนนี้จ่ายไปรวมๆ",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_9",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เช็คยอดทั้งเดือนให้ที",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "month_10",
+      "fixture": "normal",
+      "repetitions": 1,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าไช้จ่ายรวมเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานนี้ซื้อไรไปมั่ง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ช่วยไล่รายจ่ายของเมื่อวานหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอรายการเงินออก 16 ต.ค.",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "วันที่ 16/10/69 มีรายจ่ายอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "yesterday_5",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานจายอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "transport_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดินทางเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "transport_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ตุลานี้หมดกับค่ารถไปกี่บาท",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "transport_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดืนทางรวมเท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "transport_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ transport รวมให้ที",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "transport_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ค่ารถทั้งเดือนนี้รวมเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "food_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าอาหารเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "food_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้หมวด food รวมหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "food_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ค่าอาหานเดือนนี้รวมกี่บาท",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "food_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่ากินรวมเท่าไร",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "reported_multiturn",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดินทางเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        },
+        {
+          "text": "เดือนที่แล้วล่ะ",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-09-01",
+            "end": "2026-09-30",
+            "expense": "30.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 1
+          }
+        },
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "filter_and_view_followup",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าอาหารเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": false,
+            "count": 2
+          }
+        },
+        {
+          "text": "ขอแยกรายการด้วย",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "32.50",
+            "filter": {
+              "kind": "category",
+              "value": "Food"
+            },
+            "listing": true,
+            "count": 2
+          }
+        },
+        {
+          "text": "แล้วทั้งหมดล่ะ",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": true,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "explicit_new_scope",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดินทางรวมกี่บาท",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        },
+        {
+          "text": "สรุปรายจ่ายเดือนนี้ทั้งหมด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": null,
+            "count": 10
+          }
+        }
+      ]
+    },
+    {
+      "name": "empty_date",
+      "fixture": "normal",
+      "repetitions": 2,
+      "turns": [
+        {
+          "text": "รายจ่ายวันที่ 1 พ.ย. 2569 มีอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-11-01",
+            "end": "2026-11-01",
+            "expense": "0.00",
+            "filter": null,
+            "listing": true,
+            "count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "cross_domain",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "อาทิตย์หน้ามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        },
+        {
+          "text": "แล้วรายจ่ายเมื่อวานล่ะ",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": null,
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_week_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สัปดาห์หน้ามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_week_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูปฏิทิน 19–25 ต.ค. 69",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_week_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "นัดอาทิตหน้ามีไรมั่ง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_week_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ตารางอาทิตย์หน้าหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_week_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "19/10/2569 ถึง 25/10/2569 มีนัดอะไร",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-19",
+            "end": "2026-10-25",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_all_day",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "วันที่20ตุลามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-20",
+            "end": "2026-10-20",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_timed",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ดูนัด 21 ต.ค. 2569",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-21",
+            "end": "2026-10-21",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_multiday",
+      "fixture": "normal",
+      "repetitions": 2,
+      "turns": [
+        {
+          "text": "22 ต.ค. ถึง 23 ต.ค. มีนัดมั้ย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-22",
+            "end": "2026-10-23",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "พรุ่งนี้ Workshop",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานหรือวันนี้รวมเท่าไหร่",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูหมวดเสื้อผ้าเดือนนี้",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สรุปรายจ่ายหน่อย",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ดูเฉพาะนัดกีฬาอาทิตย์หน้า",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clarify_5",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ทั้งเดือนมีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unmapped_history",
+      "fixture": "unmapped",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดินทางเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        },
+        {
+          "text": "เดือนที่แล้วล่ะ",
+          "expect": {
+            "kind": "error",
+            "reason": "mapping_incomplete"
+          }
+        },
+        {
+          "text": "ขอยอดทั้งหมดเดือนที่แล้วแทน",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-09-01",
+            "end": "2026-09-30",
+            "expense": "116.00",
+            "filter": null,
+            "listing": false,
+            "count": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheet_provider",
+      "fixture": "sheet_provider",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ใช้ไปกี่บาท",
+          "expect": {
+            "kind": "error",
+            "reason": "provider_failure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sheet_schema",
+      "fixture": "sheet_schema",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง",
+          "expect": {
+            "kind": "error",
+            "reason": "schema_failure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_provider",
+      "fixture": "calendar_provider",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "อาทิตย์หน้ามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "error",
+            "reason": "provider_failure"
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_partial",
+      "fixture": "calendar_partial",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สัปดาห์หน้ามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "error",
+            "reason": "read_incomplete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsupported_50",
+      "fixture": "normal",
+      "repetitions": 2,
+      "turns": [
+        {
+          "text": "เดือนนี้รายรับเท่าไหร่",
+          "expect": {
+            "kind": "error",
+            "reason": "income_unconfigured"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsupported_51",
+      "fixture": "normal",
+      "repetitions": 2,
+      "turns": [
+        {
+          "text": "เดือนนี้เหลือเงินเท่าไหร่",
+          "expect": {
+            "kind": "error",
+            "reason": "income_unconfigured"
+          }
+        }
+      ]
+    },
+    {
+      "name": "malicious_calendar",
+      "fixture": "malicious_calendar",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "วันที่20ตุลามีนัดอะไรบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-20",
+            "end": "2026-10-20",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "malicious_catalog",
+      "fixture": "malicious_catalog",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ค่าเดินทางเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "296.00",
+            "filter": {
+              "kind": "category",
+              "value": "Transportation"
+            },
+            "listing": false,
+            "count": 7
+          }
+        }
+      ]
+    },
+    {
+      "name": "query_then_write",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เดือนนี้ใช้ไปเท่าไหร่",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-01",
+            "end": "2026-10-31",
+            "expense": "428.50",
+            "filter": null,
+            "listing": false,
+            "count": 10
+          }
+        },
+        {
+          "text": "เมื่อวานกาแฟ 45 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "recorded",
+            "rows_added": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "expense_multi",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานกาแฟ 45 บาท รถเมล์ 25 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 2,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              },
+              {
+                "item": "รถเมล์",
+                "amount": "25.00",
+                "date": "2026-10-16"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "recorded",
+            "rows_added": 2,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-16"
+              },
+              {
+                "item": "รถเมล์",
+                "amount": "25.00",
+                "date": "2026-10-16"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "expense_edit",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "กาแฟ 45 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-17"
+              }
+            ]
+          }
+        },
+        {
+          "text": "แก้เป็น 50 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "50.00",
+                "date": "2026-10-17"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "recorded",
+            "rows_added": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "50.00",
+                "date": "2026-10-17"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_two",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ช่วยเพิ่มนัดประชุมทดสอบวันที่20ตุลา9:00-10:00 กับอ่านหนังสือวันที่21ตุลา14:00-15:00",
+          "expect": {
+            "kind": "preview",
+            "domain": "calendar",
+            "entries": 2,
+            "calendar_facts": [
+              {
+                "title": "ประชุมทดสอบ",
+                "start": "2026-10-20T09:00:00+07:00",
+                "end": "2026-10-20T10:00:00+07:00"
+              },
+              {
+                "title": "อ่านหนังสือ",
+                "start": "2026-10-21T14:00:00+07:00",
+                "end": "2026-10-21T15:00:00+07:00"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยันชุดนัดนี้",
+          "expect": {
+            "kind": "created",
+            "events_added": 2,
+            "calendar_facts": [
+              {
+                "title": "ประชุมทดสอบ",
+                "start": "2026-10-20T09:00:00+07:00",
+                "end": "2026-10-20T10:00:00+07:00"
+              },
+              {
+                "title": "อ่านหนังสือ",
+                "start": "2026-10-21T14:00:00+07:00",
+                "end": "2026-10-21T15:00:00+07:00"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "calendar_all_day_write",
+      "fixture": "normal",
+      "repetitions": 5,
+      "turns": [
+        {
+          "text": "เพิ่มนัดกิจกรรมจำลองวันที่20ตุลาทั้งวัน",
+          "expect": {
+            "kind": "preview",
+            "domain": "calendar",
+            "entries": 1,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมจำลอง",
+                "start": "2026-10-20",
+                "end": "2026-10-21"
+              }
+            ]
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "created",
+            "events_added": 1,
+            "calendar_facts": [
+              {
+                "title": "กิจกรรมจำลอง",
+                "start": "2026-10-20",
+                "end": "2026-10-21"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "write_then_query_clears_consent",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "กาแฟ 45 บาท",
+          "expect": {
+            "kind": "preview",
+            "domain": "expense",
+            "entries": 1,
+            "expense_facts": [
+              {
+                "item": "กาแฟ",
+                "amount": "45.00",
+                "date": "2026-10-17"
+              }
+            ]
+          }
+        },
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "120.00",
+            "filter": null,
+            "listing": true,
+            "count": 2
+          }
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_0",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูค่าอาหาร",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_1",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "รายจ่ายรวมเท่าไหร่",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_2",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ช่วยสรุปยอดที่จ่ายไปให้หน่อย",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_3",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอรายการค่าใช้จ่าย",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_4",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ใช้เงินไปเท่าไรแล้ว",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing_period_5",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "สรุปค่าเดินทางให้ที",
+          "expect": {
+            "kind": "clarification"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upcoming_events",
+      "fixture": "normal",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "ขอดูนัดถัดไปหน่อย",
+          "expect": {
+            "kind": "query",
+            "domain": "calendar",
+            "start": "2026-10-17",
+            "end": "2026-10-23",
+            "count": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "large_listing",
+      "fixture": "large",
+      "repetitions": 3,
+      "turns": [
+        {
+          "text": "เมื่อวานจ่ายอะไรไปบ้าง ขอรายการทั้งหมด",
+          "expect": {
+            "kind": "query",
+            "domain": "expense",
+            "start": "2026-10-16",
+            "end": "2026-10-16",
+            "expense": "25.00",
+            "count": 25,
+            "filter": null,
+            "listing": true
+          }
+        }
+      ]
+    }
+  ]
+}
