@@ -31,6 +31,8 @@ Promote only after checking current configuration, state compatibility and the r
 
 A pending all-day draft can already write the newer Calendar history format. Before exposing a candidate, verify a bridge image that reads both that format and retained timed state. Once the candidate can touch state, the old image may be incompatible even before a traffic promotion.
 
-Rollback changes traffic to the compatible OFF bridge. It never imports an old snapshot, clears history, resets counters, retries an uncertain write or deletes events. Zero minimum instances means a bridge may require a cold start. Traffic rollback cannot retract an event already created in an external calendar.
+Distinguish a feature-off bridge from a full code rollback. A same-image bridge disables only its explicit flags; it still contains unflagged code paths. If a full code fallback is required, a prior immutable image is eligible only after its exact runtime has proved it can restore and preserve every state envelope and receipt field the candidate can produce. If that compatibility cannot be established, add a feature-disable switch and verify a compatible bridge before release. Never route traffic to a runtime known to reject newer state.
+
+The approved fallback changes traffic only. It never imports an old snapshot, clears history, resets counters, retries an uncertain write or deletes events. Zero minimum instances means a fallback revision may require a cold start. Traffic rollback cannot retract an event already created in an external calendar.
 
 This repository intentionally excludes deployment executors, production manifests, approval records, real account state and operational budgets. Keep those private and bind any release automation to the exact reviewed source, image, plan and authorization.

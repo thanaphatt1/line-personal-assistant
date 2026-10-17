@@ -1,17 +1,23 @@
 # LINE Personal Assistant
 
-A Thai, single-owner LINE assistant for expense tracking and Google Calendar drafts. It uses typed model tools to interpret requests; the server validates facts and performs writes only after the owner confirms a delivered review.
+A low-budget personal LINE assistant for occasional daily tasks. It is designed for someone who uses an assistant too infrequently to justify a monthly subscription. Keeping running costs small is a design goal; actual API and hosting costs depend on usage.
 
-Start with the [runtime diagrams and input/output map](docs/system-flow.md) to see which steps use LLMs, deterministic code and external services.
+[![A query enters the assistant framework, which exchanges tool requests and results with an expense sheet, category lookup and Calendar, then returns an output. Writes require confirmation.](docs/assets/assistant-overview.svg)](docs/system-flow.md)
 
-## Features
+The framework combines conditional LLM interpretation with deterministic checks. It calls tools when needed, uses their results and asks for confirmation before a write. See the [detailed runtime diagrams and input/output map](docs/system-flow.md).
 
-- **Expenses:** prepare and correct multiple THB expenses, resolve catalog names, request missing information, and confirm a group once. New catalog entries require the owner's category choices.
-- **Stored-data queries:** read expense totals or saved entries by date range, item/category/subcategory, and view saved Calendar events by day/week, including all-day events. Dates and amounts are computed by the server; queries create no write draft. See [query examples and bounds](docs/read-queries.md).
-- **Calendar:** prepare timed or single-date all-day events, including mixed groups. When a date has no time, ask “นัดนี้ทั้งวัน หรือเริ่มกี่โมงครับ?” Answers continue the same draft.
+## Two main functions
+
+1. **Log expenses.** Prepare and correct THB expense entries, resolve catalog names, fill missing information and save after reviewing. New catalog entries require the owner's category choices.
+2. **Create Calendar appointments.** Prepare timed or single-date all-day appointments, including groups. Review the date, timing and conflicts, then confirm creation.
+
+Read-only expense and Calendar queries support these two workflows in the current release. They calculate dates and amounts in code and create no write draft. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
+
+## How it works
+
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.
 - **Conversation continuity:** persist raw messages separately from compact state, keep recent context and verified rolling summaries, and preserve pending or uncertain effects across restarts.
-- **Optional reply wording:** a second model phase arranges immutable facts into a Thai reply. A bounded fallback returns the server's factual message if that phase fails or is slow.
+- **Optional reply wording:** when enabled and a call slot remains, a model phase arranges immutable facts into a Thai reply. A bounded fallback returns the server's factual message if that phase fails or is slow.
 
 The production Calendar path creates events in one explicitly configured secondary calendar. It does not edit/delete saved events, invite guests, create recurring events or reminders, or interpret multi-day all-day ranges as a single date. Income and recorded-expense edits are unsupported. Conflict checks cover only the configured calendar. See [behavior and examples](docs/behavior.md).
 

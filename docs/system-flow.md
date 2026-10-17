@@ -1,6 +1,6 @@
 # Runtime flow: inputs, decisions and outputs
 
-This page describes the signed, history-enabled application. **Deployment status:** the live service uses the v15 build; the stored-data query route below is in source and awaits a separately approved release. Publishing source or passing CI does not deploy it. The local mock and older compatibility entry points are separate compositions.
+This page describes the signed, history-enabled application. **Deployment status:** the live release includes the stored-data query route below. Publishing a later source change or passing CI does not deploy it automatically. The local mock and older compatibility entry points are separate compositions.
 
 **Legend:** blue **CODE** = deterministic Python; purple **LLM** = a conditional request to the configured model; green **EXT** = LINE, Google or storage. Arrow labels name the data crossing a boundary. Each diagram is one view of the same application, not a sequence of mandatory model calls.
 
@@ -157,4 +157,4 @@ A complete empty read can report zero saved records. It does not establish avail
 | Transport limits and recovery | [`pilot_http.py`](../src/line_assistant/pilot_http.py), [`calendar_transport.py`](../src/line_assistant/calendar_transport.py), [`firestore_state.py`](../src/line_assistant/firestore_state.py) |
 | Raw history and compatible state envelopes | [`raw_history.py`](../src/line_assistant/raw_history.py), [`production_history_state.py`](../src/line_assistant/production_history_state.py), [`history_persistence.py`](../src/line_assistant/history_persistence.py) |
 
-**Maintenance rule:** whenever a runtime route, model phase, provider effect or input/output contract changes, update the affected diagram, boundary table and module links in the same source change. Keep the deployment-status sentence aligned with the separately verified live release. Examples must stay synthetic; omit private identifiers, configuration, credentials and operation logs.
+**Maintenance rule:** whenever a runtime route, model phase, provider effect or input/output contract changes, update the affected diagram, boundary table and module links in the same source change. Keep the README's main-function list and [overview SVG](assets/assistant-overview.svg) aligned with that flow, and check the image at normal README and mobile widths. Keep deployment-status statements aligned with the separately verified live release. Examples must stay synthetic; omit private identifiers, configuration, credentials and operation logs.

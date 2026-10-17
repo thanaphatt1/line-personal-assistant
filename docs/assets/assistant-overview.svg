@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="700" viewBox="0 0 760 700" role="img" aria-labelledby="title desc">
+  <title id="title">A personal assistant, with tools when needed</title>
+  <desc id="desc">A query flows into a friendly robot representing the assistant framework, then to an output. A separate tools group contains an expense sheet, category lookup and Calendar. Arrows show tool requests flowing from the framework and results returning. Writes require owner confirmation.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 9 5 L 1 9 Z" fill="#526C8D"/>
+    </marker>
+    <marker id="teal-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 9 5 L 1 9 Z" fill="#147D72"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="758" height="698" rx="32" fill="#F7FAFD" stroke="#DCE5F0" stroke-width="2"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" text-anchor="middle" fill="#19334D">
+    <text x="380" y="49" font-size="25" font-weight="500" fill="#526C8D">A little help, when you need it</text>
+
+    <!-- Primary flow: Query -> framework -> Output. -->
+    <rect x="32" y="158" width="156" height="148" rx="24" fill="#FFFFFF" stroke="#D4DFEC" stroke-width="2"/>
+    <text x="110" y="202" font-size="32" font-weight="650">Query</text>
+    <path d="M83 225 H137 A10 10 0 0 1 147 235 V256 A10 10 0 0 1 137 266 H104 L89 278 V266 H83 A10 10 0 0 1 73 256 V235 A10 10 0 0 1 83 225Z" fill="#EAF0FC" stroke="#526C8D" stroke-width="2.5"/>
+    <path d="M87 240 H132 M87 251 H119" fill="none" stroke="#526C8D" stroke-width="3" stroke-linecap="round"/>
+
+    <path d="M195 232 H234" fill="none" stroke="#526C8D" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="242" y="87" width="276" height="270" rx="30" fill="#E9EDFF" stroke="#B9C4EA" stroke-width="2"/>
+    <text x="380" y="128" font-size="34" font-weight="700">Assistant</text>
+    <text x="380" y="160" font-size="27" fill="#52618A">framework</text>
+
+    <!-- Original, code-native robot illustration. -->
+    <path d="M380 195 V181" stroke="#5967A8" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="380" cy="178" r="7" fill="#32A99B"/>
+    <rect x="313" y="220" width="14" height="29" rx="7" fill="#B5C0EB"/>
+    <rect x="433" y="220" width="14" height="29" rx="7" fill="#B5C0EB"/>
+    <rect x="325" y="198" width="110" height="77" rx="25" fill="#FFFFFF" stroke="#5967A8" stroke-width="3"/>
+    <rect x="337" y="211" width="86" height="48" rx="17" fill="#EEF9F7"/>
+    <circle cx="357" cy="231" r="6" fill="#19334D"/>
+    <circle cx="403" cy="231" r="6" fill="#19334D"/>
+    <path d="M369 246 Q380 255 391 246" fill="none" stroke="#147D72" stroke-width="3" stroke-linecap="round"/>
+    <path d="M350 283 Q380 272 410 283 L417 310 Q380 324 343 310Z" fill="#FFFFFF" stroke="#5967A8" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="380" cy="298" r="7" fill="#32A99B"/>
+    <text x="380" y="341" font-size="24" font-weight="550" fill="#52618A">LLM + code</text>
+
+    <path d="M526 232 H565" fill="none" stroke="#526C8D" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="572" y="158" width="156" height="148" rx="24" fill="#FFFFFF" stroke="#D4DFEC" stroke-width="2"/>
+    <text x="650" y="202" font-size="32" font-weight="650">Output</text>
+    <rect x="621" y="225" width="58" height="48" rx="13" fill="#E8F7F2"/>
+    <path d="M635 248 L645 258 L666 236" fill="none" stroke="#147D72" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Reads return results; effects wait for explicit owner confirmation. -->
+    <rect x="214" y="387" width="332" height="43" rx="21.5" fill="#FFFFFF" stroke="#D4DFEC" stroke-width="1.5"/>
+    <text x="380" y="416" font-size="25" font-weight="600">Confirm before writes</text>
+    <path d="M242 305 H195 V489" fill="none" stroke="#526C8D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
+    <text x="110" y="411" font-size="25" font-weight="600" fill="#526C8D">Tool</text>
+    <text x="110" y="441" font-size="25" fill="#526C8D">request</text>
+    <path d="M565 489 V305 H526" fill="none" stroke="#147D72" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal-arrow)"/>
+    <text x="650" y="411" font-size="25" font-weight="600" fill="#147D72">Tool</text>
+    <text x="650" y="441" font-size="25" fill="#147D72">result</text>
+
+    <rect x="32" y="501" width="696" height="166" rx="28" fill="#EDF3F8" stroke="#D4DFEC" stroke-width="2"/>
+    <text x="380" y="538" font-size="30" font-weight="650">Tools</text>
+    <rect x="55" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
+    <rect x="276" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
+    <rect x="497" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
+
+    <rect x="73" y="580" width="29" height="37" rx="5" fill="#E8F7F2" stroke="#147D72" stroke-width="2"/>
+    <path d="M78 589 H97 M78 598 H97 M78 607 H97 M86 589 V612" stroke="#147D72" stroke-width="1.5" fill="none"/>
+    <text x="178" y="591" font-size="27" font-weight="600">Expense</text>
+    <text x="178" y="623" font-size="27">sheet</text>
+
+    <circle cx="308" cy="594" r="13" fill="#EFF0FC" stroke="#6874B6" stroke-width="2.5"/>
+    <path d="M318 604 L328 615" stroke="#6874B6" stroke-width="3" stroke-linecap="round"/>
+    <text x="405" y="591" font-size="27" font-weight="600">Category</text>
+    <text x="405" y="623" font-size="27">lookup</text>
+
+    <rect x="514" y="582" width="31" height="32" rx="5" fill="#EFF0FC" stroke="#6874B6" stroke-width="2"/>
+    <path d="M515 591 H544 M522 578 V586 M537 578 V586 M522 598 H527 M532 598 H537 M522 605 H527" fill="none" stroke="#6874B6" stroke-width="2" stroke-linecap="round"/>
+    <text x="629" y="607" font-size="27" font-weight="600">Calendar</text>
+  </g>
+</svg>
