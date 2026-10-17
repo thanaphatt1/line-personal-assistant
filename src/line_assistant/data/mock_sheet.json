@@ -1,0 +1,9 @@
+{
+  "schema_verified": false,
+  "description": "Synthetic local schema and catalog examples only; never selects a live target.",
+  "columns": {"date": "A", "item": "B", "amount": "C", "note": "D"},
+  "formula_columns": [],
+  "date_mode": "serial_date",
+  "database_items": ["BTS", "seven", "กาแฟ", "อาหาร"],
+  "aliases": {"บีทีเอส": "BTS"}
+}

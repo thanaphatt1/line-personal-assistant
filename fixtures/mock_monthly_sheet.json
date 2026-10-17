@@ -1,0 +1,15 @@
+{
+  "schema_verified": false,
+  "description": "Synthetic alternate six-column layout for formula-preservation regressions.",
+  "columns": {
+    "date": "A",
+    "item": "B",
+    "amount": "E",
+    "note": "F"
+  },
+  "formula_columns": [
+    "C",
+    "D"
+  ],
+  "date_mode": "iso_mock"
+}

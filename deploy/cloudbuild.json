@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "id": "verify-reviewed-input-and-build",
+      "name": "${_DOCKER_BUILDER_IMAGE}",
+      "entrypoint": "bash",
+      "env": [
+        "REVIEWED_TAG=${_REVIEWED_TAG}",
+        "PYTHON_BASE_IMAGE=${_PYTHON_BASE_IMAGE}",
+        "SOURCE_CHECKSUMS_SHA256=${_SOURCE_CHECKSUMS_SHA256}"
+      ],
+      "args": [
+        "-ceu",
+        "[[ \"$$REVIEWED_TAG\" =~ ^review-[a-z0-9][a-z0-9._-]{0,90}$$ ]] || { echo 'Reviewed image tag required'; exit 2; }; [[ \"$$PYTHON_BASE_IMAGE\" =~ ^python:3\\.11-slim@sha256:[a-f0-9]{64}$$ ]] || { echo 'Reviewed Python base digest required'; exit 2; }; [[ \"$$SOURCE_CHECKSUMS_SHA256\" =~ ^[a-f0-9]{64}$$ ]] || { echo 'Reviewed source checksum digest required'; exit 2; }; printf '%s  SHA256SUMS\\n' \"$$SOURCE_CHECKSUMS_SHA256\" | sha256sum -c -; sha256sum -c SHA256SUMS; exec docker build --file deploy/history-production.Dockerfile --build-arg \"PYTHON_BASE=$$PYTHON_BASE_IMAGE\" --tag \"${_IMAGE}:$$REVIEWED_TAG\" ."
+      ]
+    }
+  ],
+  "images": [
+    "${_IMAGE}:${_REVIEWED_TAG}"
+  ],
+  "options": {
+    "logging": "CLOUD_LOGGING_ONLY"
+  },
+  "timeout": "600s",
+  "substitutions": {
+    "_DOCKER_BUILDER_IMAGE": "gcr.io/cloud-builders/docker@sha256:f772ab459889c67835bd959c2b9e9351f2c0752c4f989710ecda20c229f0733e",
+    "_PYTHON_BASE_IMAGE": "python:3.11-slim@sha256:e529028263dbe6910a2d96f7d2b8f5266385e917fd45d286ef166977c094a51e",
+    "_REVIEWED_TAG": "REQUIRES_REVIEW",
+    "_SOURCE_CHECKSUMS_SHA256": "REQUIRES_REVIEW",
+    "_IMAGE": "REGION-docker.pkg.dev/PROJECT/REPOSITORY/assistant"
+  }
+}

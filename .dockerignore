@@ -1,0 +1,12 @@
+# Allowlist build context: exclude secrets, ADC, .env, private evidence and caches.
+**
+!requirements.lock
+!src/
+!src/line_assistant/
+!src/line_assistant/*.py
+!scripts/
+!scripts/container_entrypoint.py
+!src/line_assistant/data/
+!src/line_assistant/data/mock_sheet.json
+!scripts/verify_signed_startup.py
+!scripts/verify_history_signed_startup.py
