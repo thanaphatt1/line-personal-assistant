@@ -39,6 +39,14 @@ The required tabs are `All Expenses` and `Database`. Expense input columns A–D
 | `PILOT_CALENDAR_ENABLED` | `false` | History/state and exact secondary calendar |
 | `PILOT_RESPONSE_REALIZATION_ENABLED` | `false` | History/state |
 | `PILOT_MODEL_USAGE_GATES_ENABLED` | `true` | `false` requires explicit history state; counting remains |
+| `PILOT_PROVISIONAL_CATEGORIES_ENABLED` | `false` | History/state; proposals do not grant mapping consent |
+| `PILOT_PROVISIONAL_MAPPING_ENABLED` | `false` | Proposals and reviewed Database writer policy |
+| `PILOT_HISTORICAL_CATEGORIES_ENABLED` | `false` | Provisional categories/history; optional complete-grid historical review |
+
+Historical permanent saves also require the separate mapping flag and
+`PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY=reviewed_single_writer`. The process lease
+does not control human or other API writers. See [historical category review](historical-categories.md)
+for page scope, stale checks and provisional versus permanent consent.
 
 Configure `PILOT_MODEL_MONTHLY_MICRO_USD`, `PILOT_MODEL_MAX_CALLS_DAY` and `PILOT_MODEL_MAX_CALLS_MONTH` deliberately. Monetary values are integer micro-USD. The supported model is fixed by the typed adapter; `PILOT_MODEL_ID` must match `model_api.MODEL_ID`. The retained compatibility layer accepts up to 100 calls/day, 300/month and 500000 micro-USD configured allocation in production. These application controls are not a provider billing hard limit.
 

@@ -1,0 +1,296 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-16T09:00:00+07:00",
+  "repetitions": 1,
+  "cases": [
+    {
+      "name": "all_history_pages",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "ช่วยสแกนประวัติชื่อที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 13
+        },
+        {
+          "text": "ขอหน้าถัดไป",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 3
+        },
+        {
+          "text": "กลับไปหน้าก่อน",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 13
+        }
+      ]
+    },
+    {
+      "name": "correction_then_permanent",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "ช่วย scan จัดหมวดชื่อเก่าที่ยังไม่มีหมวดทั้งหมดให้ตรวจ",
+          "expect": "review",
+          "total": 3,
+          "shown": 3,
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "ถูกหมด ยกเว้น Metro Rail Ticket ให้เป็น Food แทน",
+          "expect": "corrected",
+          "item": "Metro Rail Ticket",
+          "category": "Food",
+          "subcategory": ""
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "mapping_saved",
+          "names": [
+            "Metro Rail Ticket",
+            "Peanut Snack"
+          ],
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "partial_query_only",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "จัดหมวดย้อนหลังที่ยังไม่มีหมวดทั้งหมดให้ตรวจหน่อย",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "เอาเฉพาะ Peanut Snack นอกนั้นพักไว้ก่อน",
+          "expect": "selection",
+          "names": [
+            "Peanut Snack"
+          ]
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "expense": "8.00",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "partial_permanent",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "สแกนรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดให้ตรวจ",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "เลือกเฉพาะ Peanut Snack ให้จำ ที่เหลือยังไม่เอา",
+          "expect": "selection",
+          "names": [
+            "Peanut Snack"
+          ]
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "mapping_saved",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "stale_source",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "ตรวจชื่อย้อนหลังที่ยังไม่มีหมวดทั้งหมด เสนอหมวดให้หน่อย",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "mutate": "amount",
+          "expect": "stale",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "mixed_confirm_correction",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "สแกนจัดหมวดประวัติทั้งหมดที่ยังไม่มีหมวด",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง แต่ Metro Rail Ticket ขอเปลี่ยนเป็น Food ก่อน",
+          "expect": "corrected",
+          "item": "Metro Rail Ticket",
+          "category": "Food",
+          "subcategory": "",
+          "writes": 0
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "mapping_saved",
+          "names": [
+            "Metro Rail Ticket",
+            "Peanut Snack"
+          ],
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "natural_cancel",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "จัดหมวดชื่อที่ยังไม่มีหมวดให้ตรวจทั้งหมด",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "ไม่เอาแล้ว ยกเลิกชุดจัดหมวดนี้",
+          "expect": "cancelled",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "ambiguity_open",
+      "fixture": "ambiguous",
+      "turns": [
+        {
+          "text": "สแกนชื่อย้อนหลังที่ยังไม่มีหมวด เสนอให้ตรวจ",
+          "expect": "review",
+          "total": 1,
+          "shown": 1,
+          "ambiguous": [
+            "Mystery Token"
+          ]
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "no_mapping",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "incomplete_input",
+      "fixture": "invalid",
+      "turns": [
+        {
+          "text": "สแกนจัดหมวดประวัติทั้งหมดที่ยังไม่มีหมวดให้หน่อย",
+          "expect": "unavailable",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "ordinary_expense_query",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "รายจ่ายวันที่ 5 พ.ย. รวมกี่บาท",
+          "expect": "expense_summary",
+          "expense": "45.00",
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "saved_expense_edit",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "แก้รายจ่าย RailPass วันที่ 5 พ.ย. เป็น 35 บาท",
+          "expect": "saved_review",
+          "domain": "expense"
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "expense",
+          "expense_updates": 1,
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "saved_all_day_reschedule",
+      "fixture": "all_day",
+      "turns": [
+        {
+          "text": "เลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย. ทั้งวันเท่าเดิม",
+          "expect": "saved_review",
+          "domain": "calendar"
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "calendar",
+          "calendar_updates": 1,
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "new_expense",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "ซื้อกาแฟ 35 บาทวันนี้",
+          "expect": "new_expense_review"
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "new_expense_saved",
+          "expense_appends": 1,
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "new_calendar",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "เพิ่มนัดคุยแผนจำลองวันที่ 22 ต.ค. 2026 เวลา 9:00-10:00",
+          "expect": "new_calendar_review"
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "new_calendar_saved",
+          "calendar_creates": 1,
+          "writes": 0
+        }
+      ]
+    }
+  ]
+}

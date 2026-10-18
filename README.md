@@ -17,13 +17,15 @@ Development also includes [saved expense corrections and appointment reschedulin
 
 Optional [provisional category suggestions](docs/provisional-categories.md) separately show confirmed, proposed and ambiguous labels. Query-only inclusion and permanent mapping require different confirmations; proposed amounts never silently enter confirmed totals. Both suggestion and mapping flags default OFF.
 
+Optional [historical category review](docs/historical-categories.md) scans all unmapped names by default, with optional month/date scope and ten-name display pages over a complete input read. Owners can correct a batch, approve only some names or cancel, then separately choose a provisional summary or confirmed permanent mapping. Original transactions are preserved; the feature defaults OFF.
+
 ## How it works
 
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.
 - **Conversation continuity:** persist raw messages separately from compact state, keep recent context and verified rolling summaries, and preserve pending or uncertain effects across restarts.
 - **Optional reply wording:** when enabled and a call slot remains, a model phase composes concise natural Thai around structured facts. Query dates, amounts, counts and units stay grounded in the verified result. A bounded fallback returns the server's factual message if that phase fails or is slow.
 
-The production Calendar path creates events in one explicitly configured secondary calendar. It does not edit/delete saved events, invite guests, create recurring events or reminders, or interpret multi-day all-day ranges as a single date. Income and recorded-expense edits are unsupported. Conflict checks cover only the configured calendar. See [behavior and examples](docs/behavior.md).
+The baseline Calendar creation path uses one explicitly configured secondary calendar. It does not delete saved events, invite guests, create recurring events or reminders, or interpret multi-day all-day ranges as a single date. Income remains unsupported. Saved-record edits and rescheduling use the separate optional flags and reviewed workflows linked above. Conflict checks cover only the configured calendar. See [behavior and examples](docs/behavior.md).
 
 ## Run the local mock
 

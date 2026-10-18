@@ -226,6 +226,7 @@ class ProvisionalCategories:
         self.h.state.checkpoint();return result
     def resume(self,key):
         a=self.h.state.actions[key];m,p=a.metadata,a.payload
+        if m.get('historical_classification') and self is not self.h.historical_categories:return self.h.historical_categories.resume(key)
         if not m.get('provisional_mapping') or m.get('owner')!=self.h.settings.owner_id or m.get('workbook')!=self.h.sheets.target.spreadsheet_id or m.get('payload_hash')!=digest(p):return self.h._uncertain(key)
         if a.status=='completed':return deepcopy(a.result)
         if a.status in {'executing','uncertain'}:
@@ -250,6 +251,7 @@ def authorize_mapping(http,service,method,path,body,params):
         and c.history_enabled and s and s.holder and s.production_ready and s.owner_id==c.owner_id and s.workbook_id==c.spreadsheet_id):return False
     for key,a in s.actions.items():
         m,p=a.metadata,a.payload;f=m.get('request_fence')
+        if m.get('historical_classification') and not c.historical_categories_enabled:continue
         if (not key.startswith(c.owner_id+':mapping:') or a.kind!='save_proposed_mapping' or a.status!='executing' or not m.get('provisional_mapping')
             or m.get('owner')!=c.owner_id or m.get('workbook')!=c.spreadsheet_id or m.get('payload_hash')!=digest(p)
             or not f or f!={'body_hash':digest(body),'catalog_hash':p['catalog_hash']} or body!=mapping_body(c.sheet_target(),p['rows'])):continue

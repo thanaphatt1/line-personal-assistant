@@ -180,7 +180,7 @@ def no_save_correction(text):
     return match[1] if match and intent_guard(match[1]) is None else None
 
 class HistoryFirstAssistant(Assistant):
-    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False):
+    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False):
         if type(response_realization_enabled) is not bool:raise ValueError('Explicit response realization flag required')
         self.response_realization_enabled=response_realization_enabled
         if history_first_enabled is not True:raise ValueError('History-first prototype defaults off')
@@ -216,6 +216,9 @@ class HistoryFirstAssistant(Assistant):
         from .provisional_categories import ProvisionalCategories
         if provisional_categories_enabled and not raw_history_enabled:raise ValueError('Provisional categories require raw history')
         self.provisional_categories=ProvisionalCategories(self,enabled=provisional_categories_enabled,mapping_enabled=provisional_mapping_enabled,single_writer_reviewed=mapping_single_writer_reviewed)
+        from .historical_categories import HistoricalCategories
+        if historical_categories_enabled and not provisional_categories_enabled:raise ValueError('Historical categories require provisional/history feature')
+        self.historical_categories=HistoricalCategories(self,enabled=historical_categories_enabled,mapping_enabled=historical_categories_enabled and provisional_mapping_enabled,single_writer_reviewed=mapping_single_writer_reviewed)
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
@@ -1082,6 +1085,8 @@ class HistoryFirstAssistant(Assistant):
             args=json.loads(call['arguments']);name=call['name']
             from .saved_edits import NAMES
             if self.raw_history_enabled and name in NAMES:return self.saved_edits.tool(name,args)
+            from .historical_categories import NAMES as HISTORICAL_NAMES
+            if self.raw_history_enabled and name in HISTORICAL_NAMES:return self.historical_categories.tool(name,args)
             from .provisional_categories import NAMES as LABEL_NAMES
             if self.raw_history_enabled and name in LABEL_NAMES:return self.provisional_categories.tool(name,args)
             if self.raw_history_enabled and name in {'query_expenses','query_calendar'}:
@@ -1149,6 +1154,7 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('historical_categories'):return self.historical_categories.result(tool_output)
         if tool_output and tool_output.get('provisional_categories'):return self.provisional_categories.result(tool_output)
         if tool_output and tool_output.get('saved_record_edit'):return self.saved_edits.result(tool_output)
         if tool_output and tool_output.get('status')=='stored_query':
@@ -1267,6 +1273,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _resume(self,key):
         action=self.state.actions[key]
+        if action.metadata.get('historical_classification'):return self.historical_categories.resume(key)
         if action.metadata.get('provisional_mapping'):return self.provisional_categories.resume(key)
         if action.metadata.get('saved_record_edit'):return self.saved_edits.resume(key)
         if action.metadata.get('calendar_batch'):return self.calendar_flow.batches.resume(key)
@@ -1371,6 +1378,8 @@ class HistoryFirstAssistant(Assistant):
             if original and original[0]==event and isinstance(original[1],str):shown_text=original[1]
         self._current={'role':'user','source_ref':source_ref(event),'text':shown_text,'at':at.isoformat()}
         self.state.append('user',event,at,text=shown_text)
+        historical_control=self.historical_categories.control(text)
+        if historical_control is not None:return self._finish(event,at,historical_control)
         category_control=self.provisional_categories.control(text)
         if category_control is not None:return self._finish(event,at,category_control)
         saved_control=self.saved_edits.control(text)
@@ -1452,13 +1461,14 @@ class HistoryFirstAssistant(Assistant):
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     definitions_for_request+=self.saved_edits.definitions()
                     definitions_for_request+=self.provisional_categories.definitions()
+                    definitions_for_request+=self.historical_categories.definitions()
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
                     try:
                         request,self.visible,stats=raw.request(self.state,self._current['text'],at,event,
                             definitions_for_request,previous,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**self.saved_edits.context(),**self.provisional_categories.context()})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1502,6 +1512,10 @@ class HistoryFirstAssistant(Assistant):
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('historical_categories'):
+                    if step==0 and last.get('continue_model'):
+                        previous=(call,last);continue
+                    return self._finish(event,at,self._result(last))
                 if last.get('provisional_categories'):return self._finish(event,at,self._result(last))
                 if step==0 and last.get('category_proposals_available'):
                     proposal_context=deepcopy(last);proposal_context['scope']={k:v for k,v in proposal_context['scope'].items() if k not in {'workbook','calendar'}}

@@ -106,7 +106,22 @@ def request_instructions(definitions,*,calendar=False):
     if any(t['name'] in {'find_saved_records','check_saved_record_change'} for t in definitions):
         base=base.replace('No income, calendar, recorded-expense edits or external search.','No income, Calendar creation or external search; saved-record proposals only through dedicated tools.').replace('No guests, recurring appointments, reminders or saved-event edit/delete.','No guests, recurring appointments, reminders or deletion.').replace('No income, recorded-expense edits or external search.','No income or external search.')+SAVED_EDIT_INSTRUCTIONS
     if any(t['name']=='propose_expense_categories' for t in definitions):base+=PROVISIONAL_CATEGORY_INSTRUCTIONS
+    if any(t['name']=='scan_historical_categories' for t in definitions):base+=HISTORICAL_CATEGORY_INSTRUCTIONS
     return base
+
+HISTORICAL_CATEGORY_INSTRUCTIONS=(
+    ' Historical classification is a separate optional read/review workflow for ALREADY SAVED expenses. '
+    'For scanning/classifying old unmapped names, use scan_historical_categories, default all with null period fields when no date is stated. Never invent a date cap or scan only ten records. '
+    'An explicit month/date range uses the same literal owner date evidence as expense queries. The server reads the complete configured grid and shows ten grouped names per page with count/date range. '
+    'After scan or navigation, use the remaining model step to propose_historical_categories for every current group_ref, exact existing category pairs only. '
+    'A clear synthetic/literal meaning can support a proposal; uncertain meaning or alias collisions stay ambiguous. '
+    'Use review_historical_categories for natural corrections, all-correct-except, partial selection, next/previous/refresh/cancel. Changes always render a revised review, never write or confirm. '
+    'All-correct approval concerns ONLY displayed current-page groups, never unseen pages. Do not turn an owner correction or mixed confirmation+correction into a write. '
+    'Provisional use of this displayed batch never means permanent mapping. Only new explicit owner confirmation of the latest delivered review can persist selected clear names. '
+    'Permanent mappings affect that name across historical and future queries, including outside a selected date range, without modifying original transactions. '
+    'Ambiguous/deferred names and unselected groups remain open; do not assert they are all classified. Tools cannot approve or confirm. '
+    'Use historical_categories context, owned review_ref/group_ref and literal owner sources. No fabricated IDs, categories or mappings. '
+)
 
 PROVISIONAL_CATEGORY_INSTRUCTIONS=(
     ' Category proposals are a separate optional feature. When a verified query returns mapping_incomplete and category_proposals_available, use the remaining step to call propose_expense_categories with its provisional_query_ref. '
@@ -264,8 +279,9 @@ def record_metadata(row):
 def protected_rows(state,rows):
     protected={key(r) for r in rows[-2:]}
     pending=state.pending
-    if pending and (pending.kind.startswith('saved_record_') or pending.kind=='provisional_category_review'):
+    if pending and (pending.kind.startswith('saved_record_') or pending.kind in {'provisional_category_review','historical_category_review'}):
         refs=set(pending.payload.get('source_refs',pending.payload.get('basis',{}).get('args',{}).get('source_refs',[])))
+        refs.update(pending.payload.get('review_source_refs',[]))
         protected.update(key(r) for r in rows if r.get('source_ref') in refs or r['event']==pending.origin_event_id)
     for ref,draft in state.drafts.items():
         if draft['status']=='recorded':continue

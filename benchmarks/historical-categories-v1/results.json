@@ -1,0 +1,77 @@
+{
+  "scope": "synthetic development, not held-out accuracy",
+  "final_runtime_archive_sha256": "8eb3b9a665751e0e2591a3054b178d884f9acc90f8e9c494c1cc2fbdb198d4e6",
+  "first_Luna_runtime_archive_sha256": "30c467f3a7dc1da192f813381aa29342c66d0a5080835e1461bb37d737db0a04",
+  "offline_tests": 3080,
+  "new_historical_tests_included_in_full": 54,
+  "source_wheel_signed_startup": "passed with zero external connections",
+  "same_image_OFF_bridge": {
+    "separate_process_cases": 13,
+    "passed": 13,
+    "raw_originals_preserved": true,
+    "new_mutations": 0,
+    "actual_traffic_rollback_tested": false
+  },
+  "runs": [
+    {
+      "name": "initial_fresh_development",
+      "planned_scenarios": 14,
+      "planned_turns": 31,
+      "assessed_turns": 28,
+      "passed_assessed_turns": 28,
+      "paid_requests": 32,
+      "completed": false,
+      "failure": "Mock provider did not translate the configured expense append tab ID; stopped before completing new-expense confirmation and Calendar regression. Not reported as a full pass."
+    },
+    {
+      "name": "corrected_fixture_completion",
+      "scenarios": 14,
+      "turns": 31,
+      "passed": 31,
+      "recorded_Luna_decisions_replayed": 32,
+      "new_paid_requests": 1,
+      "runtime_unchanged": true
+    },
+    {
+      "name": "final_artifact_controller_replay",
+      "scenarios": 14,
+      "turns": 31,
+      "passed": 31,
+      "recorded_Luna_decisions_replayed": 33,
+      "new_paid_requests": 0,
+      "model_contract_invariance": "Only server control/resume changed to revalidate a prepared confirmed Action after restart; model instructions/tools/context/proposal/rendering unchanged. Replay is not fresh inference."
+    },
+    {
+      "name": "fresh_final_artifact_period_cases",
+      "scenarios": 2,
+      "turns": 3,
+      "passed": 3,
+      "new_paid_requests": 4,
+      "coverage": [
+        "explicit Thai month and Buddhist year",
+        "explicit old historical date range",
+        "query-only consent"
+      ]
+    }
+  ],
+  "paid_development_total": {
+    "unique_received_requests": 37,
+    "uncertain_requests": 0,
+    "estimated_usage_USD": "0.011249650",
+    "all_input_cache_write_ceiling_USD": "0.041598625",
+    "unknown_holds_USD": "0",
+    "automatic_retries": 0,
+    "invoice_verified": false,
+    "failed_and_incomplete_runs_included": true
+  },
+  "limits": [
+    "No general or held-out classification-accuracy claim; semantic suggestions need owner review",
+    "No actual owner history/model fixtures, real business effects or live write-permission/traffic-rollback validation",
+    "All-unmapped scope is the configured complete grid, not another workbook or an unbounded provider scan",
+    "External Sheets writers must not overlap bot processing; no atomic Sheets CAS",
+    "Permanent mapping changes future and historical classification; query-only consent does not persist"
+  ],
+  "frozen_v1_files_changed": 0,
+  "human_style_ratings": "not performed",
+  "raw_responses_usage_approvals_and_credentials": "private; not published"
+}

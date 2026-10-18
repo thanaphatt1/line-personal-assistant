@@ -269,6 +269,48 @@ class SheetsApi:
         total = sum((Decimal(row['amount']) for row in self.saved_entries(start, end)), Decimal('0'))
         return {"income": None, "income_supported": False, "expense": f"{total:.2f}"}
 
+    def classification_entries(self):
+        """Read every configured expense input, including legacy rows, once.
+
+        Display pagination never limits the source read. Existing IDs participate
+        in the snapshot fingerprint; this path cannot assign or change IDs.
+        """
+        import re
+        grid = self.metadata()[self.target.expense_tab]['properties']['gridProperties']
+        metadata = self.target.transaction_id_metadata
+        width = metadata.index if metadata else 4
+        if (type(grid.get('rowCount')) is not int or not 2 <= grid['rowCount'] <= self.target.max_rows
+                or type(grid.get('columnCount')) is not int or grid['columnCount'] < width):
+            raise NotReady('Complete classification read exceeds configured grid')
+        column = metadata.column if metadata else 'D'
+        rows = self.values(self.target.expense_tab, f'A1:{column}{grid["rowCount"]}', formulas=True)
+        if (not rows or rows[0][:4] != ['Date', 'List', 'Cost', 'Remark'] or len(rows) > grid['rowCount']
+                or metadata and (len(rows[0]) < width or rows[0][width-1] != metadata.header)):
+            raise NotReady('Classification input/ID header drift')
+        entries = []; seen = set()
+        for raw in rows[1:]:
+            if not any(v not in ('', None) for v in raw):continue
+            row = normalized_row(raw, width)
+            if (type(row[0]) not in {int, float} or type(row[2]) not in {int, float}
+                    or not isinstance(row[1], str) or not 1 <= len(row[1]) <= 200
+                    or not isinstance(row[3], str) or len(row[3]) > 500
+                    or any(isinstance(v, str) and v.startswith('=') for v in row[:4])):
+                raise NotReady('Classification inputs/formulas need manual review')
+            try:
+                if int(row[0]) != row[0]:raise ValueError()
+                day = serial_to_date(int(row[0])); amount = Decimal(str(row[2]))
+                if not amount.is_finite() or amount <= 0 or amount.quantize(Decimal('.01')) != amount:raise ValueError()
+            except (ValueError, OverflowError, InvalidOperation):
+                raise NotReady('Classification date/amount cannot be decoded') from None
+            identifier = row[width-1] if metadata else ''
+            if identifier and (not isinstance(identifier, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', identifier)):
+                raise NotReady('Invalid existing transaction ID')
+            if identifier and identifier in seen:raise Conflict('Duplicate existing transaction ID')
+            if identifier:seen.add(identifier)
+            entries.append({'date':day.isoformat(), 'item':row[1], 'amount':f'{amount:.2f}',
+                            'note':row[3], 'transaction_id':identifier or None})
+        return entries
+
     def saved_entries(self, start, end):
         """Complete bounded read of the existing expense inputs; no append path."""
         grid = self.metadata()[self.target.expense_tab]["properties"]["gridProperties"]

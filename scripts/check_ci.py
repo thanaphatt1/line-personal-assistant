@@ -67,6 +67,7 @@ for enabled,saved in ((False,False),(True,False),(True,True)):
         'PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY': 'reviewed_single_writer' if saved else 'off',
         'PILOT_PROVISIONAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
         'PILOT_PROVISIONAL_MAPPING_ENABLED': 'true' if saved else 'false',
+        'PILOT_HISTORICAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
     }, secret_loader=lambda name: SecretStr('synthetic-' + name))
     assert result['status'] == 'passed' and result['provider_requests'] == 0
 

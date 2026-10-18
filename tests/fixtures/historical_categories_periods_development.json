@@ -1,0 +1,47 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-16T09:00:00+07:00",
+  "repetitions": 1,
+  "cases": [
+    {
+      "name": "explicit_month_BE_year",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "ช่วยสแกนจัดหมวดรายจ่ายที่ยังไม่มีหมวด เฉพาะเดือนพฤศจิกายน 2569 ให้ตรวจทีละหน้า",
+          "expect": "review",
+          "total": 22,
+          "shown": 10,
+          "remaining": 12,
+          "start": "2026-11-01",
+          "end": "2026-11-30"
+        }
+      ]
+    },
+    {
+      "name": "explicit_historical_range",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "สแกนจัดหมวดชื่อที่ยังไม่มีหมวด เฉพาะช่วง 1 ถึง 30 พ.ย. 2024 ให้ตรวจ",
+          "expect": "review",
+          "total": 1,
+          "shown": 1,
+          "remaining": 0,
+          "start": "2024-11-01",
+          "end": "2024-11-30"
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "expense": "1.00",
+          "names": [
+            "Metro Rail Ticket 00"
+          ],
+          "writes": 0
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         return self.legacy._route(text,event,stamp,at)
     def _route(self,text,event,stamp,at):
         self._legacy_turn=False
+        if self.historical_categories.has_pending() or self.historical_categories.is_control(text):return super()._route(text,event,stamp,at)
         if self.provisional_categories.has_pending() or self.provisional_categories.is_control(text):return super()._route(text,event,stamp,at)
         if self.saved_edits.has_pending() or self.saved_edits.is_control(text):return super()._route(text,event,stamp,at)
         if self.calendar_flow.batches.is_control(text) or self.calendar_flow.enabled and self.calendar_flow.batches.refresh_requested(text):

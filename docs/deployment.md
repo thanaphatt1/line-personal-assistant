@@ -15,7 +15,7 @@ The application is disabled by default. Do not enable a real transport using syn
 
 Bind the reviewed source checksum to an immutable source generation and build one immutable image. Verify successful input checksum checks, source provenance, pinned base/builder and resulting image digest. Resolve the placeholder image path and use your own explicitly chosen build service account; do not commit a private deployment manifest.
 
-Create an OFF bridge and ON candidate from the same new image. Both retain history/state. The bridge disables Calendar and response realization; the candidate enables only approved features. Keep the prior runtime at 100% until both zero-traffic revisions pass:
+Create an OFF bridge and ON candidate from the same new image. Both retain history/state. Disable all newly approved mutation/proposal flags and response realization in the bridge. When saved Calendar actions can exist, retain ordinary Calendar access for read-only reconciliation while disabling rescheduling. Disable historical/provisional proposal and mapping flags as applicable. The candidate enables only approved features. Keep the prior runtime at 100% until both zero-traffic revisions pass:
 
 - Ready, exact image/configuration and reviewed CPU/memory/concurrency/scaling bounds;
 - signed startup with zero provider calls;
