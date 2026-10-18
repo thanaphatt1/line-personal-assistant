@@ -28,6 +28,9 @@ Synthetic targets in code exist for offline tests. A real transport refuses thos
 
 The required tabs are `All Expenses` and `Database`. Expense input columns A–D are date, item, cost and remark. Column E is a hidden transaction-ID metadata column used to reconcile uncertain writes. The Database catalog uses A–C for item/category/subcategory. Review the actual grid size, headers, hidden ID column, protections and allowed input cells before asserting the schema flag. Formula columns are not overwritten. Do not point this application at an unreviewed personal workbook.
 
+See the [database and field guide](database-schema.md) for exact headers, types,
+required versus generated fields, catalog relationships and Firestore storage.
+
 ## Feature and usage flags
 
 | Key | Default | Requirement |
