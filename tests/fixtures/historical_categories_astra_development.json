@@ -75,7 +75,7 @@
           "writes": 0
         },
         {
-          "text": "เพิ่มรายจ่าย RailPass 17 บาท วันที่ 6 พ.ย.",
+          "text": "เพิ่มรายจ่าย RailPass 17 บาท วันนี้",
           "expect": "new_expense_review"
         },
         {

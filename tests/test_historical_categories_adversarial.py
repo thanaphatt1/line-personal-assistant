@@ -1,5 +1,6 @@
 """Independent signed-webhook regressions; synthetic providers and decisions only."""
 from copy import deepcopy
+from datetime import timedelta
 import json
 import socket
 
@@ -8,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from line_assistant.persistence import result_from
+from line_assistant.pilot_http import rpc_budget
 from test_calendar_all_day_v15 import proposal as calendar_proposal
 from test_calendar_mvp import response
 from test_history_first import data as expense_entry
@@ -234,6 +236,284 @@ def test_proposal_tool_cannot_reset_an_explicit_partial_selection():
     result, _ = turn(api, 'ขอดูข้อเสนอเดิมอีกที', propose)
     assert api.snapshot()['pending'] == before, result
     assert api.mapping_posts == 0
+
+
+def test_show_same_review_retains_subset_and_mints_a_fresh_review():
+    api = HistoricalHosted()
+    api.many(3)
+    preview(api)
+    selected = 'Unmapped transit sample 02'
+    turn(api, 'เลือกเฉพาะ ' + selected, review(selection='only', selected=[selected]))
+    before = deepcopy(api.snapshot()['pending']['payload'])
+    calls = len(api.model_bodies)
+    result, _ = turn(api, 'ขอดูร่างเดิมโดยคงการเลือกไว้', review(selection='keep'))
+    after = api.snapshot()['pending']['payload']
+    assert result.status == 'preview' and len(api.model_bodies) == calls + 1
+    assert after['groups'] == before['groups']
+    assert after['version'] == before['version'] + 1 and after['nonce'] != before['nonce']
+    result, _ = turn(api, command(api, mode='query'))
+    assert result.data['included_names'] == [selected] and api.mapping_posts == 0
+
+
+@pytest.mark.parametrize('obstacle', ['delayed_cancel', 'undelivered'])
+def test_redisplay_after_lost_focus_requires_fresh_delivered_consent(obstacle):
+    api = HistoricalHosted()
+    preview(api)
+    delayed = api.event('ยกเลิก') if obstacle == 'delayed_cancel' else None
+    selected = 'Unknown Metro Ticket'
+    api.reject_reply = obstacle == 'undelivered'
+    turn(api, 'เลือกเฉพาะ ' + selected, review(selection='only', selected=[selected]))
+    api.reject_reply = False
+    before = deepcopy(api.snapshot()['pending']['payload'])
+    if delayed:
+        assert deliver(api, delayed).status == 'stale'
+    result, _ = turn(api, command(api, mode='query'))
+    assert result.status == 'stale' and api.snapshot()['pending']['payload'] == before
+    result, _ = turn(api, 'ขอดูร่างเดิมโดยคงการเลือกไว้', review(selection='keep'))
+    after = api.snapshot()['pending']['payload']
+    assert result.status == 'preview' and after['groups'] == before['groups']
+    assert after['version'] == before['version'] + 1 and after['nonce'] != before['nonce']
+    result, _ = turn(api, command(api, mode='query'))
+    assert result.status == 'summary' and result.data['included_names'] == [selected]
+    assert api.mapping_posts == 0
+
+
+def test_redisplay_after_lost_focus_still_checks_source_freshness():
+    api = HistoricalHosted()
+    preview(api)
+    before = deepcopy(api.snapshot()['pending'])
+    api.google.cells[('All Expenses', 3, 3)] = 999
+    result, _ = turn(api, 'ขอดูร่างเดิม', review(selection='keep'))
+    assert result.status != 'preview' and api.snapshot()['pending'] == before
+    assert api.mapping_posts == 0
+
+
+@pytest.mark.parametrize('mode', ['query', 'permanent'])
+def test_identical_only_subset_redisplay_after_stale_reply_requires_fresh_consent(mode):
+    api = HistoricalHosted()
+    api.many(3)
+    preview(api)
+    delayed = api.event('ยกเลิก')
+    selected = 'Unmapped transit sample 01'
+    turn(api, 'เลือกเฉพาะ ' + selected, review(selection='only', selected=[selected]))
+    before = deepcopy(api.snapshot()['pending']['payload'])
+    assert deliver(api, delayed).status == 'stale'
+    result, _ = turn(api, 'ขอดูร่างเดิม คงเลือกเฉพาะ ' + selected,
+                     review(selection='only', selected=[selected]))
+    after = api.snapshot()['pending']['payload']
+    assert result.status == 'preview'
+    assert after['groups'] == before['groups'] and after['selection'] == before['selection'] == 'only'
+    assert after['version'] == before['version'] + 1 and after['nonce'] != before['nonce']
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+    result, _ = turn(api, command(api, mode=mode))
+    if mode == 'query':
+        assert result.status == 'summary' and result.data['included_names'] == [selected]
+        assert api.mapping_posts == 0
+    else:
+        assert result.status == 'mapping_saved'
+        assert [row['item'] for row in result.data['mapping_rows']] == [selected]
+        assert api.mapping_posts == 1
+
+
+@pytest.mark.parametrize('subset', ['replacement', 'expanded', 'empty'])
+def test_changed_only_subset_cannot_use_redisplay_exception_after_stale_reply(subset):
+    api = HistoricalHosted()
+    api.many(3)
+    preview(api)
+    delayed = api.event('ยกเลิก')
+    selected = 'Unmapped transit sample 01'
+    other = 'Unmapped transit sample 02'
+    turn(api, 'เลือกเฉพาะ ' + selected, review(selection='only', selected=[selected]))
+    assert deliver(api, delayed).status == 'stale'
+    before = deepcopy(api.snapshot()['pending'])
+    wanted = [other] if subset == 'replacement' else [selected, other] if subset == 'expanded' else []
+    result, _ = turn(api, 'ขอเลือกชุดใหม่', review(selection='only', selected=wanted))
+    assert result.data['tool_result']['status'] == 'historical_unavailable'
+    assert api.snapshot()['pending'] == before
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+@pytest.mark.parametrize('operation', ['change', 'only', 'all_clear', 'next', 'previous', 'cancel', 'nonempty_selected_refs'])
+def test_redisplay_exception_does_not_allow_mutations_after_intervening_reply(operation):
+    api = HistoricalHosted()
+    api.many(23)
+    preview(api)
+    turn(api, 'หน้าถัดไป', review('next'), propose)
+    selected = 'Unmapped transit sample 12'
+    turn(api, 'เลือกเฉพาะ ' + selected, review(selection='only', selected=[selected]))
+    turn(api, 'ขอบคุณ', response(text='ครับ'))
+    before = deepcopy(api.snapshot()['pending'])
+    if operation == 'change':
+        answer = review(changes=[('Unmapped transit sample 10', 'Food', '')])
+    elif operation == 'only':
+        answer = review(selection='only', selected=['Unmapped transit sample 11'])
+    elif operation == 'all_clear':
+        answer = review(selection='all_clear')
+    elif operation == 'nonempty_selected_refs':
+        answer = review(selection='keep', selected=[selected])
+    else:
+        answer = review(operation)
+    result, _ = turn(api, 'Unmapped transit sample 10 เป็น Food และขอเปลี่ยนชุด', answer)
+    assert result.data['tool_result']['status'] == 'historical_unavailable'
+    assert api.snapshot()['pending'] == before
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+@pytest.mark.parametrize('invalidity', ['catalog', 'expired', 'owner', 'workbook', 'seal'])
+def test_redisplay_exception_cannot_renew_invalid_pending_review(invalidity):
+    api = HistoricalHosted()
+    preview(api)
+    ref = api.snapshot()['pending']['payload']['ref']
+    turn(api, 'ขอบคุณ', response(text='ครับ'))
+    if invalidity == 'catalog':
+        api.google.cells[('Database', 3, 3)] = 'Changed Rail'
+    elif invalidity == 'expired':
+        api.now += timedelta(minutes=31)
+    else:
+        app = api.app()
+        with rpc_budget(40), app.state.assistant.state.session():
+            app.state.assistant.state.pending.payload[invalidity] = 'foreign-or-modified'
+            app.state.assistant.state.checkpoint()
+        app.state.pilot_http.close()
+    before = deepcopy(api.snapshot()['pending'])
+
+    def redisplay(body):
+        c = context(body)
+        return response('review_historical_categories', {
+            'review_ref': ref, 'operation': 'revise', 'changes': [],
+            'selection': 'keep', 'selected_refs': [],
+            'source_refs': [c['current_source_ref']],
+        })
+
+    result, _ = turn(api, 'ขอดูร่างเดิม', redisplay)
+    assert result.data['tool_result']['status'] == 'historical_unavailable'
+    assert api.snapshot()['pending'] == (None if invalidity == 'expired' else before)
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+@pytest.mark.parametrize('mode', ['query', 'permanent'])
+@pytest.mark.parametrize('confirmation', ['old_nonce', 'new_nonce', 'plain'])
+def test_undelivered_redisplay_authorizes_neither_old_nor_new_confirmation(mode, confirmation):
+    api = HistoricalHosted()
+    preview(api)
+    old = command(api, mode=mode, explicit=True)
+    turn(api, 'ขอบคุณ', response(text='ครับ'))
+    api.reject_reply = True
+    result, _ = turn(api, 'ขอดูร่างเดิม', review(selection='keep'))
+    assert result.status == 'preview'
+    api.reject_reply = False
+    new = command(api, mode=mode, explicit=True)
+    assert new != old
+    before = deepcopy(api.snapshot()['pending'])
+    text = old if confirmation == 'old_nonce' else new if confirmation == 'new_nonce' else command(api, mode=mode)
+    result, _ = turn(api, text)
+    assert result.status == 'stale'
+    assert api.snapshot()['pending'] == before
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+@pytest.mark.parametrize('older_by_ms', [0, 1])
+def test_redisplay_exception_rejects_tied_or_older_distinct_events(older_by_ms):
+    api = HistoricalHosted()
+    preview(api)
+    _, selected_event = turn(api, 'เลือกเฉพาะ Unknown Metro Ticket',
+                             review(selection='only', selected=['Unknown Metro Ticket']))
+    turn(api, 'ขอบคุณ', response(text='ครับ'))
+    before = deepcopy(api.snapshot()['pending'])
+    event = api.event('ขอดูร่างเดิม')
+    event['timestamp'] = selected_event['timestamp'] - older_by_ms
+    result = deliver(api, event, review(selection='keep'))
+    assert result.data['tool_result']['status'] == 'historical_unavailable'
+    assert api.snapshot()['pending'] == before
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+def test_historical_tool_source_choices_are_exact_owned_refs_including_current():
+    api = HistoricalHosted()
+    preview(api)
+    turn(api, 'เลือกเฉพาะ Unknown Metro Ticket',
+         review(selection='only', selected=['Unknown Metro Ticket']))
+    for body in api.model_bodies:
+        c = context(body)
+        owned = {c['current_source_ref']} | {
+            row['source_ref'] for row in c['history'] if row['role'] == 'user'
+        }
+        for tool in body['tools']:
+            if tool['name'] in {'scan_historical_categories', 'review_historical_categories'}:
+                allowed = tool['parameters']['properties']['source_refs']['items']['enum']
+                assert c['current_source_ref'] in allowed
+                assert set(allowed) <= owned
+                assert c['current_source_ref'][:-1] not in allowed
+
+
+def test_historical_schema_tracks_exact_page_sizes_and_excludes_other_page_refs():
+    api = HistoricalHosted()
+    api.many(23)
+    result, _ = preview(api)
+    pages = [{g['group_ref'] for g in result.data['tool_result']['groups']}]
+    for _ in range(2):
+        result, _ = turn(api, 'หน้าถัดไป', review('next'), propose)
+        assert result.status == 'preview'
+        pages.append({g['group_ref'] for g in result.data['tool_result']['groups']})
+    assert [len(page) for page in pages] == [10, 10, 3]
+    assert len(set.union(*pages)) == 23
+    all_refs = set.union(*pages)
+    checked_counts = []
+    for body in api.model_bodies:
+        h = context(body)['historical_categories']
+        if not h.get('groups'):
+            continue
+        current = {g['group_ref'] for g in h['groups']}
+        tools = {tool['name']: tool['parameters']['properties'] for tool in body['tools']}
+        proposal = tools['propose_historical_categories']
+        revision = tools['review_historical_categories']
+        assert proposal['proposals']['minItems'] == proposal['proposals']['maxItems'] == len(current)
+        assert proposal['review_ref']['enum'] == revision['review_ref']['enum'] == [h['review_ref']]
+        choices = [proposal['proposals']['items']['properties']['group_ref'],
+                   revision['changes']['items']['properties']['group_ref'], revision['selected_refs']['items']]
+        for choice in choices:
+            assert set(choice['enum']) == current
+            assert not set(choice['enum']) & (all_refs - current)
+            assert 'hg_foreign' not in choice['enum']
+        checked_counts.append(len(current))
+    assert 10 in checked_counts and 3 in checked_counts
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+def test_exact_proposal_array_length_does_not_replace_server_unique_coverage_check():
+    api = HistoricalHosted()
+    api.many(10)
+
+    def duplicate(body):
+        args = json.loads(propose(body)['output'][0]['arguments'])
+        args['proposals'][-1] = deepcopy(args['proposals'][0])
+        assert len(args['proposals']) == 10
+        return response('propose_historical_categories', args)
+
+    result, _ = turn(api, 'จัดหมวดย้อนหลังทั้งหมด', scan, duplicate)
+    assert result.data['tool_result']['status'] == 'historical_unavailable'
+    assert api.snapshot()['pending']['payload']['stage'] == 'unclassified'
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
+
+
+def test_review_ref_schema_uses_delivered_continuation_after_query_only_consent():
+    api = HistoricalHosted()
+    api.many(13)
+    preview(api)
+    old_ref = api.snapshot()['pending']['payload']['ref']
+    result, _ = turn(api, command(api, mode='query'))
+    continuation = result.data['historical_continuation']['ref']
+    assert api.snapshot()['pending'] is None
+    result, _ = turn(api, 'หน้าถัดไป', review('next'), propose)
+    assert result.status == 'preview' and result.data['tool_result']['shown'] == 3
+    navigation = api.model_bodies[-2]
+    tool = next(t for t in navigation['tools'] if t['name'] == 'review_historical_categories')
+    assert tool['parameters']['properties']['review_ref']['enum'] == [continuation]
+    proposal = api.model_bodies[-1]
+    tool = next(t for t in proposal['tools'] if t['name'] == 'propose_historical_categories')
+    assert tool['parameters']['properties']['review_ref']['enum'] == [context(proposal)['historical_categories']['review_ref']]
+    assert context(proposal)['historical_categories']['review_ref'] != old_ref
+    assert api.mapping_posts == api.google.sheet_writes == api.calendar.posts == 0
 
 
 def test_correcting_an_unselected_name_with_keep_selection_does_not_add_it_back():

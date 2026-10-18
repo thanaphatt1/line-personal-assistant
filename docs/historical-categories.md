@@ -41,6 +41,12 @@ Delayed or equal-timestamp scan, refresh, revision and cancellation requests can
 replace a newer review. Repeating the initial proposal tool cannot reset a reviewed
 selection. Correcting an excluded name while keeping the selection leaves that
 name excluded; adding it requires a separate selection change.
+Showing the unchanged review again preserves its labels and selected subset,
+including after a stale-control response. It creates a new version and nonce;
+confirmation still requires that fresh review to be delivered successfully.
+The model receives exact owned source/page references and the current page's
+required proposal count. The server independently checks references, uniqueness
+and completeness before accepting a proposal.
 
 “All correct” concerns only clear entries on the **currently displayed page**.
 Ambiguous names remain open. Possible aliases, spacing collisions and an existing
@@ -121,7 +127,7 @@ real business write or traffic rollback.
 
 ## Adversarial review regressions
 
-An independent Astra review added 37 deterministic signed-webhook cases in
+An independent Astra review and follow-up inference regressions cover 70 deterministic signed-webhook cases in
 `tests/test_historical_categories_adversarial.py`. The initial 23-case baseline
 had eight failures across five issues: confirmation routing, delayed review
 mutations, repeated proposals resetting selections, corrections reselecting an
@@ -130,8 +136,25 @@ Unicode cases extended the last issue. All are fixed and covered by regressions.
 
 The suite also checks stale/cross-page consent, failed delivery, duplicate events,
 partial observed mapping outcomes, feature-OFF reconciliation and competing
-Calendar/expense drafts. It does not execute actual concurrent lease holders or
-live provider writes. The synthetic 21-turn corpus
-`tests/fixtures/historical_categories_astra_development.json` is prepared for a
-fresh model run; preparation alone is not evidence that Luna passed it. Prior
-fresh results belong to their recorded source archives.
+Calendar/expense drafts, redisplay after lost focus, exact page schemas and failed
+redisplay delivery. It does not execute actual concurrent lease holders or live
+provider writes.
+
+Fresh Luna development validation on runtime archive
+`dbbc121f712b676040617f304762e0df475df24a7924bbed3a501bd4cb4b0a21`
+passed all 29 turns in five synthetic conversations using 30 received calls,
+without replay or automatic retries. The 21-turn main corpus covers pagination,
+excluded-label corrections, partial consent, new expense/Calendar confirmation,
+totals, saved edits/rescheduling and cancellation. The eight-turn edge corpus
+covers delayed cancellation, unchanged redisplay and oversized Unicode names.
+The corpora are `historical_categories_astra_development.json` and
+`historical_categories_astra_edges_development.json` under `tests/fixtures/`.
+
+Earlier failed development runs are retained: a future-date fixture was corrected;
+invented source references and incomplete page proposals prompted schema bounds;
+redisplay after an intervening stale reply needed a runtime correction. One local
+batch guard stopped a later request before it was sent. The follow-up corpus
+retains the intermediate scenarios. These are one-repetition development checks
+with synthetic providers and predefined oracles, not held-out accuracy evidence
+or a live LINE/Google delivery test. Earlier results belong to their recorded
+archives; publishing this source does not deploy it.

@@ -1,0 +1,184 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-16T09:00:00+07:00",
+  "repetitions": 1,
+  "scope": "Fresh rerun of the affected full mixed conversation after correcting a future-date test fixture; plus delayed controls/repeated review and UTF-16 oversized subset review. Failed original retained.",
+  "cases": [
+    {
+      "name": "astra_waiting_history_expense_calendar",
+      "fixture": "all_day",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดให้ตรวจ",
+          "expect": "review",
+          "total": 3,
+          "shown": 3,
+          "writes": 0
+        },
+        {
+          "text": "เพิ่มรายจ่าย RailPass 17 บาท วันนี้",
+          "expect": "new_expense_review"
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "new_expense_saved",
+          "expense_appends": 1
+        },
+        {
+          "text": "เพิ่มนัดตรวจระบบวันที่ 12 พ.ย. 2026 ทั้งวัน",
+          "expect": "new_calendar_review",
+          "expense_appends": 1
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "new_calendar_saved",
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "กลับมาตรวจจัดหมวดย้อนหลังใหม่ทั้งหมด",
+          "expect": "review",
+          "total": 3,
+          "shown": 3,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "เลือกเฉพาะ Peanut Snack ที่เหลือพักไว้ก่อน",
+          "expect": "selection",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 0,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "mapping_saved",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "รายจ่ายทั้งหมดวันที่ 5 พ.ย. รวมกี่บาท",
+          "expect": "expense_summary",
+          "expense": "45.00",
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "แก้รายจ่าย RailPass วันที่ 5 พ.ย. เป็น 35 บาท",
+          "expect": "saved_review",
+          "domain": "expense",
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "expense",
+          "expense_updates": 1,
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "เลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย. ทั้งวันเท่าเดิม",
+          "expect": "saved_review",
+          "domain": "calendar",
+          "expense_updates": 1,
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "calendar",
+          "expense_updates": 1,
+          "calendar_updates": 1,
+          "writes": 1,
+          "expense_appends": 1,
+          "calendar_creates": 1
+        }
+      ]
+    },
+    {
+      "name": "astra_delayed_cancel_repeat_review",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "capture_delayed_cancel": true
+        },
+        {
+          "text": "เลือกเฉพาะ Metro Rail Ticket 01 ที่เหลือพักไว้",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 01"
+          ]
+        },
+        {
+          "text": "ยกเลิก",
+          "deliver_delayed_cancel": true,
+          "expect": "stale",
+          "pending_unchanged": true
+        },
+        {
+          "text": "ขอดูร่างเดิมอีกครั้งโดยคงการเลือกเดิมไว้ เลือกเฉพาะ Metro Rail Ticket 01 เท่านั้น",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 01"
+          ]
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "names": [
+            "Metro Rail Ticket 01"
+          ],
+          "expense": "2.00"
+        }
+      ]
+    },
+    {
+      "name": "astra_long_unicode_subset",
+      "fixture": "long_names",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 10,
+          "shown": 10,
+          "confirmation_available": false
+        },
+        {
+          "text": "เลือกเฉพาะชื่อที่ขึ้นต้น Metro Rail Ticket 00 เป็น Transportation/Rail ชื่ออื่นพักไว้ทั้งหมด",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 00 🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆"
+          ],
+          "confirmation_available": true
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "names": [
+            "Metro Rail Ticket 00 🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆"
+          ],
+          "expense": "1.00"
+        }
+      ]
+    }
+  ]
+}

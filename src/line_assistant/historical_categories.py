@@ -63,14 +63,29 @@ class HistoricalCategories(ProvisionalCategories):
         check={'type':'function','name':'check_historical_mapping','strict':True,'description':'Read-only positive reconciliation of an already confirmed historical mapping. Never retries writes.','parameters':object_schema({})}
         if not self.enabled:return [check] if status else []
         pair=object_schema({'category':{'type':'string'},'subcategory':{'type':'string'}})
-        label={'group_ref':{'type':'string'},'status':{'type':'string','enum':['proposed','ambiguous','deferred']},'category':{'type':['string','null']},'subcategory':{'type':['string','null']},'candidates':{'type':'array','maxItems':3,'items':pair}}
+        source_item={'type':'string'}
+        current=getattr(self.h,'_current',None)
+        if current and current.get('source_ref'):
+            from .raw_history import speakers
+            owned=[r['source_ref'] for r in speakers(self.h.state,self.h.clock(),production=getattr(self.h,'production',False)) if r['role']=='user']
+            source_item['enum']=list(dict.fromkeys([current['source_ref'],*owned]))
+        sources={'type':'array','minItems':1,'maxItems':16,'items':source_item,'description':'Include the exact current_source_ref. Copy whole owned source references; do not abbreviate or invent them.'}
+        review_ref={'type':'string'};group_ref={'type':'string'};proposal_min=1;proposal_max=PAGE_SIZE
+        try:
+            v=self.pending().payload
+            review_ref['enum']=[v['ref']];group_ref['enum']=[g['group_ref'] for g in v['groups']]
+            proposal_min=proposal_max=len(v['groups'])
+        except ValueError:
+            _,shown=self.h._presented_result()
+            if shown and shown.data.get('historical_continuation'):review_ref['enum']=[shown.data['historical_continuation']['ref']]
+        label={'group_ref':group_ref,'status':{'type':'string','enum':['proposed','ambiguous','deferred']},'category':{'type':['string','null']},'subcategory':{'type':['string','null']},'candidates':{'type':'array','maxItems':3,'items':pair}}
         return [
             {'type':'function','name':'scan_historical_categories','strict':True,'description':'Scan ALREADY SAVED history for ALL names without confirmed categories, grouped with counts/date ranges. DEFAULT mode=all with null date fields when owner gives no period. Reads complete configured grid;10names is display pagination, not a data cap. Optional calendar_month or explicit range<=367dates uses literal owner period/source evidence. Never changes transactions or mappings. Server returns a current ten-name page; use remaining step to propose labels for that page.',
-             'parameters':object_schema({'mode':{'type':'string','enum':['all','calendar_month','range']},'start_date':{'type':['string','null']},'end_date':{'type':['string','null']},'period_text':{'type':['string','null']},'relative_offset':{'type':['integer','null']},'source_refs':{'type':'array','minItems':1,'maxItems':16,'items':{'type':'string'}}})},
+             'parameters':object_schema({'mode':{'type':'string','enum':['all','calendar_month','range']},'start_date':{'type':['string','null']},'end_date':{'type':['string','null']},'period_text':{'type':['string','null']},'relative_offset':{'type':['integer','null']},'source_refs':sources})},
             {'type':'function','name':'propose_historical_categories','strict':True,'description':'Propose existing canonical category/subcategory pairs for EVERY group on the current historical page (max10), using owned group_ref/review_ref from context. Missing mapping alone need not be semantic ambiguity. Clear names: proposed with empty candidates. Unclear meaning/possible alias: ambiguous with null category/subcategory and up to3existing pairs. Never approve, confirm, persist, invent categories or classify unseen pages. Server renders the review.',
-             'parameters':object_schema({'review_ref':{'type':'string'},'proposals':{'type':'array','minItems':1,'maxItems':10,'items':object_schema(label)}})},
-            {'type':'function','name':'review_historical_categories','strict':True,'description':'Read-only historical review/navigation/correction. Interpret natural owner revisions such as all correct except X should be Y: operation=revise, changes for X with literal source_text, selection=all_clear. For only X/Y: selection=only, selected_refs from CURRENT displayed page. Changes use existing canonical pairs; unresolved/deferred remain open. Every revision shows a fresh version/nonce before separate permanent or provisional confirmation. next/previous/refresh read pages; never writes. After a completed page use the latest continuation review_ref and next. cancel cancels only the uncommitted review. For navigation use changes=[], selection=keep, selected_refs=[].',
-             'parameters':object_schema({'review_ref':{'type':'string'},'operation':{'type':'string','enum':['revise','next','previous','refresh','cancel']},'changes':{'type':'array','maxItems':10,'items':object_schema({**label,'source_text':{'type':'string'}})},'selection':{'type':'string','enum':['keep','all_clear','only']},'selected_refs':{'type':'array','maxItems':10,'items':{'type':'string'}},'source_refs':{'type':'array','minItems':1,'maxItems':16,'items':{'type':'string'}}})},check]
+             'parameters':object_schema({'review_ref':review_ref,'proposals':{'type':'array','minItems':proposal_min,'maxItems':proposal_max,'items':object_schema(label)}})},
+            {'type':'function','name':'review_historical_categories','strict':True,'description':'Read-only historical review/navigation/correction. To SHOW THE SAME REVIEW AGAIN while retaining labels and selection: operation=revise, changes=[], selection=keep, selected_refs=[]. Do not use refresh or propose for this. refresh re-scans the source and resets the page labels/selection; reserve it for an explicit request to scan again or changed source. Interpret natural owner revisions such as all correct except X should be Y: operation=revise, changes for X with literal source_text, selection=all_clear. For only X/Y: selection=only, selected_refs from CURRENT displayed page. Changes use existing canonical pairs; unresolved/deferred remain open. Every revision shows a fresh version/nonce before separate permanent or provisional confirmation. next/previous/refresh read pages; never writes. After a completed page use the latest continuation review_ref and next. cancel cancels only the uncommitted review. For navigation use changes=[], selection=keep, selected_refs=[].',
+             'parameters':object_schema({'review_ref':review_ref,'operation':{'type':'string','enum':['revise','next','previous','refresh','cancel']},'changes':{'type':'array','maxItems':10,'items':object_schema({**label,'source_text':{'type':'string'}})},'selection':{'type':'string','enum':['keep','all_clear','only']},'selected_refs':{'type':'array','maxItems':10,'items':group_ref},'source_refs':sources})},check]
 
     def owner_sources(self,refs):
         if self.h._current['source_ref'] not in refs:raise ValueError('current_owner_source_required')
@@ -190,7 +205,11 @@ class HistoricalCategories(ProvisionalCategories):
             if p.operation=='refresh':v.update(skip_refs=[],page_number=1)
             return self.page(v,snapshot,0)
         v=deepcopy(self.pending().payload)
-        if p.review_ref!=v['ref'] or p.operation!='refresh' and not self.presented(v):raise ValueError('historical_review_not_delivered_latest')
+        same_subset=p.selection=='only' and v.get('selection')=='only' and set(p.selected_refs)=={g['group_ref'] for g in v['groups'] if g['included']}
+        redisplay=p.operation=='revise' and not p.changes and (p.selection=='keep' and not p.selected_refs or same_subset)
+        # A read-only redisplay restores a fresh review after an intervening
+        # response. Actual revisions and consent still require latest delivery.
+        if p.review_ref!=v['ref'] or p.operation!='refresh' and not redisplay and not self.presented(v):raise ValueError('historical_review_not_delivered_latest')
         if p.operation=='cancel':return self.cancel()
         if p.operation in {'next','previous','refresh'}:
             if p.changes or p.selection!='keep' or p.selected_refs:raise ValueError('navigation_cannot_change_labels')

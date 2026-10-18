@@ -1,0 +1,79 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-16T09:00:00+07:00",
+  "repetitions": 1,
+  "scope": "Fresh adversarial flows: delayed cancellation against a newer selection, redisplay preserving partial selection, and a complete selected-only Unicode review after an oversized page. All provider writes are simulated.",
+  "cases": [
+    {
+      "name": "astra_delayed_cancel_repeat_review",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "capture_delayed_cancel": true
+        },
+        {
+          "text": "เลือกเฉพาะ Metro Rail Ticket 01 ที่เหลือพักไว้",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 01"
+          ]
+        },
+        {
+          "text": "ยกเลิก",
+          "deliver_delayed_cancel": true,
+          "expect": "stale",
+          "pending_unchanged": true
+        },
+        {
+          "text": "ขอดูร่างเดิมอีกครั้งโดยคงการเลือกเดิมไว้ เลือกเฉพาะ Metro Rail Ticket 01 เท่านั้น",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 01"
+          ]
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "names": [
+            "Metro Rail Ticket 01"
+          ],
+          "expense": "2.00"
+        }
+      ]
+    },
+    {
+      "name": "astra_long_unicode_subset",
+      "fixture": "long_names",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 10,
+          "shown": 10,
+          "confirmation_available": false
+        },
+        {
+          "text": "เลือกเฉพาะชื่อที่ขึ้นต้น Metro Rail Ticket 00 เป็น Transportation/Rail ชื่ออื่นพักไว้ทั้งหมด",
+          "expect": "selection",
+          "names": [
+            "Metro Rail Ticket 00 🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆"
+          ],
+          "confirmation_available": true
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "names": [
+            "Metro Rail Ticket 00 🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆🚆"
+          ],
+          "expense": "1.00"
+        }
+      ]
+    }
+  ]
+}
