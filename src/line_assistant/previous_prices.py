@@ -126,6 +126,9 @@ class PreviousPrices:
         d=next((d for d in self.h.state.drafts.values() if any(e['entry_ref']==old['entry_ref'] for e in d['entries'])),None)
         if (not d or out.get('draft_ref')!=d['draft_ref'] or out.get('draft_version')!=d['version']
             or not any(e.get('previous_price')==offer for e in out.get('entries',[]))):raise ValueError('previous_price_not_delivered_latest')
+        from .line_api import visible_text
+        visible=visible_text(shown)
+        if not self.h._has_item(visible,old['item']) or offer['amount'] not in visible or offer['source_date'] not in visible:raise ValueError('previous_price_not_visible')
         text=self.h._current['text'].strip()
         if NO.search(text) or not (ACCEPT.search(text) or re.fullmatch(r'(?:ใช่|ได้|ตกลง)(?:ครับ|ค่ะ|คะ)?',text)):raise ValueError('previous_price_owner_choice_required')
         active=[x for x in self.h.state.drafts.values() if x['status']!='recorded']

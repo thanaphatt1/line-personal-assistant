@@ -38,6 +38,20 @@ def bounded_text(text):
 def rendered_message(result):
     return result.data.get('line_message') or {'type': 'text', 'text': bounded_text(result.message)}
 
+def visible_text(result):
+    """Text in the delivered message body, excluding hidden action metadata."""
+    message = rendered_message(result)
+    if message.get('type') == 'text':
+        return message.get('text', '')
+    def texts(node):
+        if not isinstance(node, dict):
+            return []
+        if node.get('type') == 'text':
+            return [node.get('text', '')]
+        return [text for child in node.get('contents', []) for text in texts(child)]
+    body = message.get('contents', {}).get('body', {})
+    return '\n'.join(texts(body))
+
 def message_hash(message):
     content = message['text'] if message.get('type') == 'text' else json.dumps(message, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(content.encode()).hexdigest()

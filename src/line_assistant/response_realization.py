@@ -145,15 +145,24 @@ def facts_for(host,result):
             for i,ask in enumerate(list(dict.fromkeys(asks))[:2]):facts[f'ask{i}']=ask
     else:
         output=data.get('tool_result',{});entries=output.get('entries') if isinstance(output,dict) else None
+        if entries and output.get('ok') and result.status=='clarification':
+            from .previous_prices import PreviousPrices
+            price_question=PreviousPrices.prompt(output)
+            if price_question:return {'status':price_question,**({'ask_catalog':output['catalog_question']} if output.get('catalog_question') else {})}
         if entries and output.get('ok') and result.status in {'preview','clarification'} and not output.get('item_enrollment') and not any(e.get('mapping') for e in entries):
             facts['status']=(f'ร่างรายจ่ายมี {len(entries)} รายการ พร้อมให้ตรวจสอบครับ' if result.status=='preview' else
                              f'ร่างรายจ่ายมี {len(entries)} รายการ ยังต้องเติมหรือตรวจข้อมูลครับ')
             for i,e in enumerate(entries,1):
                 facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {e.get('amount') or 'ยังไม่ระบุจำนวน'} บาท\nวันที่ {e.get('date') or 'ยังไม่ระบุ'}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
             if result.status=='preview':
+                for i,e in enumerate(entries,1):
+                    prior=e.get('previous_price')
+                    if prior and prior['state']=='accepted':facts[f'price_basis{i}']=f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {prior['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}"
                 facts['instruction']='ตรวจรายการ จำนวนเงิน และวันที่ ถ้าถูกต้องยืนยันร่างนี้ทางข้อความได้ครับ'
                 if any(e.get('mapping') for e in entries):facts['catalog_change']='การยืนยันนี้จะเพิ่มชื่อใหม่ใน Database ตามหมวดที่แสดงด้วย'
             else:
+                if output.get('catalog_question'):
+                    facts['ask0']=output['catalog_question'];return facts
                 names={'item':'ชื่อรายการ','amount':'จำนวนเงิน','date':'วันที่','date.day':'วัน','date.month':'เดือน','category':'หมวด','subcategory':'หมวดย่อย','item_resolution':'ชื่อรายการใน Database','existing_or_new':'ชื่อรายการเดิมหรือชื่อใหม่'}
                 fields=[]
                 for value in output.get('missing_fields',[]):

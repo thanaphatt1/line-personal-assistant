@@ -57,6 +57,12 @@ def plan(value,sources,catalog):
 
 def choices(entry,catalog):
     suggested=[*entry.get('name_candidates',[]),*catalog.resolve(entry['item']).suggestions]
+    # Suggest complete catalog labels after the expense introducer, but do not
+    # turn a vendor mention into an automatic identity or a billing-plan choice.
+    literal=entry['item'] or '';probe=literal[3:].strip() if literal.startswith('ค่า') else literal.strip()
+    if probe:
+        suggested.extend(catalog.resolve(probe).suggestions)
+        suggested.extend(name for name in catalog.items.values() if normalized(name).startswith(normalized(probe)+' '))
     result=[]
     for name in suggested:
         match=catalog.match(name)
@@ -75,8 +81,10 @@ def clarification(h,output):
     if len(names)==1:question=f'ชื่อ {label} หมายถึง {names[0]} ใช่ไหมครับ หรือเป็นรายการใหม่?'
     elif names:question=f'ชื่อ {label} หมายถึงชื่อไหนครับ: '+ ' / '.join(names)+' หรือเป็นรายการใหม่?'
     else:question=f'ชื่อ {label} ตรงกับชื่อเดิมใน Database หรือเป็นรายการใหม่ครับ?'
+    if names and getattr(h,'previous_prices',None) and h.previous_prices.enabled and next(e for e in output['entries'] if e['entry_ref']==selected['entry_ref'])['amount'] is None:
+        question+='\nเลือกชื่อก่อนครับ แล้วจะตรวจยอดที่เคยบันทึกให้ ยังไม่ได้บันทึกรายจ่าย'
     rows='\n'.join(f"{e['item'] or '(ยังไม่ระบุชื่อ)'} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in output['entries'])
-    enhanced={**output,'catalog_matches':offered,'catalog_query':label,'catalog_entry_ref':selected['entry_ref']}
+    enhanced={**output,'catalog_matches':offered,'catalog_query':label,'catalog_entry_ref':selected['entry_ref'],'catalog_question':question}
     return enhanced,'ร่างที่ยังไม่บันทึก:\n'+rows+'\n'+question
 
 

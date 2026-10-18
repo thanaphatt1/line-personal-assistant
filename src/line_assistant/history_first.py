@@ -376,11 +376,20 @@ class HistoryFirstAssistant(Assistant):
                 if getattr(self,'production',False):
                     reply=self.state.replies.get(row['event'])
                     if not reply or reply.status!='sent' or reply.content_hash!=semantic.message_hash(semantic.rendered_message(receipt.result)):continue
+                if not self._has_item(semantic.visible_text(receipt.result),p.existing_item):continue
                 offers.append(candidate);break
             choices=offers[0].get('catalog_matches',offers[0].get('matches',[])) if offers else []
             if p.existing_item not in {v.get('item') for v in choices}:raise ValueError('catalog_choice_not_offered')
             match=tax.catalog.match(p.existing_item)
             if match.status!='exact':raise ValueError('catalog_choice_removed')
+            # A model choice is not owner evidence. A bare yes can accept one
+            # delivered name; several real plans require an explicit name.
+            choice_text=command_text(self._current['text'])
+            if re.search(r'ไม่ใช่|ไม่เอา|ไม่เลือก|ยกเลิก|อย่า|พักไว้',choice_text):raise ValueError('catalog_choice_not_requested')
+            names={v['item'] for v in choices}
+            named={name for name in names if self._has_item(choice_text,name)}
+            yes=re.fullmatch(r'\s*(?:ใช่|ใช่เลย|ถูกต้อง|ตัวนั้น|อันนั้น|ชื่อเดิม|รายการเดิม|(?:ใช้ชื่อเดิม|ใช้รายการเดิม)(?:ตัวนั้น|อันนั้น)?|ใช้เดิม)(?:\s*(?:ครับ|ค่ะ|คะ|เลย))?\s*[.!]?\s*',choice_text)
+            if named!={match.canonical} and not (not named and len(names)==1 and yes):raise ValueError('catalog_choice_ambiguous_owner')
             fresh=deepcopy(d);entry=next(v for v in fresh['entries'] if v['entry_ref']==e['entry_ref'])
             entry.update(item=match.canonical,mapping=None,item_resolution={'from':e['item'],'to':match.canonical});entry.pop('enrollment',None)
             index=d['entries'].index(e);prefix=f'entries[{index}].'
@@ -1200,6 +1209,12 @@ class HistoryFirstAssistant(Assistant):
                 labels=' / '.join(c['label'] for c in tool_output['category_choices'])
                 return Result('answer','หมวดที่มีใน Database:\n'+labels+'\nยังไม่ได้เลือกหมวดหรือบันทึกรายการ',{'tool_result':tool_output})
             if tool_output.get('ok') and tool_output.get('status')=='draft_read':
+                if self.previous_prices.enabled and len(tool_output.get('drafts',[]))==1:
+                    from .catalog_names import clarification
+                    view=tool_output['drafts'][0];d=self._draft(view['draft_ref'])
+                    choice=clarification(self,{**tool_output,'draft_ref':d['draft_ref'],'draft_version':d['version'],
+                        'entries':deepcopy(d['entries']),'missing_fields':deepcopy(d['missing_fields'])})
+                    if choice:return Result('clarification',choice[1],{'tool_result':choice[0]})
                 rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or 'ยังไม่ระบุ'}" for e in tool_output['entries'])
                 narrative=tool_output.get('history_summary','')
                 if narrative and not success_claim(narrative):rows+='\nสรุปบทสนทนา:\n'+narrative

@@ -11,7 +11,7 @@ from .history_context import digest,WINDOW,draft_fingerprint
 from .history_dates import cues,resolve
 from .conversation_evidence import command_text
 from .conversation_ui import render_actions
-from .line_api import message_hash,rendered_message
+from .line_api import message_hash,rendered_message,visible_text
 from .language import amounts
 from .state import Result
 

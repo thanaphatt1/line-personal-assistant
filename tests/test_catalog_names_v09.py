@@ -68,7 +68,7 @@ def test_ambiguous_spacing_never_auto_merges_distinct_real_names(proposal):
     e=h.draft()['entries'][0];assert (e['item'],e['amount'],e['date'])==('grab  bike','37','2026-10-16')
     assert {v['item'] for v in r.data['tool_result']['catalog_matches']}=={'grab bike','GrabBike'}
     assert 'ชื่อไหน' in r.message and not h.sheets.entries
-    selected=choose(h,item='GrabBike');assert selected.status=='preview' and h.draft()['entries'][0]['item']=='GrabBike'
+    selected=choose(h,item='GrabBike',text='เลือก GrabBike');assert selected.status=='preview' and h.draft()['entries'][0]['item']=='GrabBike'
 
 def test_fresh_model_failure_cannot_move_a_name_word_into_an_unsupported_note():
     h=harness(('Polar Ride','PolarRide'))

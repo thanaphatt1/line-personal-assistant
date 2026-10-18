@@ -1,0 +1,45 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "response_realization_enabled": true,
+  "anchor": "2026-10-18T20:14:00+07:00",
+  "cases": [
+    {"name":"exact_reported_phrase","batch":"exact","fixture":"core","turns":[
+      {"text":"ค่า Spotify","expect":"offer","prices":{"Spotify":"169.00"},"varied":true,"wording_llm":true},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify":"169"},"price_basis_date":"2026-10-01"},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_runtime":true}
+    ]},
+    {"name":"mixed_case_and_explicit_override","batch":"exact","fixture":"core","turns":[
+      {"text":"ค่า  sPoTiFy","expect":"offer","prices":{"Spotify":"169.00"}},
+      {"text":"เดือนนี้189","expect":"review","amounts":{"Spotify":"189"},"no_price_dependency":true},
+      {"text":"ยกเลิก","expect":"cancelled"}
+    ]},
+    {"name":"descriptive_name_then_saved_price","batch":"exact","fixture":"descriptive","turns":[
+      {"text":"ค่า Spotify","expect":"catalog","names":["Spotify service"]},
+      {"text":"ใช่ครับ","expect":"offer","prices":{"Spotify service":"169.00"}},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify service":"169"},"price_basis_date":"2026-10-01"},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_runtime":true}
+    ]},
+    {"name":"known_name_without_history","batch":"exact","fixture":"no_history","turns":[
+      {"text":"ค่า Spotify","expect":"missing_amount"}
+    ]},
+    {"name":"multiple_plans_require_owner_name","batch":"edges","fixture":"plans","turns":[
+      {"text":"ค่า Spotify","expect":"catalog","names":["Spotify Solo","Spotify Family"]},
+      {"text":"ใช้เดิม","expect":"blocked","drafts_unchanged":true},
+      {"text":"เลือก Spotify Solo","expect":"offer","prices":{"Spotify Solo":"169.00"}},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify Solo":"169"}},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_runtime":true}
+    ]},
+    {"name":"unmatched_name_never_borrows_price","batch":"edges","fixture":"core","turns":[
+      {"text":"ค่า Unknown Tune","expect":"no_offer"}
+    ]},
+    {"name":"explicit_amount_without_price","batch":"edges","fixture":"core","turns":[
+      {"text":"ค่า Spotify 189 บาท","expect":"review","amounts":{"Spotify":"189"},"no_price_dependency":true}
+    ]},
+    {"name":"transaction_date_is_independent","batch":"edges","fixture":"core","turns":[
+      {"text":"ค่า Spotify วันที่ 15 ต.ค. 2026","expect":"offer","prices":{"Spotify":"169.00"},"date":"2026-10-15"},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify":"169"},"date":"2026-10-15","price_basis_date":"2026-10-01"}
+    ]}
+  ],
+  "existing_regression_cases": ["calendar_interruption","historical_review_is_independent","ordinary_explicit_expense"]
+}
