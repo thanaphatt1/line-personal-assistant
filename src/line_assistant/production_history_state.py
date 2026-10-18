@@ -18,7 +18,7 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                          max_snapshot_bytes=800000 if c.state_codec_enabled else 200000,compact_snapshots=True)
         self.history_workspaces={}
         from .raw_history import FirestoreJournal
-        self.raw_journal=FirestoreJournal(client,self.database,self.owner_id,c.spreadsheet_id)
+        self.raw_journal=FirestoreJournal(client,self.database,self.owner_id,c.storage_scope_id)
     @property
     def approved_workbooks(self):
         return self.client.http.config.approved_workbooks
@@ -29,9 +29,11 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                 'current':self._parts(),'workspaces':deepcopy(self.history_workspaces)}}
     def _restore_state(self,value):
         core=deepcopy(value);extra=core.pop('history24',None)
+        if core.get('workbook_id') is not None and core['workbook_id'] not in self.approved_workbooks:
+            raise ValueError('Persisted storage scope is not explicitly retained by configuration')
         def journal_for(book):
             from .raw_history import FirestoreJournal
-            book=book if book in self.approved_workbooks else self.client.http.config.spreadsheet_id
+            book=book if book in self.approved_workbooks else self.client.http.config.storage_scope_id
             journal=FirestoreJournal(self.client,self.database,self.owner_id,book)
             journal.auth_secret=self.raw_journal.auth_secret
             return journal
@@ -67,6 +69,12 @@ class ProductionHistoryState(FirestoreState, HistoryState):
 def production_binding(state,sheets,port):
     from .pilot_http import PilotPort
     from .sheets_api import SheetsApi
+    from .firestore_expenses import FirestoreExpenseStore
+    if type(sheets) is FirestoreExpenseStore:
+        return (type(state) is ProductionHistoryState and type(sheets.client) is PilotPort and type(port) is PilotPort
+            and port.service=='model' and sheets.client.http is state.client.http is port.http
+            and sheets.state is state and sheets.target==port.http.config.firestore_expense_target()
+            and getattr(port.http,'expense_store',None) is sheets and sheets.effect_guard==state.before_effect)
     return (type(state) is ProductionHistoryState and type(sheets) is SheetsApi
             and type(sheets.client) is PilotPort and type(port) is PilotPort and port.service=='model'
             and sheets.client.http is state.client.http is port.http

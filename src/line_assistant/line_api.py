@@ -1,4 +1,5 @@
 """Single-owner LINE replies with persisted attempt markers; no push fallback."""
+from .expense_storage import storage_scope
 
 from datetime import timedelta
 import hashlib
@@ -93,7 +94,7 @@ class ReplyDispatcher:
             state.expire(now)
             if state.workbook_id and state.event_workbooks.get(event_id) != state.workbook_id:
                 return "skipped"
-            if getattr(self.assistant, "production", False) and state.workbook_id != self.assistant.sheets.target.spreadsheet_id:
+            if getattr(self.assistant, "production", False) and state.workbook_id != storage_scope(self.assistant.sheets):
                 return "skipped"
             receipt = state.receipts.get(event_id)
             if not receipt or receipt.fingerprint != fingerprint or receipt.result != result:

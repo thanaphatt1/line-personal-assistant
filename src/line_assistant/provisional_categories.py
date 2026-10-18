@@ -1,4 +1,5 @@
 """Bounded category proposals. Query consent and permanent mapping are distinct."""
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import datetime,timedelta
 from decimal import Decimal
@@ -75,7 +76,8 @@ class ProvisionalCategories:
     def __init__(self,host,*,enabled=False,mapping_enabled=False,single_writer_reviewed=False):
         self.h=host;self.enabled=enabled;self.mapping_enabled=mapping_enabled;self.current_basis=None
         if mapping_enabled and not enabled:raise ValueError('Mapping writes require category proposal feature')
-        self.editor=MappingEditor(host.bound_sheets,enabled=mapping_enabled,single_writer_reviewed=single_writer_reviewed)
+        from .expense_storage import mapping_editor
+        self.editor=mapping_editor(host.bound_sheets,enabled=mapping_enabled,single_writer_reviewed=single_writer_reviewed)
     def has_pending(self):return bool(self.h.state.pending and self.h.state.pending.kind==KIND)
     def is_control(self,text):return text in {'รวมข้อเสนอครั้งนี้','บันทึกหมวดถาวร'} or text.startswith(('รวมข้อเสนอครั้งนี้ ','บันทึกหมวด '))
     def pairs(self):return sorted({(r.category,r.subcategory) for r in self.h._taxonomy().rows if r.category})
@@ -102,7 +104,7 @@ class ProvisionalCategories:
     def pending(self):
         if not self.has_pending():raise ValueError('no_provisional_review')
         p=self.h.state.pending;v=p.payload
-        if (p.expires_at<=self.h.clock() or v.get('owner')!=self.h.settings.owner_id or v.get('workbook')!=self.h.sheets.target.spreadsheet_id
+        if (p.expires_at<=self.h.clock() or v.get('owner')!=self.h.settings.owner_id or v.get('workbook')!=storage_scope(self.h.sheets)
             or v.get('ref')!=p.token or v.get('seal')!=digest({k:x for k,x in v.items() if k!='seal'})):raise ValueError('stale_provisional_review')
         return p
     def definitions(self):
@@ -155,7 +157,7 @@ class ProvisionalCategories:
                 r['reason']='existing_name_or_mapping_requires_owner_resolution'
             r.update(expense=issue['expense'],count=issue['count']);rows.append(r)
         at=self.h._current['at'];ref='pc_'+digest([basis['ref'],self.h._active_event_id,rows])[:20]
-        value={'owner':self.h.settings.owner_id,'workbook':self.h.sheets.target.spreadsheet_id,'ref':ref,'version':1,'at':at,'nonce':secrets.token_hex(8),'basis':basis,'proposals':rows}
+        value={'owner':self.h.settings.owner_id,'workbook':storage_scope(self.h.sheets),'ref':ref,'version':1,'at':at,'nonce':secrets.token_hex(8),'basis':basis,'proposals':rows}
         value['review_hash']=digest(value);value['seal']=digest(value)
         self.h.state.pending=Pending(KIND,ref,self.h._active_event_id,int(datetime.fromisoformat(at).timestamp()*1000),self.h.clock()+timedelta(seconds=self.h.settings.pending_ttl_seconds),value);self.h.state.checkpoint()
         return self.render(value)
@@ -227,7 +229,7 @@ class ProvisionalCategories:
     def resume(self,key):
         a=self.h.state.actions[key];m,p=a.metadata,a.payload
         if m.get('historical_classification') and self is not self.h.historical_categories:return self.h.historical_categories.resume(key)
-        if not m.get('provisional_mapping') or m.get('owner')!=self.h.settings.owner_id or m.get('workbook')!=self.h.sheets.target.spreadsheet_id or m.get('payload_hash')!=digest(p):return self.h._uncertain(key)
+        if not m.get('provisional_mapping') or m.get('owner')!=self.h.settings.owner_id or m.get('workbook')!=storage_scope(self.h.sheets) or m.get('payload_hash')!=digest(p):return self.h._uncertain(key)
         if a.status=='completed':return deepcopy(a.result)
         if a.status in {'executing','uncertain'}:
             proof=self.editor.reconcile(key,p)
@@ -246,6 +248,7 @@ class ProvisionalCategories:
 
 def authorize_mapping(http,service,method,path,body,params):
     c,s=http.config,http.state
+    if c.expense_backend!='sheets':return False
     if not (service=='sheets' and method=='POST' and params is None and path=='/v4/spreadsheets/'+c.spreadsheet_id+':batchUpdate'
         and c.provisional_mapping_enabled and c.provisional_categories_enabled and c.saved_expense_concurrency=='reviewed_single_writer'
         and c.history_enabled and s and s.holder and s.production_ready and s.owner_id==c.owner_id and s.workbook_id==c.spreadsheet_id):return False

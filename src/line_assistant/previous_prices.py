@@ -1,4 +1,5 @@
 """Owner-selected past expense amounts; no unit-price inference or effects."""
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime
 from decimal import Decimal
@@ -107,7 +108,7 @@ class PreviousPrices:
             if value is None:continue
             entry['previous_price']={'format':FORMAT,'state':'offered',
                 'ref':'price_'+digest([d['draft_ref'],d['version'],entry['entry_ref'],value])[:20],
-                'item':entry['item'],**value,'target_hash':digest(self.h.state.workbook_id or self.h.sheets.target.spreadsheet_id),
+                'item':entry['item'],**value,'target_hash':digest(self.h.state.workbook_id or storage_scope(self.h.sheets)),
                 'cutoff':cutoff,'offered_at':self.h._current['at'],'accepted_at':None,'accepted_source_ref':None}
             validate(entry)
         self.h._seal(d);self.h.state.checkpoint()
@@ -160,7 +161,7 @@ class PreviousPrices:
 
     def check(self,proof,entry,*,fresh=False):
         if not self.enabled:raise ValueError('previous_price_disabled')
-        if proof['target_hash']!=digest(self.h.state.workbook_id or self.h.sheets.target.spreadsheet_id):raise ValueError('previous_price_target_changed')
+        if proof['target_hash']!=digest(self.h.state.workbook_id or storage_scope(self.h.sheets)):raise ValueError('previous_price_target_changed')
         if entry['item']!=proof['item'] or entry.get('date') and entry['date']<=proof['source_date']:raise ValueError('previous_price_date_or_item_changed')
         current=self.candidate(entry['item'],proof['cutoff'],fresh=fresh)
         if not current or any(current[k]!=proof[k] for k in ['amount','source_date','source_hash','varied']):raise ValueError('previous_price_source_changed')

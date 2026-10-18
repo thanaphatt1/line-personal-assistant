@@ -1,4 +1,5 @@
 """Default-off history-first prototype. Direct tools, local effects only."""
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime,timedelta
 from decimal import Decimal
@@ -225,7 +226,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
-        event=(self._active_event_id,getattr(getattr(self.sheets,'target',None),'spreadsheet_id',None))
+        event=(self._active_event_id,storage_scope(self.sheets))
         if self._taxonomy_cache_event!=event:self._taxonomy_cache=None;self._taxonomy_cache_event=event
         if self._taxonomy_cache is None:self._taxonomy_cache=self.sheets.taxonomy()
         return self._taxonomy_cache
@@ -472,7 +473,7 @@ class HistoryFirstAssistant(Assistant):
             if not original.get('delivery_verified') or original.get('content_hash')!=hashed:return False
             if getattr(self,'production',False):
                 reply=self.state.replies.get(original['event'])
-                if (self.state.event_workbooks.get(original['event'])!=self.sheets.target.spreadsheet_id
+                if (self.state.event_workbooks.get(original['event'])!=storage_scope(self.sheets)
                     or not reply or reply.status!='sent' or reply.content_hash!=hashed):return False
             return True
         if not delivered(row,shown):return None

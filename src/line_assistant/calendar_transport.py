@@ -10,7 +10,7 @@ from .transport import LiveDisabled
 def authorize(http,method,path,body,params):
     c=http.config;s=http.state
     if (not getattr(c,'calendar_enabled',False) or not c.history_enabled or not s or not s.holder
-        or s.owner_id!=c.owner_id or not s.production_ready or s.workbook_id!=c.spreadsheet_id):raise LiveDisabled('Calendar requires explicit configuration and owner lease')
+        or s.owner_id!=c.owner_id or not s.production_ready or s.workbook_id!=c.storage_scope_id):raise LiveDisabled('Calendar requires explicit configuration and owner lease')
     base='/calendar/v3/calendars/'+quote(c.calendar_id,safe='')+'/events'
     if method=='GET' and path==base and body is None and isinstance(params,dict):
         required={'timeMin','timeMax','singleEvents','orderBy','timeZone','maxResults'}

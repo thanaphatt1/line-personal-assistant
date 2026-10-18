@@ -3,6 +3,7 @@
 One generic Pending envelope and ordinary durable Actions retain the existing
 snapshot format. Stable provider IDs and versions stay server-owned.
 """
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime,time,timedelta
 from decimal import Decimal
@@ -76,10 +77,10 @@ class SavedEdits:
     def enabled(self):return any(self.flags.values())
     def has_pending(self):return bool(self.h.state.pending and self.h.state.pending.kind.startswith(PREFIX))
     def is_control(self,text):return text.startswith(('ยืนยันแก้ ','e1|'))
-    def target(self,domain):return self.h.sheets.target.spreadsheet_id if domain=='expense' else self.h.calendar_flow.calendar_id
+    def target(self,domain):return storage_scope(self.h.sheets) if domain=='expense' else self.h.calendar_flow.calendar_id
     def editor(self,domain):
         editor=self.expense if domain=='expense' else self.calendar
-        if editor is None or domain=='expense' and (editor.sheets is not self.h.bound_sheets or editor.target.spreadsheet_id!=self.target(domain)) or domain=='calendar' and editor.calendar_id!=self.target(domain):
+        if editor is None or domain=='expense' and (editor.sheets is not self.h.bound_sheets or storage_scope(editor.sheets)!=self.target(domain)) or domain=='calendar' and editor.calendar_id!=self.target(domain):
             raise WriteBlocked('Saved-record target/configuration is unavailable')
         return editor
     def pending(self):
@@ -87,7 +88,7 @@ class SavedEdits:
         p=self.h.state.pending;v=p.payload;copy={k:x for k,x in v.items() if k!='seal'}
         if (p.expires_at<=self.h.clock() or v.get('owner')!=self.h.settings.owner_id or v.get('ref')!=p.token
             or v.get('domain') not in {'expense','calendar'}
-            or v.get('workbook')!=self.h.sheets.target.spreadsheet_id or v.get('target')!=self.target(v.get('domain'))
+            or v.get('workbook')!=storage_scope(self.h.sheets) or v.get('target')!=self.target(v.get('domain'))
             or v.get('format')!='saved-record-change-v1' or v.get('seal')!=digest(copy)):
             raise ValueError('saved_edit_stale_or_foreign')
         return p
@@ -165,9 +166,9 @@ class SavedEdits:
                 if not identity.canonical:raise ValueError('saved_edit_item_identity_unknown')
                 records=[r for r in records if tax.catalog.identity(r['item']).canonical==identity.canonical]
             else:records=[r for r in records if normalized(r['title'])==normalized(p.name)]
-        ref='se_'+digest([self.h.settings.owner_id,self.h.sheets.target.spreadsheet_id,self.target(p.domain),self.h._active_event_id])[:20]
+        ref='se_'+digest([self.h.settings.owner_id,storage_scope(self.h.sheets),self.target(p.domain),self.h._active_event_id])[:20]
         candidates=[{'ref':'sr_'+digest([ref,r['id'],r['version']])[:20],'record':r} for r in records[:10]]
-        value={'format':'saved-record-change-v1','ref':ref,'owner':self.h.settings.owner_id,'workbook':self.h.sheets.target.spreadsheet_id,
+        value={'format':'saved-record-change-v1','ref':ref,'owner':self.h.settings.owner_id,'workbook':storage_scope(self.h.sheets),
             'target':self.target(p.domain),'domain':p.domain,'version':1,'at':self.h._current['at'],'source_refs':list(p.source_refs),
             'candidates':candidates,'count':len(records),'uneditable_count':extra,'query':p.model_dump(mode='json')}
         self.store('selection',value)
@@ -373,7 +374,7 @@ class SavedEdits:
 
     def resume(self,key):
         action=self.h.state.actions[key];m=action.metadata;payload=action.payload;domain=payload.get('domain')
-        if (not m.get('saved_record_edit') or m.get('owner')!=self.h.settings.owner_id or m.get('workbook')!=self.h.sheets.target.spreadsheet_id
+        if (not m.get('saved_record_edit') or m.get('owner')!=self.h.settings.owner_id or m.get('workbook')!=storage_scope(self.h.sheets)
             or domain not in {'expense','calendar'} or m.get('target')!=self.target(domain) or m.get('payload_hash')!=digest(payload)):
             return Result('uncertain','รายการแก้ไขยังผูกกับปลายทางเดิมครับ จึงหยุดไว้จนกว่าจะตรวจสอบข้อมูลได้',{'needs_reconciliation':True})
         if action.status=='completed':return deepcopy(action.result)

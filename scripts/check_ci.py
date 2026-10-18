@@ -57,20 +57,22 @@ base = {
     'PILOT_CALENDAR_ID': 'synthetic-ci-calendar@group.calendar.google.com',
     'PILOT_MODEL_USAGE_GATES_ENABLED': 'false',
 }
-for enabled,saved in ((False,False),(True,False),(True,True)):
-    flag = 'true' if enabled else 'false'
-    result = run_checks({
-        **base, 'PILOT_CALENDAR_ENABLED': flag,
-        'PILOT_RESPONSE_REALIZATION_ENABLED': flag,
-        'PILOT_SAVED_EXPENSE_EDITS_ENABLED': 'true' if saved else 'false',
-        'PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED': 'true' if saved else 'false',
-        'PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY': 'reviewed_single_writer' if saved else 'off',
-        'PILOT_PROVISIONAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
-        'PILOT_PROVISIONAL_MAPPING_ENABLED': 'true' if saved else 'false',
-        'PILOT_HISTORICAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
-        'PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED': 'true' if saved else 'false',
-    }, secret_loader=lambda name: SecretStr('synthetic-' + name))
-    assert result['status'] == 'passed' and result['provider_requests'] == 0
+for backend in ('sheets','firestore'):
+    for enabled,saved in ((False,False),(True,False),(True,True)):
+        flag = 'true' if enabled else 'false'
+        result = run_checks({
+            **base, 'PILOT_CALENDAR_ENABLED': flag, 'PILOT_EXPENSE_BACKEND': backend,
+            'PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED': 'true',
+            'PILOT_RESPONSE_REALIZATION_ENABLED': flag,
+            'PILOT_SAVED_EXPENSE_EDITS_ENABLED': 'true' if saved else 'false',
+            'PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED': 'true' if saved else 'false',
+            'PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY': ('firestore_transaction' if backend=='firestore' else 'reviewed_single_writer') if saved else 'off',
+            'PILOT_PROVISIONAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
+            'PILOT_PROVISIONAL_MAPPING_ENABLED': 'true' if saved else 'false',
+            'PILOT_HISTORICAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
+            'PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED': 'true' if saved else 'false',
+        }, secret_loader=lambda name: SecretStr('synthetic-' + name))
+        assert result['status'] == 'passed' and result['provider_requests'] == 0
 
 assert not attempts
 import line_assistant

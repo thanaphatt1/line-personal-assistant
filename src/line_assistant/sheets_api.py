@@ -75,6 +75,10 @@ class SheetsApi:
         self.effect_guard = effect_guard or (lambda: None)
         self.base = f"/v4/spreadsheets/{quote(target.spreadsheet_id, safe='')}"
 
+    @property
+    def scope_id(self):
+        return self.target.spreadsheet_id
+
     def values(self, tab, cells, *, formulas=False):
         response = self.client.request("GET", self.base + "/values/" + quote(tab_range(tab, cells), safe=""), params={
             "valueRenderOption": "FORMULA" if formulas else "UNFORMATTED_VALUE",

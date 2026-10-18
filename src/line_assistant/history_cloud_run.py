@@ -60,17 +60,21 @@ class HistoryConfig:
             raise ConfigError('Observational usage requires explicit single-owner history state')
         expense=values.get('PILOT_SAVED_EXPENSE_EDITS_ENABLED','false');reschedule=values.get('PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','false')
         concurrency=values.get('PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','off')
-        if (expense not in {'true','false'} or reschedule not in {'true','false'} or concurrency not in {'off','reviewed_single_writer'}
+        if (expense not in {'true','false'} or reschedule not in {'true','false'} or concurrency not in {'off','reviewed_single_writer','firestore_transaction'}
             or (expense=='true' or reschedule=='true') and (h!='true' or s!='true')
-            or expense=='true' and concurrency!='reviewed_single_writer' or reschedule=='true' and calendar!='true'):
+            or expense=='true' and concurrency!=('firestore_transaction' if core.expense_backend=='firestore' else 'reviewed_single_writer') or reschedule=='true' and calendar!='true'):
             raise ConfigError('Saved-record edits require explicit flags, history and reviewed concurrency policy')
         labels=values.get('PILOT_PROVISIONAL_CATEGORIES_ENABLED','false');mappings=values.get('PILOT_PROVISIONAL_MAPPING_ENABLED','false')
         if (labels not in {'true','false'} or mappings not in {'true','false'} or labels=='true' and (h!='true' or s!='true')
-            or mappings=='true' and (labels!='true' or concurrency!='reviewed_single_writer')):raise ConfigError('Provisional mapping requires explicit flags, history and reviewed Database writer policy')
+            or mappings=='true' and (labels!='true' or concurrency!=('firestore_transaction' if core.expense_backend=='firestore' else 'reviewed_single_writer'))):raise ConfigError('Provisional mapping requires explicit flags, history and reviewed Database writer policy')
         historical=values.get('PILOT_HISTORICAL_CATEGORIES_ENABLED','false')
         if historical not in {'true','false'} or historical=='true' and labels!='true':raise ConfigError('Historical categories require explicit provisional/history configuration')
         prices=values.get('PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','false')
         if prices not in {'true','false'} or prices=='true' and (h!='true' or s!='true'):raise ConfigError('Previous expense prices require explicit history/state configuration')
+        if core.expense_backend=='firestore' and (h!='true' or s!='true' or not core.launch_authorized):
+            raise ConfigError('Firestore expense backend requires the full explicit history composition')
+        if concurrency=='firestore_transaction' and core.expense_backend!='firestore':
+            raise ConfigError('Transactional concurrency requires Firestore expense backend')
         return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true')
 
 class HistoryHttp(PilotHttp):
@@ -83,12 +87,16 @@ class HistoryHttp(PilotHttp):
                 headers={'Authorization':'Bearer '+token,**headers}))
         return super().request(service,method,path,body=body,params=params,headers=headers)
     def _json(self,response):
-        if getattr(self,'raw_history_enabled',False) and response.request.url.path.endswith(':runQuery'):
+        if not response.is_success:return super()._json(response)
+        if getattr(self,'raw_history_enabled',False) and response.request.url.path.endswith((':runQuery',':batchGet')):
             value=response.json()
             if isinstance(value,list):return value
             raise LiveDisabled('Invalid paginated history response')
         return super()._json(response)
     def allowed(self,service,method,path,body,params):
+        store=getattr(self,'expense_store',None)
+        if service=='firestore' and store is not None and store.authorize(method,path,body,params):return
+        if service=='sheets' and self.config.expense_backend!='sheets':raise LiveDisabled('Sheets is outside the selected expense backend')
         from . import response_realization as voice
         from .saved_edit_transport import mutation,calendar_read
         from .provisional_categories import authorize_mapping
@@ -154,31 +162,54 @@ class HistoryHttp(PilotHttp):
 
 def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None,clock=None,semantic_enabled=True,raw_history_enabled=True):
     values=values or {};config=HistoryConfig.from_mapping(values)
+    if config.expense_backend=='firestore' and not raw_history_enabled:raise ConfigError('Firestore expenses require original-message history')
     if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled or config.provisional_categories_enabled or config.previous_prices_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits/proposals require raw history')
-    old=legacy_app({k:v for k,v in values.items() if k not in HISTORY_KEYS},transport=transport,secret_loader=secret_loader,clock=clock)
-    if not config.history_state_enabled:return old
-    previous=old.state.pilot_http
-    http=HistoryHttp(config,previous.secrets,transport=transport,clock=clock);previous.close()
+    if config.expense_backend=='sheets':
+        old=legacy_app({k:v for k,v in values.items() if k not in HISTORY_KEYS},transport=transport,secret_loader=secret_loader,clock=clock)
+        if not config.history_state_enabled:return old
+        previous=old.state.pilot_http
+        http=HistoryHttp(config,previous.secrets,transport=transport,clock=clock);previous.close()
+        settings=old.state.assistant.settings
+    else:
+        from .cloud_run import read_mounted_secret
+        from .pilot_config import SECRET_PATHS
+        from .config import Settings
+        from pydantic import SecretStr
+        if transport is None:config.require_live_target()
+        loader=secret_loader or read_mounted_secret
+        secrets={name:loader(name) for name in SECRET_PATHS}
+        if any(type(v) is not SecretStr or not 1<=len(v.get_secret_value())<=8192 or any(not 33<=ord(c)<=126 for c in v.get_secret_value()) for v in secrets.values()):
+            raise ConfigError('Complete injected mounted secrets required')
+        http=HistoryHttp(config,secrets,transport=transport,clock=clock)
+        settings=Settings(owner_id=config.owner_id,channel_secret=secrets['line-channel-secret'].get_secret_value(),mode='production')
     http.raw_history_enabled=raw_history_enabled
-    settings=old.state.assistant.settings
     state=ProductionHistoryState(PilotPort(http,'firestore'),clock=clock);http.state=state
     state.raw_journal.auth_secret=settings.channel_secret
-    sheets=SheetsApi(PilotPort(http,'sheets'),config.sheet_target(),effect_guard=state.before_effect)
+    if config.expense_backend=='firestore':
+        from .firestore_expenses import FirestoreExpenseStore
+        sheets=FirestoreExpenseStore(PilotPort(http,'firestore'),config.firestore_expense_target(),state=state,effect_guard=state.before_effect)
+        http.expense_store=sheets
+    else:
+        sheets=SheetsApi(PilotPort(http,'sheets'),config.sheet_target(),effect_guard=state.before_effect)
     guard=DurableModelGuard(state,monthly_micro_usd=config.monthly_micro_usd,max_calls_day=config.max_calls_day,
                             max_calls_month=config.max_calls_month,clock=http.clock,enforce_usage_limits=config.usage_gates_enabled)
     if raw_history_enabled:
         from .response_realization import INSTRUCTIONS as VOICE_INSTRUCTIONS
         guard.reservation_calculator=lambda body:raw.reservation(body) if body.get('instructions') in {raw.request_instructions(getattr(state,'raw_tool_definitions',None) or [],calendar=config.calendar_enabled),raw.SUMMARY_INSTRUCTIONS,VOICE_INSTRUCTIONS} else RESERVATION_MICRO_USD
-    legacy=ConversationAssistant(settings,sheets,DisabledCalendar(),ItemCatalog([],{}),state=state,clock=clock,expense_label='ในชีตจริง')
+    legacy=ConversationAssistant(settings,sheets,DisabledCalendar(),ItemCatalog([],{}),state=state,clock=clock,expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง')
     legacy.production=True;legacy.planner=IntentPlanner(PilotPort(http,'model'),guard,lambda:legacy._active_event_id)
     from .calendar_provider import CalendarCreationApi
     calendar=CalendarCreationApi(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=True,effect_guard=state.before_effect) if config.calendar_enabled else None
     from .expense_edits import SavedExpenseEditor
     from .calendar_reschedule import SavedCalendarEditor
-    expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
+    if config.expense_backend=='firestore':
+        from .firestore_expenses import FirestoreSavedExpenseEditor
+        expense_editor=FirestoreSavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled)
+    else:
+        expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
     calendar_editor=SavedCalendarEditor(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=config.saved_calendar_enabled,effect_guard=state.before_effect) if config.calendar_enabled else None
     assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled,previous_prices_enabled=config.previous_prices_enabled)
-    assistant.production=True;assistant.expense_label='ในชีตจริง';assistant.guard=guard
+    assistant.production=True;assistant.expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง';assistant.guard=guard
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)
     replies=BoundedReplies(LineReplyApi(PilotPort(http,'line')),assistant)

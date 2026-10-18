@@ -1,4 +1,5 @@
 """Bounded Calendar sets with persistent slots and independently durable effects."""
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import datetime,timedelta
 import hmac,re,secrets
@@ -407,7 +408,7 @@ class CalendarBatches:
                 from .line_api import rendered_message,message_hash
                 reply=self.h.state.replies.get(row['event'])
                 if (not reply or reply.status!='sent' or reply.content_hash!=message_hash(rendered_message(shown))
-                    or self.h.state.event_workbooks.get(row['event'])!=self.h.sheets.target.spreadsheet_id):continue
+                    or self.h.state.event_workbooks.get(row['event'])!=storage_scope(self.h.sheets)):continue
             rows.append((row,shown,view))
         if not rows:return Result('clarification','ยังไม่มีชุดนัดที่ตรวจสอบและส่งสำเร็จ กรุณาตรวจร่างชุดนัดก่อนยืนยัน',{'domain':'calendar'})
         latest=max(datetime.fromisoformat(row['at']) for row,_,_ in rows)

@@ -4,6 +4,7 @@ import argparse,json
 import prepare_build_source as base
 
 EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
+    'firestore_expenses','expense_initialization',
     'conversation_mocks','domain_notes','domain_tools','domain_runtime','tool_loop','draft_patch',
     'history_context','history_dates','history_first','semantic_tools','raw_history',
     'history_persistence','history_integration','production_history_state',

@@ -3,6 +3,7 @@
 The model interprets the owner's language and history. This module validates
 arguments, reads fixed providers completely and admits authoritative facts.
 """
+from .expense_storage import storage_scope
 from calendar import monthrange
 from copy import deepcopy
 from datetime import date, datetime, time, timedelta
@@ -63,8 +64,8 @@ def context(host):
     """Trusted scope and bounded catalog data for model interpretation, not rules."""
     row, previous = host._presented_result()
     scope = previous.data.get('read_query') if previous else None
-    if scope and (scope.get('workbook') != host.sheets.target.spreadsheet_id or scope.get('calendar') != host.calendar_flow.calendar_id):scope = None
-    if scope and getattr(host,'production',False) and (not row.get('delivery_verified') or host.state.event_workbooks.get(row['event']) != host.sheets.target.spreadsheet_id):scope = None
+    if scope and (scope.get('workbook') != storage_scope(host.sheets) or scope.get('calendar') != host.calendar_flow.calendar_id):scope = None
+    if scope and getattr(host,'production',False) and (not row.get('delivery_verified') or host.state.event_workbooks.get(row['event']) != storage_scope(host.sheets)):scope = None
     try:
         tax = host._taxonomy()
         catalog = {'complete':True,'items':[r.item for r in tax.rows],
@@ -137,7 +138,7 @@ def execute(host, name, args):
     domain = 'expense' if name=='query_expenses' else 'calendar'
     output = {'status':'stored_query','domain':domain,'read_only':True,'ok':True,'complete':False,
               'financial_write_authorized':False,'calendar_write_authorized':False,
-              'scope':{'domain':domain,'workbook':host.sheets.target.spreadsheet_id,'calendar':host.calendar_flow.calendar_id}}
+              'scope':{'domain':domain,'workbook':storage_scope(host.sheets),'calendar':host.calendar_flow.calendar_id}}
     try:
         p = (Expenses if domain=='expense' else Calendar).model_validate(args)
         sources=host._owner_sources(p.source_refs)

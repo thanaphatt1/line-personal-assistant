@@ -22,6 +22,7 @@ BUILD_INPUTS = (
     "scripts/verify_signed_startup.py",
     "src/line_assistant/__init__.py",
     "src/line_assistant/adapters.py",
+    "src/line_assistant/expense_storage.py",
     "src/line_assistant/adc_preflight.py",
     "src/line_assistant/api_sandbox.py",
     "src/line_assistant/auth_ports.py",

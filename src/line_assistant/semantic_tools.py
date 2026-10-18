@@ -1,4 +1,5 @@
 """Owner-scoped semantic preparation/read tools; model calls cannot grant writes."""
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import datetime
 from decimal import Decimal
@@ -66,7 +67,7 @@ def date_targets(h):
     if not value:return []
     if getattr(h,'production',False):
         event=value['confirmed_event'];reply=h.state.replies.get(event);receipt=h.state.receipts.get(event)
-        if (h.state.event_workbooks.get(event)!=h.sheets.target.spreadsheet_id or not reply or reply.status!='sent'
+        if (h.state.event_workbooks.get(event)!=storage_scope(h.sheets) or not reply or reply.status!='sent'
             or not receipt or reply.content_hash!=message_hash(rendered_message(receipt.result))):return []
     return [{'date_ref':'date_'+digest([h.settings.owner_id,getattr(getattr(h.sheets,'target',None),'spreadsheet_id',None),value])[:20],**value}]
 
@@ -100,7 +101,7 @@ def delivered(h,payload):
         offered=[v.get('action',{}).get('data') for v in msg.get('contents',{}).get('footer',{}).get('contents',[])]
         if payload not in offered:continue
         if getattr(h,'production',False):
-            if h.state.event_workbooks.get(event)!=h.sheets.target.spreadsheet_id:continue
+            if h.state.event_workbooks.get(event)!=storage_scope(h.sheets):continue
             reply=h.state.replies.get(event)
             if not reply or reply.status!='sent' or reply.content_hash!=message_hash(rendered_message(receipt.result)):continue
         return True

@@ -148,9 +148,11 @@ class PilotHttp:
                     raise LiveDisabled("Reply check only allows its fixed reply route")
                 self.reply_check.authorize_body(body)
                 return
-        target = self.config.sheet_target()
-        sheet_base = "/v4/spreadsheets/" + target.spreadsheet_id
         if service == "sheets":
+            if self.config.expense_backend != 'sheets':
+                raise LiveDisabled('Sheets is outside the selected expense backend')
+            target = self.config.sheet_target()
+            sheet_base = "/v4/spreadsheets/" + target.spreadsheet_id
             if method == "GET" and path == sheet_base and body is None:
                 if any(word in (params or {}).get("fields", "") for word in ("rowData", "effectiveValue", "userEnteredValue")):
                     raise LiveDisabled("Metadata endpoint cannot read cell content")

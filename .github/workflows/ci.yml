@@ -37,3 +37,33 @@ jobs:
       - name: Check source, wheel and signed startup
         timeout-minutes: 3
         run: python scripts/check_ci.py
+
+  firestore-emulator:
+    name: Firestore emulator contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Set up isolated Java runtime
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned test dependencies
+        run: python -m pip install -r requirements-ci.txt
+      - name: Download and verify official emulator
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' https://storage.googleapis.com/firebase-preview-drop/emulator/cloud-firestore-emulator-v1.22.0.jar --output "$RUNNER_TEMP/firestore-emulator.jar"
+          echo "9b6498b7f62714d67f48f59b3818883cd682dbcd46b9f59511de81c97bb5166c  $RUNNER_TEMP/firestore-emulator.jar" | sha256sum --check
+      - name: Test synthetic demo database on loopback
+        run: python scripts/run_firestore_emulator_tests.py --java "$JAVA_HOME/bin/java" --jar "$RUNNER_TEMP/firestore-emulator.jar"

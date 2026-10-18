@@ -8,16 +8,16 @@ from .transport import LiveDisabled
 def owned(http):
     c,s=http.config,http.state
     return bool(c.history_enabled and c.history_state_enabled and s and s.holder and
-        s.owner_id==c.owner_id and s.production_ready and s.workbook_id==c.spreadsheet_id)
+        s.owner_id==c.owner_id and s.production_ready and s.workbook_id==c.storage_scope_id)
 
 def actions(http):
     c=http.config
     for key,a in http.state.actions.items():
         m,p=a.metadata,a.payload;domain=p.get('domain')
-        target=c.spreadsheet_id if domain=='expense' else c.calendar_id
+        target=c.storage_scope_id if domain=='expense' else c.calendar_id
         if (domain not in {'expense','calendar'} or not key.startswith(c.owner_id+':savededit:')
             or a.kind!=('edit_saved_expense' if domain=='expense' else 'reschedule_saved_event')
-            or not m.get('saved_record_edit') or m.get('owner')!=c.owner_id or m.get('workbook')!=c.spreadsheet_id
+            or not m.get('saved_record_edit') or m.get('owner')!=c.owner_id or m.get('workbook')!=c.storage_scope_id
             or m.get('target')!=target or m.get('payload_hash')!=digest(p)):continue
         yield key,a
 
@@ -28,7 +28,7 @@ def calendar_read(http,path):
     p=s.pending
     if p and p.kind.startswith('saved_record_'):
         v=p.payload
-        if (v.get('owner')==c.owner_id and v.get('workbook')==c.spreadsheet_id and v.get('target')==c.calendar_id
+        if (v.get('owner')==c.owner_id and v.get('workbook')==c.storage_scope_id and v.get('target')==c.calendar_id
             and v.get('domain')=='calendar' and v.get('seal')==digest({k:x for k,x in v.items() if k!='seal'})):
             ids.update(r['record']['id'] for r in v.get('candidates',[]))
     for _,a in actions(http):
@@ -52,7 +52,7 @@ def mutation(http,service,method,path,body,params,headers=None):
         domain=p['domain']
         if domain=='expense':
             if not (c.saved_expense_enabled and c.saved_expense_concurrency=='reviewed_single_writer'):continue
-            if (service!='sheets' or method!='POST' or path!='/v4/spreadsheets/'+c.spreadsheet_id+':batchUpdate'
+            if (service!='sheets' or method!='POST' or path!='/v4/spreadsheets/'+c.storage_scope_id+':batchUpdate'
                 or params is not None or headers):continue
             if p['after']!=expense_after(p['before'],p['changes']) or body!=edit_body(c.sheet_target(),p,proof.get('row')):continue
         else:

@@ -4,6 +4,7 @@ Reads only explicit nonsecret PILOT env keys. Mounted secrets/metadata/paid netw
 are consulted only after a separately authorized, complete future launch config.
 No existing .env, ADC/user key or unrelated project credential lookup.
 """
+from .expense_storage import storage_scope
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -48,7 +49,7 @@ class DisabledCalendar:
 class ExpenseAssistant(Assistant):
     def _prepare_context(self, event_id, fingerprint):
         # Called inside the existing fenced owner session, before replay/resume.
-        target = self.sheets.target.spreadsheet_id
+        target = storage_scope(self.sheets)
         bound = self.state.event_workbooks.get(event_id)
         if bound and bound != target:
             return False
@@ -60,7 +61,7 @@ class ExpenseAssistant(Assistant):
         return self.state.event_workbooks.get(event_id, target) == target
 
     def _bind_context(self, event_id):
-        self.state.event_workbooks[event_id] = self.sheets.target.spreadsheet_id
+        self.state.event_workbooks[event_id] = storage_scope(self.sheets)
 
     def handle(self, event):
         with rpc_budget(96):
@@ -125,6 +126,8 @@ class CanaryReplies(BoundedReplies):
 
 def create_cloud_run_app(values=None, *, transport=None, secret_loader=None, clock=None):
     config = PilotConfig.from_mapping(values or {})
+    if config.expense_backend != "sheets":
+        raise ConfigError("Firestore expenses require the history production factory")
     if transport is None and config.launch_authorized and config.mode == "canary" and config.canary is None:
         raise ConfigError("Live transport requires the reviewed canary configuration")
     if transport is None and (config.launch_authorized or config.auth_check_id or config.reply_check and config.reply_check.authorized):

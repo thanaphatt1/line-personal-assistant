@@ -4,6 +4,7 @@ Only current-page aggregates enter model context. Source rows/IDs remain on the
 server; pages never truncate the complete configured input read. No transaction
 mutation, new taxonomy or automatic consent is available to model tools.
 """
+from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import datetime,timedelta
 from decimal import Decimal
@@ -105,7 +106,7 @@ class HistoricalCategories(ProvisionalCategories):
             key=normalized(entry['item'])
             if key not in groups:
                 choices=list(identity.suggestions or tax.catalog.match(entry['item']).suggestions)
-                groups[key]={'group_ref':'hg_'+digest([self.h.sheets.target.spreadsheet_id,key])[:20],'item':entry['item'],'stored_names':[],
+                groups[key]={'group_ref':'hg_'+digest([storage_scope(self.h.sheets),key])[:20],'item':entry['item'],'stored_names':[],
                     'reason':reason,'candidate_items':choices[:3],'count':0,'expense':Decimal(0),'first_date':entry['date'],'last_date':entry['date']}
             g=groups[key];g['count']+=1;g['expense']+=Decimal(entry['amount'])
             g['first_date']=min(g['first_date'],entry['date']);g['last_date']=max(g['last_date'],entry['date'])
@@ -162,7 +163,7 @@ class HistoricalCategories(ProvisionalCategories):
             if out.get('complete') is not True:raise NotReady('Explicit historical date scope is unavailable')
             scope.update(start=out['scope']['start'],end=out['scope']['end'])
         snapshot=self.snapshot(scope)
-        v={'format':'historical-categories-v1','owner':self.h.settings.owner_id,'workbook':self.h.sheets.target.spreadsheet_id,
+        v={'format':'historical-categories-v1','owner':self.h.settings.owner_id,'workbook':storage_scope(self.h.sheets),
             'ref':'hc_'+digest([self.h.settings.owner_id,self.h._active_event_id,scope])[:20],'origin_event':self.h._active_event_id,
             'scope':scope,'source_refs':p.source_refs,'review_source_refs':[],'skip_refs':[],'page_number':1}
         return self.page(v,snapshot,0)
@@ -199,7 +200,7 @@ class HistoricalCategories(ProvisionalCategories):
         if not self.has_pending():
             _,shown=self.h._presented_result();v=deepcopy(shown.data.get('historical_continuation')) if shown else None
             if not v or v['ref']!=p.review_ref or p.operation not in {'next','refresh'}:raise ValueError('no_historical_page')
-            if v['owner']!=self.h.settings.owner_id or v['workbook']!=self.h.sheets.target.spreadsheet_id:raise ValueError('foreign_historical_continuation')
+            if v['owner']!=self.h.settings.owner_id or v['workbook']!=storage_scope(self.h.sheets):raise ValueError('foreign_historical_continuation')
             if p.changes or p.selection!='keep' or p.selected_refs:raise ValueError('navigation_cannot_change_labels')
             snapshot=self.snapshot(v['scope']);v.update(ref='hc_'+digest([v['ref'],self.h._active_event_id])[:20],origin_event=self.h._active_event_id,review_source_refs=[],stage='unclassified')
             if p.operation=='refresh':v.update(skip_refs=[],page_number=1)
@@ -350,7 +351,7 @@ class HistoricalCategories(ProvisionalCategories):
     def resume(self,key):
         action=self.h.state.actions[key];m=action.metadata
         owned=(m.get('historical_classification') and m.get('owner')==self.h.settings.owner_id
-            and m.get('workbook')==self.h.sheets.target.spreadsheet_id and m.get('payload_hash')==digest(action.payload))
+            and m.get('workbook')==storage_scope(self.h.sheets) and m.get('payload_hash')==digest(action.payload))
         if owned and action.status not in {'completed','executing','uncertain'} and self.mapping_enabled and action.deadline>self.h.clock():
             # A crash may happen after durable confirmation but before the first
             # attempt. That ready Action must validate source again at commit.

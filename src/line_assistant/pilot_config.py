@@ -19,7 +19,7 @@ PILOT_KEYS = frozenset({"PILOT_MODE", "PILOT_LAUNCH_AUTHORIZED", "PILOT_CONVERSA
                         "PILOT_MODEL_MAX_CALLS_DAY", "PILOT_MODEL_MAX_CALLS_MONTH", "PILOT_MODEL_ID",
                         "PILOT_PROJECT_ID", "PILOT_REGION", "PILOT_SERVICE_ACCOUNT", "PILOT_SPREADSHEET_ID",
                         "PILOT_LINE_AUTH_CHECK_ID", "PILOT_LINE_AUTH_CHECK_EXPIRES_AT", "PILOT_LINE_AUTH_CHECK_EXPECTED_BOT",
-                        "PILOT_LEGACY_SPREADSHEET_ID", "PILOT_EXPENSE_SHEET_ID", "PILOT_DATABASE_SHEET_ID", "PILOT_SHEETS_MAX_ROWS", "PILOT_SHEET_SCHEMA_VERIFIED"}) | CANARY_KEYS | REPLY_CHECK_KEYS
+                        "PILOT_LEGACY_SPREADSHEET_ID", "PILOT_EXPENSE_SHEET_ID", "PILOT_DATABASE_SHEET_ID", "PILOT_SHEETS_MAX_ROWS", "PILOT_SHEET_SCHEMA_VERIFIED"}) | CANARY_KEYS | REPLY_CHECK_KEYS | frozenset({"PILOT_EXPENSE_BACKEND", "PILOT_EXPENSE_DATASET_ID", "PILOT_EXPENSE_MAX_RECORDS", "PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED"})
 SECRET_PATHS = {
     "line-channel-secret": "/var/run/line-assistant-secrets/line-channel-secret/value",
     "line-channel-access-token": "/var/run/line-assistant-secrets/line-channel-access-token/value",
@@ -54,11 +54,29 @@ class PilotConfig:
     sheet_max_rows: int = 1001
     sheet_schema_verified: bool = False
 
+    expense_backend: str = "sheets"
+    expense_dataset_id: str = "default"
+    expense_max_records: int = 1000
+    expense_schema_verified: bool = False
+
+    def firestore_expense_target(self):
+        from .firestore_expenses import FirestoreExpenseTarget
+        return FirestoreExpenseTarget(self.project_id, self.owner_id, self.expense_dataset_id,
+                                      max_records=self.expense_max_records, writes_enabled=True)
+
+    @property
+    def storage_scope_id(self):
+        return self.firestore_expense_target().scope_id if self.expense_backend == "firestore" else self.spreadsheet_id
+
     @property
     def approved_workbooks(self):
-        return frozenset(book for book in (self.spreadsheet_id, self.legacy_spreadsheet_id) if book)
+        return frozenset(book for book in (self.storage_scope_id, self.legacy_spreadsheet_id) if book)
 
     def require_live_target(self):
+        if self.expense_backend == "firestore":
+            if self.project_id == PROJECT_ID or not self.expense_schema_verified:
+                raise ConfigError("Live launch requires explicit project and reviewed Firestore expense schema")
+            return
         if (self.project_id == PROJECT_ID or self.spreadsheet_id in {MAIN_WORKBOOK_ID, TEST_WORKBOOK_ID}
                 or not self.sheet_schema_verified):
             raise ConfigError("Live launch requires explicit deployment targets and reviewed Sheet schema")
@@ -87,6 +105,8 @@ class PilotConfig:
         defaults.update({key: "" for key in CANARY_KEYS})
         defaults.update({key: "" for key in REPLY_CHECK_KEYS})
         defaults["PILOT_REPLY_CHECK_AUTHORIZED"] = "false"
+        defaults.update({"PILOT_EXPENSE_BACKEND": "sheets", "PILOT_EXPENSE_DATASET_ID": "default",
+                         "PILOT_EXPENSE_MAX_RECORDS": "1000", "PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED": "false"})
         production = values.get("PILOT_MODE") == "production"
         defaults.update({"PILOT_LEGACY_SPREADSHEET_ID": TEST_WORKBOOK_ID if values.get("PILOT_PROJECT_ID", PROJECT_ID) == PROJECT_ID else "",
                          "PILOT_EXPENSE_SHEET_ID": "101" if production else "201",
@@ -95,6 +115,14 @@ class PilotConfig:
         v = {key: values.get(key, value) for key, value in defaults.items()}
         if any(not isinstance(value, str) or len(value) > 512 or any(ord(c) < 32 for c in value) for value in v.values()):
             raise ConfigError("Invalid pilot values")
+        backend = v["PILOT_EXPENSE_BACKEND"]
+        if (backend not in {"sheets", "firestore"}
+                or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", v["PILOT_EXPENSE_DATASET_ID"])
+                or not re.fullmatch(r"[0-9]{1,4}", v["PILOT_EXPENSE_MAX_RECORDS"])
+                or not 1 <= int(v["PILOT_EXPENSE_MAX_RECORDS"]) <= 1000
+                or v["PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED"] not in {"true", "false"}
+                or backend == "firestore" and (not production or v["PILOT_CONVERSATION_ENABLED"] != "true")):
+            raise ConfigError("Explicit supported bounded expense backend required")
         if v["PILOT_MODEL_ID"] != MODEL_ID:
             raise ConfigError("Unsupported model")
         if (not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", v["PILOT_PROJECT_ID"])
@@ -102,7 +130,7 @@ class PilotConfig:
                 or not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]@" + re.escape(v["PILOT_PROJECT_ID"]) + r"\.iam\.gserviceaccount\.com", v["PILOT_SERVICE_ACCOUNT"])):
             raise ConfigError("Invalid deployment project, region or attached service account")
         for key in ("PILOT_SPREADSHEET_ID", "PILOT_LEGACY_SPREADSHEET_ID"):
-            if (key == "PILOT_SPREADSHEET_ID" or v[key]) and not re.fullmatch(r"[A-Za-z0-9_-]{20,128}", v[key]):
+            if (backend == "sheets" and key == "PILOT_SPREADSHEET_ID" or v[key]) and not re.fullmatch(r"[A-Za-z0-9_-]{20,128}", v[key]):
                 raise ConfigError("Invalid deployment workbook")
         for key in ("PILOT_EXPENSE_SHEET_ID", "PILOT_DATABASE_SHEET_ID", "PILOT_SHEETS_MAX_ROWS"):
             if not re.fullmatch(r"[0-9]{1,10}", v[key]):
@@ -170,4 +198,7 @@ class PilotConfig:
                    project_id=v["PILOT_PROJECT_ID"], region=v["PILOT_REGION"], service_account=v["PILOT_SERVICE_ACCOUNT"],
                    legacy_spreadsheet_id=v["PILOT_LEGACY_SPREADSHEET_ID"], expense_sheet_id=int(v["PILOT_EXPENSE_SHEET_ID"]),
                    database_sheet_id=int(v["PILOT_DATABASE_SHEET_ID"]), sheet_max_rows=int(v["PILOT_SHEETS_MAX_ROWS"]),
-                   sheet_schema_verified=v["PILOT_SHEET_SCHEMA_VERIFIED"] == "true")
+                   sheet_schema_verified=v["PILOT_SHEET_SCHEMA_VERIFIED"] == "true",
+                   expense_backend=backend, expense_dataset_id=v["PILOT_EXPENSE_DATASET_ID"],
+                   expense_max_records=int(v["PILOT_EXPENSE_MAX_RECORDS"]),
+                   expense_schema_verified=v["PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED"] == "true")
