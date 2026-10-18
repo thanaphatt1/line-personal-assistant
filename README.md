@@ -19,6 +19,8 @@ Optional [provisional category suggestions](docs/provisional-categories.md) sepa
 
 Optional [historical category review](docs/historical-categories.md) scans all unmapped names by default, with optional month/date scope and ten-name display pages over a complete input read. Owners can correct a batch, approve only some names or cancel, then separately choose a provisional summary or confirmed permanent mapping. Original transactions are preserved; the feature defaults OFF.
 
+Optional [previous expense amounts](docs/previous-expense-prices.md) can ask whether to use an exact item's last reliable saved total when an amount is missing. The question shows the historical date; the new expense keeps its own date and still requires a final review and confirmation. Explicit amounts take precedence. The feature defaults OFF and creates no automatic recurring payments.
+
 ## How it works
 
 - **Safe confirmation:** text and buttons refer to a delivered version and nonce. Edits invalidate old consent; repeated webhooks reconcile durable action IDs instead of blindly repeating a write.

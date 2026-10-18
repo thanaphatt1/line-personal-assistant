@@ -69,6 +69,8 @@ def restore_history(state,value,owner):
         for field in ['created_at','updated_at','expires_at']:aware(d[field])
         if not isinstance(d.get('entries'),list):raise ValueError('Invalid persisted draft entries')
         for entry in d['entries']:
+            from .previous_prices import validate as validate_previous_price
+            validate_previous_price(entry)
             required={'entry_ref','item','amount','date','date_parts','note','date_basis','date_issue','kind','mapping','source_refs'}
             if not isinstance(entry,dict) or not required<=set(entry):raise ValueError('Missing persisted draft entry fields')
             if (not isinstance(entry['entry_ref'],str) or not entry['entry_ref']

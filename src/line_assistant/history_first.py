@@ -71,6 +71,7 @@ class ExpenseData(Args):
     field_sources:FieldSources|None=None
     date_context: str|None=None
     date_ref:str|None=Field(default=None,max_length=40)
+    previous_price_ref:str|None=Field(default=None,max_length=40)
     @field_validator('amount',mode='before')
     @classmethod
     def explicit_thb_unit(cls,value):
@@ -180,7 +181,7 @@ def no_save_correction(text):
     return match[1] if match and intent_guard(match[1]) is None else None
 
 class HistoryFirstAssistant(Assistant):
-    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False):
+    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False,previous_prices_enabled=False):
         if type(response_realization_enabled) is not bool:raise ValueError('Explicit response realization flag required')
         self.response_realization_enabled=response_realization_enabled
         if history_first_enabled is not True:raise ValueError('History-first prototype defaults off')
@@ -219,6 +220,8 @@ class HistoryFirstAssistant(Assistant):
         from .historical_categories import HistoricalCategories
         if historical_categories_enabled and not provisional_categories_enabled:raise ValueError('Historical categories require provisional/history feature')
         self.historical_categories=HistoricalCategories(self,enabled=historical_categories_enabled,mapping_enabled=historical_categories_enabled and provisional_mapping_enabled,single_writer_reviewed=mapping_single_writer_reviewed)
+        from .previous_prices import PreviousPrices
+        self.previous_prices=PreviousPrices(self,enabled=previous_prices_enabled)
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
@@ -663,8 +666,17 @@ class HistoryFirstAssistant(Assistant):
         return chosen
 
     def _entry(self,value,old,index):
+        price=self.previous_prices.selection(value,old)
+        if old and old.get('previous_price',{}).get('state')=='accepted':
+            from .previous_prices import FOREIGN
+            if FOREIGN.search(self._current['text']):raise ValueError('previous_price_currency_conflict')
+        previous_identity_changed=bool(old and old.get('previous_price',{}).get('state')=='accepted'
+            and value.item and normalized(value.item)!=normalized(old['item']))
+        proposed_amount=value.amount
         if old and self.semantic_enabled:value=value.model_copy(update={'item':value.item if value.item is not None else old['item'],
                                                                         'amount':value.amount if value.amount is not None else old['amount']})
+        if previous_identity_changed and proposed_amount is None:value=value.model_copy(update={'amount':None})
+        if price:value=value.model_copy(update={'amount':price['amount']})
         sources=self._entry_sources(value,old)
         if any(re.search(r'รายรับ|รับเงิน|เงินเดือน|เงินเข้า|\bincome\b',command_text(r['text']),re.I) for r in sources):raise ValueError('income_unconfigured')
         tax=self._taxonomy();item=value.item;invalid=[];missing=[]
@@ -792,8 +804,9 @@ class HistoryFirstAssistant(Assistant):
                 from .language import money_string
                 amount=money_string(Decimal(amount))
             except (ValueError,ArithmeticError):invalid.append('amount');amount=None
-            if amount and (not old or amount!=old['amount']):
-                proved=False
+            if amount and (not old or amount!=old['amount'] or previous_identity_changed):
+                proved=bool(price)
+                if price:amount_refs.append(self._current['source_ref'])
                 amount_units=self._field_units(value,sources,item,old,'amount',units)
                 if self.raw_history_enabled and not old and item and self._has_item(command_text(self._current['text']),item):
                     current_units=[v for v in units if v[2]==self._current['source_ref']]
@@ -871,11 +884,13 @@ class HistoryFirstAssistant(Assistant):
                 'kind':'expense','mapping':mapping,**({'enrollment':enrollment} if enrollment else {}),**({'fact_times':fact_times} if self.semantic_enabled else {}),
                 **({'fact_sources':fact_sources} if self.raw_history_enabled else {}),
                 **({'amount_occurrence':{k:v for k,v in occurrence.items() if k in {'source_ref','span','ordinal','amount','at','occurrence_ref'}}} if occurrence else {'amount_occurrence':deepcopy(old['amount_occurrence'])} if old and amount==old['amount'] and old.get('amount_occurrence') else {}),
+                **({'previous_price':price} if price else {'previous_price':deepcopy(old['previous_price'])} if old and old.get('previous_price',{}).get('state')=='accepted' and amount==old['amount'] and not previous_identity_changed and not self.previous_prices.explicit_amount(old,amount) else {}),
                 **({'source_quote':next((r['text'][:200] for r in reversed(sources) if item and self._has_item(r['text'],item)),old.get('source_quote','') if old else '')} if self.semantic_enabled else {}),
                 'source_refs':list(dict.fromkeys((old['source_refs'] if old else [])+[r['source_ref'] for r in sources]))},missing,invalid,sources
 
     def _prepare(self,args):
         p=Prepare.model_validate(args)
+        self._previous_price_refs={e.previous_price_ref for e in p.entries if e.previous_price_ref is not None}
         self._name_plans={};self._group_date_answer=False
         if not p.entries:
             return {'ok':False,'error':'entries_missing','missing_fields':['entries'],
@@ -1016,7 +1031,10 @@ class HistoryFirstAssistant(Assistant):
                 and group_day and supplied is not None and covered
                 and all(e.item is None and e.amount is None and e.note is None and e.date_text for e in p.entries))
             self._group_date_answer=group_date_answer
-        if old and active>1 and not selected and not group_date_answer and not any(e['item'] and self._has_item(command_text(self._current['text']),e['item']) for e in old['entries']) and p.draft_ref not in self._current['text']:
+        if old and active>1 and not selected and not group_date_answer and not self.previous_prices.allows_bare_selection(p,old) and not any(e['item'] and self._has_item(command_text(self._current['text']),e['item']) for e in old['entries']) and p.draft_ref not in self._current['text']:
+            from .previous_prices import ACCEPT
+            if self.previous_prices.enabled and ACCEPT.search(self._current['text']) and any(e.get('previous_price',{}).get('state')=='offered' and self.previous_prices.eligible_request(e) for e in old['entries']):
+                return self.previous_prices.redisplay(semantic.inspect_drafts(self,old['draft_ref']))
             return {'ok':False,'error':'ambiguous_reference','clarification_required':True}
         if old:
             command=command_text(self._current['text'])
@@ -1099,8 +1117,8 @@ class HistoryFirstAssistant(Assistant):
                 # specifically bound old review even when validation rejects.
                 ref=args.get('draft_ref');d=self.state.drafts.get(ref)
                 if d and args.get('draft_version') in {None,d['version']} and self._request_views.get(ref)==self._view(d):d['review']=None
-            if name=='prepare_expenses':return self._prepare(args)
-            if name=='prepare_item_enrollment':return self._enroll_item(args)
+            if name=='prepare_expenses':return self.previous_prices.observe(self._prepare(args))
+            if name=='prepare_item_enrollment':return self.previous_prices.observe(self._enroll_item(args))
             if name=='prepare_expense_review':
                 if not self.raw_history_enabled:raise ValueError('unknown_tool')
                 return semantic.control(self,{'operation':'review',**args})
@@ -1115,7 +1133,7 @@ class HistoryFirstAssistant(Assistant):
                 return semantic.control(self,args)
             if name=='read_expense_drafts':
                 p=Read.model_validate(args)
-                if self.raw_history_enabled:return semantic.inspect_drafts(self,p.draft_ref)
+                if self.raw_history_enabled:return self.previous_prices.redisplay(semantic.inspect_drafts(self,p.draft_ref))
                 drafts=[self._draft(k) for k,d in self.state.drafts.items() if d['status']!='recorded' and (p.draft_ref is None or p.draft_ref==k)]
                 if p.draft_ref and not drafts:raise ValueError('draft_unavailable')
                 self._read_views.update({d['draft_ref']:self._view(d) for d in drafts})
@@ -1239,12 +1257,16 @@ class HistoryFirstAssistant(Assistant):
                 instruction='หมวดสำหรับชื่อใหม่เป็นข้อเสนอที่ต้องตรวจสอบ\n'+instruction
             continued=any(e.get('date_basis',{}).get('confirmed_event') for e in d['entries'])
             message=f'ตรวจสอบรายการ:\n{rows}\n'+('ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า\n' if continued else '')+instruction
+            prior=[e for e in d['entries'] if e.get('previous_price',{}).get('state')=='accepted']
+            if prior:message+='\n'+'\n'.join(f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {e['previous_price']['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}" for e in prior)
             data={'tool_result':tool_output,'confirm_command':command}
             if self.semantic_enabled:data['line_message']=semantic.render_actions(message,semantic.actions(self,d))
             return Result('preview',message,data)
         if success_claim(model_text):return Result('clarification','ยังไม่มีผลยืนยันการบันทึกจาก tool จึงยังไม่รายงานว่าบันทึกแล้ว',{'tool_result':tool_output})
         if tool_output and not tool_output.get('ok'):return Result('clarification',model_text or 'ข้อมูลยังไม่ผ่านการตรวจสอบ กรุณาระบุให้ชัดเจน',{'tool_result':tool_output})
         if tool_output and tool_output.get('status')=='needs_information':
+            price_question=self.previous_prices.prompt(tool_output)
+            if price_question:return Result('clarification',price_question,{'tool_result':tool_output})
             unresolved=[e for i,e in enumerate(tool_output['entries']) if any(f'entries[{i}].'+field in tool_output['missing_fields'] for field in ['item_resolution','existing_or_new'])]
             if unresolved and not model_text:
                 rows='\n'.join(f"{e['item']} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in unresolved)
@@ -1273,6 +1295,16 @@ class HistoryFirstAssistant(Assistant):
 
     def _resume(self,key):
         action=self.state.actions[key]
+        if action.metadata.get('previous_price_bases') and action.status!='completed':
+            if action.status in {'executing','uncertain'}:
+                try:proof=self.sheets.reconcile_enrollment(key,action.payload) if action.kind=='catalog_expense' else self.sheets.reconcile(key,action.payload)
+                except Exception:proof=None
+                if proof and proof.outcome=='committed':return self._complete(key,proof.receipt)
+                action.status='uncertain';self.state.checkpoint();return self._uncertain(key)
+            try:self.previous_prices.check_action(action)
+            except Exception:
+                action.status='completed';action.result=Result('stale','ราคาเดิมหรือการตั้งค่าเปลี่ยนแล้ว ยังไม่ได้บันทึก กรุณาระบุยอดและตรวจร่างใหม่')
+                self.state.checkpoint();return deepcopy(action.result)
         if action.metadata.get('historical_classification'):return self.historical_categories.resume(key)
         if action.metadata.get('provisional_mapping'):return self.provisional_categories.resume(key)
         if action.metadata.get('saved_record_edit'):return self.saved_edits.resume(key)
@@ -1334,9 +1366,13 @@ class HistoryFirstAssistant(Assistant):
             d['review']=None;return Result('stale','ข้อมูลหรือ Database เปลี่ยน กรุณาตรวจสอบร่างอีกครั้ง')
         blocked=self._blocked_action()
         if blocked:return self._uncertain(blocked)
+        try:price_bases=self.previous_prices.bases(d)
+        except Exception:
+            d['review']=None;return Result('stale','ข้อมูลราคาเดิมเปลี่ยนหรือใช้ไม่ได้แล้ว ยังไม่ได้บันทึก กรุณาระบุยอดใหม่หรือยกเลิกร่าง')
         key=self._key(ref,'catalog_expense' if 'catalog' in payload else 'add_transactions')
         return self._execute(key,'catalog_expense' if 'catalog' in payload else 'add_transactions',payload,ref,
-                             {'raw_items':[e['item'] for e in d['entries']],'draft_ref':ref,'draft_expires_at':d['expires_at']})
+                             {'raw_items':[e['item'] for e in d['entries']],'draft_ref':ref,'draft_expires_at':d['expires_at'],
+                              **({'previous_price_bases':price_bases} if price_bases else {})})
 
     def _finish(self,event,at,result):
         result=self._finalize_result(event,result)
@@ -1455,7 +1491,7 @@ class HistoryFirstAssistant(Assistant):
                     available=self._workflow()
                     date_targets=semantic.date_targets(self)
                     self._request_date_views={v['date_ref']:deepcopy(v) for v in date_targets}
-                    definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets)
+                    definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets,previous_prices=self.previous_prices.enabled)
                     from .read_queries import definitions as query_definitions,context as query_context
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()

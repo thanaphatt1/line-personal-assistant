@@ -16,6 +16,9 @@ def views(h):
         d=h._draft(view['draft_ref'])
         view.update(entries=[{k:e[k] for k in ('entry_ref','item','amount','date','fact_sources') if k in e} for e in d['entries']],missing_fields=deepcopy(d['missing_fields']),item_resolutions=[],fact_completion=[])
         for e in d['entries']:
+            if e.get('previous_price'):
+                from .previous_prices import public
+                next(v for v in view['entries'] if v['entry_ref']==e['entry_ref'])['previous_price']=public(e['previous_price'])
             missing=[k for k in ['item','amount','date'] if e[k] is None or e[k]=='']
             if missing:view['fact_completion'].append({'entry_ref':e['entry_ref'],'missing':missing,'financial_write_authorized':False})
             if not e['item'] or tax.catalog.match(e['item']).status=='exact':continue
@@ -38,7 +41,7 @@ def views(h):
                 'financial_write_authorized':False})
     return result
 
-def definitions(base,available,date_references=()):
+def definitions(base,available,date_references=(),*,previous_prices=False):
     # Catalog discovery belongs to preparation. Every turn already has the
     # owned pending facts; separate reads formerly used up the initial turn
     # as well as unnamed/partial draft turns. Free-text answers remain valid.
@@ -51,6 +54,11 @@ def definitions(base,available,date_references=()):
         if t['name']=='prepare_expenses':
             p['entries'].update(minItems=1,maxItems=5)
             entry=p['entries']['items']
+            if previous_prices:
+                offered=[e['previous_price']['ref'] for d in available for e in d.get('entries',[]) if e.get('previous_price',{}).get('state')=='offered']
+                entry['properties']['previous_price_ref']={'type':['string','null'],'enum':[None,*offered],
+                    'description':'Only when owner explicitly accepts the latest delivered past-amount offer: copy its exact ref and leave amount=null. Otherwise null. An explicit new amount always uses amount and its owner evidence. This fills a draft only, never saves.'}
+                entry['required'].append('previous_price_ref')
             entry['properties']['item_text']={'type':['string','null'],'description':'Literal full owner item name when item proposes a different real Database name (for example a typo). Copy the original mention; never replace source evidence with the proposed spelling. Null when unchanged.'}
             entry['required'].append('item_text')
             entry['properties']['item']['description']='Full original owner item label, preserving all words and internal spaces, or a proposed real Database name. Supply item_text for spelling differences; uncertain names ask for a choice before review. Never split trailing name words into note or invent a catalog identity.'

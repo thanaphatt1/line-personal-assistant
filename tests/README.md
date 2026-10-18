@@ -53,6 +53,14 @@ passed **3,150 collected test items** in [CI](https://github.com/thanaphatt1/lin
 The table groups each item once by its primary test file; a workflow can exercise
 several areas. Use collection output for the checkout's actual count.
 
+The later previous-amount feature adds **56 signed offline cases** in
+[test_previous_expense_prices.py](test_previous_expense_prices.py). They check
+saved-price provenance, dates independent of the source payment, explicit amount
+precedence, stale/unknown outcomes and mixed workflows. Its
+[synthetic model corpus](fixtures/previous_expense_prices_development.json)
+is development-only and is not executed by the default offline suite. The dated
+3,150-item inventory below remains the earlier source snapshot.
+
 | Family | Snapshot items | Representative behavior and suites |
 | --- | ---: | --- |
 | Expenses, drafts and catalog | 734 | Keep separate price occurrences, reject invented amounts, clarify missing facts and invalidate old consent after an edit. [Financial evidence](test_financial_guard_v13.py), [shared expenses](test_shared_expense_evidence_v10.py), [draft changes](test_draft_patch.py), [catalog names](test_catalog_names_v09.py) |

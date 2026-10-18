@@ -107,6 +107,15 @@ def request_instructions(definitions,*,calendar=False):
         base=base.replace('No income, calendar, recorded-expense edits or external search.','No income, Calendar creation or external search; saved-record proposals only through dedicated tools.').replace('No guests, recurring appointments, reminders or saved-event edit/delete.','No guests, recurring appointments, reminders or deletion.').replace('No income, recorded-expense edits or external search.','No income or external search.')+SAVED_EDIT_INSTRUCTIONS
     if any(t['name']=='propose_expense_categories' for t in definitions):base+=PROVISIONAL_CATEGORY_INSTRUCTIONS
     if any(t['name']=='scan_historical_categories' for t in definitions):base+=HISTORICAL_CATEGORY_INSTRUCTIONS
+    if any('previous_price_ref' in t['parameters'].get('properties',{}).get('entries',{}).get('items',{}).get('properties',{}) for t in definitions):
+        base+=(' For an expense with missing amount, prepare it with amount=null; the server may offer an actual past recorded amount. '
+               'Never invent a subscription price or treat a past payment as a fixed/unit price. '
+               'When the owner explicitly chooses a delivered previous_price offer (e.g. ใช้เดิม), update that owned entry with its exact previous_price_ref and amount=null. '
+               'For multiple missing items, use explicit named choices or a clear all-items choice; do not guess. '
+               'To show or ask about previous amounts again, call read_expense_drafts; that refreshes the question without selecting a price. '
+               'A price choice must use source_refs containing only current_source_ref, never a previous owner reply or numeric field_sources. '
+               'An explicit amount such as เดือนนี้169 always uses amount with current owner evidence and previous_price_ref=null. '
+               'Keep the new transaction date separate from the historical source_date. Selecting an old amount only prepares a fresh review; separate final owner confirmation is still required.')
     return base
 
 HISTORICAL_CATEGORY_INSTRUCTIONS=(

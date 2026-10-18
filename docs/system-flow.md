@@ -79,6 +79,14 @@ flowchart TD
 
 For a new expense with no date, **code uses Bangkok today** from the original owner message timestamp. Unchanged edits retain the certified date; ambiguous or conflicting dates require clarification. The server resolves existing catalog labels; a new item requires the owner's category/subcategory choices before a review. An LLM tool call never grants write permission. Income has no verified storage mapping and is unsupported; it is not a known zero balance.
 
+When [previous-amount suggestions](previous-expense-prices.md) are enabled, a
+missing amount can trigger a complete bounded saved-history read. Code selects
+an exact item's reliable latest past-day total and displays its source date;
+the model can propose its owned reference only after the owner chooses it.
+The new expense date remains independent. Source fingerprints are checked again
+before review confirmation and the first append attempt. The ordinary delivered
+review, separate consent and reconciliation path still control the write.
+
 Confirmation is another authenticated turn through the shared ingress. Named buttons/text bind the frozen review; a short contextual acknowledgement must refer to the appropriate delivered review. Queries create no consent. After an action starts, durable keys and receipts prevent duplicate webhook effects, and uncertain outcomes preserve the original intent until reconciliation proves what happened.
 
 ## 3. Calendar write: explicit timing and one configured calendar

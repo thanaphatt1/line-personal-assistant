@@ -1,0 +1,75 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-18T09:00:00+07:00",
+  "cases": [
+    {"name":"constant_saved_amount","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่าส่วนกลาง","expect":"offer","prices":{"ค่าส่วนกลาง":"1200.00"}},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"ค่าส่วนกลาง":"1200"}},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"varied_history_explicit_override","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify","expect":"offer","prices":{"Spotify":"169.00"},"varied":true},
+      {"text":"เดือนนี้179","expect":"review","amounts":{"Spotify":"179"},"no_price_dependency":true},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"unknown_item","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่า Nova Music","expect":"no_offer"}
+    ]},
+    {"name":"similar_plan_is_unresolved","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotfy","expect":"no_offer"}
+    ]},
+    {"name":"annotated_bundle_is_not_a_unit_price","batch":"main","fixture":"annotated","turns":[
+      {"text":"บันทึกค่า Spotify","expect":"no_offer"}
+    ]},
+    {"name":"conflicting_same_day_prices","batch":"main","fixture":"same_day","turns":[
+      {"text":"บันทึกค่า Spotify","expect":"no_offer"}
+    ]},
+    {"name":"multiple_missing_amounts","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify และ YouTube","expect":"offer","prices":{"Spotify":"169.00","YouTube":"179.00"}},
+      {"text":"ใช้เดิมทั้งหมด","expect":"review","amounts":{"Spotify":"169","YouTube":"179"}},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"cancel_without_automatic_recurring_save","batch":"main","fixture":"core","turns":[
+      {"text":"บันทึกค่า YouTube","expect":"offer","prices":{"YouTube":"179.00"}},
+      {"text":"ยกเลิก","expect":"cancelled"}
+    ]},
+    {"name":"stale_before_choice_then_owner_amount","batch":"edges","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify","expect":"offer","prices":{"Spotify":"169.00"}},
+      {"text":"ใช้เดิม","mutate":"source_amount","expect":"blocked"},
+      {"text":"เดือนนี้199","expect":"review","amounts":{"Spotify":"199"},"no_price_dependency":true},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"new_date_is_separate_from_price_date","batch":"edges","fixture":"future_row","turns":[
+      {"text":"บันทึกค่า Spotify วันที่ 15 ต.ค. 2026","expect":"offer","prices":{"Spotify":"169.00"},"date":"2026-10-15"},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify":"169"},"date":"2026-10-15"},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"ambiguous_multiple_then_named_choices","batch":"edges","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify และ YouTube","expect":"offer","prices":{"Spotify":"169.00","YouTube":"179.00"}},
+      {"text":"ใช้เดิม","expect":"blocked"},
+      {"text":"ใช้เดิมเฉพาะ Spotify","expect":"partial","amounts":{"Spotify":"169","YouTube":null}},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify":"169","YouTube":"179"}},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]},
+    {"name":"calendar_interruption","batch":"interplay","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify","expect":"offer","prices":{"Spotify":"169.00"}},
+      {"text":"เพิ่มนัดตรวจระบบ 22 ต.ค. 2026 ทั้งวัน","expect":"calendar_review"},
+      {"text":"ยืนยัน","expect":"blocked","no_model":true},
+      {"command":"calendar_confirmation","expect":"created","no_model":true},
+      {"text":"ขอดูร่างค่า Spotify ใหม่","expect":"offer","prices":{"Spotify":"169.00"}},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"Spotify":"169"}},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"calendar_posts":1,"no_model":true}
+    ]},
+    {"name":"historical_review_is_independent","batch":"interplay","fixture":"historical","turns":[
+      {"text":"ช่วย scan จัดหมวดย้อนหลังชื่อที่ยังไม่มีหมวดทั้งหมด","expect":"historical_review"},
+      {"text":"บันทึกค่าส่วนกลาง","expect":"offer","prices":{"ค่าส่วนกลาง":"1200.00"},"pending_unchanged":true},
+      {"text":"ใช้เดิม","expect":"review","amounts":{"ค่าส่วนกลาง":"1200"},"pending_unchanged":true},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"pending_unchanged":true,"no_model":true}
+    ]},
+    {"name":"ordinary_explicit_expense","batch":"interplay","fixture":"core","turns":[
+      {"text":"บันทึกค่า Spotify 199 บาท","expect":"review","amounts":{"Spotify":"199"},"no_price_dependency":true},
+      {"text":"ยืนยัน","expect":"recorded","writes":1,"no_model":true}
+    ]}
+  ]
+}

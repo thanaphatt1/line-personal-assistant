@@ -238,6 +238,17 @@ review is null until ready, then binds a nonce, payload/catalog hashes and time.
 An edit creates a new version and invalidates old consent. All these fields are
 generated/validated by the app, not columns to add to a Sheet.
 
+With previous-amount suggestions enabled, an entry can additionally carry
+`previous_price` (`previous-expense-price-v1`). Its exact fields are `format`,
+`state` (`offered` or `accepted`), `ref`, `item`, positive two-decimal `amount`,
+`source_date`, `varied`, `source_hash`, `target_hash`, `cutoff`, `offered_at`,
+`accepted_at` and `accepted_source_ref`. Acceptance fields are null on an offer;
+an accepted reference binds the owner's current reply and matching entry amount.
+The source date precedes the cutoff; it never supplies the new transaction date.
+Accepted `{index, proof}` bases are copied into `Action.metadata.previous_price_bases`.
+These optional app-owned fields require no Sheet columns, collections or snapshot
+envelope migration. See [selection and recovery rules](previous-expense-prices.md).
+
 Calendar drafts additionally bind `calendar_id`, literal `facts`, field sources
 and time anchors, normalized `start`/`end`, `missing_fields`, `issues`, optional
 `all_day`, and a review with conflict/payload proofs. A batch binds its member

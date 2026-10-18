@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -38,6 +38,7 @@ class HistoryConfig:
     provisional_categories_enabled: bool=False
     provisional_mapping_enabled: bool=False
     historical_categories_enabled: bool=False
+    previous_prices_enabled: bool=False
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -68,7 +69,9 @@ class HistoryConfig:
             or mappings=='true' and (labels!='true' or concurrency!='reviewed_single_writer')):raise ConfigError('Provisional mapping requires explicit flags, history and reviewed Database writer policy')
         historical=values.get('PILOT_HISTORICAL_CATEGORIES_ENABLED','false')
         if historical not in {'true','false'} or historical=='true' and labels!='true':raise ConfigError('Historical categories require explicit provisional/history configuration')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true')
+        prices=values.get('PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','false')
+        if prices not in {'true','false'} or prices=='true' and (h!='true' or s!='true'):raise ConfigError('Previous expense prices require explicit history/state configuration')
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true')
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
@@ -151,7 +154,7 @@ class HistoryHttp(PilotHttp):
 
 def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None,clock=None,semantic_enabled=True,raw_history_enabled=True):
     values=values or {};config=HistoryConfig.from_mapping(values)
-    if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled or config.provisional_categories_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits/proposals require raw history')
+    if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled or config.provisional_categories_enabled or config.previous_prices_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits/proposals require raw history')
     old=legacy_app({k:v for k,v in values.items() if k not in HISTORY_KEYS},transport=transport,secret_loader=secret_loader,clock=clock)
     if not config.history_state_enabled:return old
     previous=old.state.pilot_http
@@ -174,7 +177,7 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     from .calendar_reschedule import SavedCalendarEditor
     expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
     calendar_editor=SavedCalendarEditor(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=config.saved_calendar_enabled,effect_guard=state.before_effect) if config.calendar_enabled else None
-    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled)
+    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled,previous_prices_enabled=config.previous_prices_enabled)
     assistant.production=True;assistant.expense_label='ในชีตจริง';assistant.guard=guard
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)
