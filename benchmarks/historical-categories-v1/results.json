@@ -1,6 +1,6 @@
 {
   "scope": "synthetic development, not held-out accuracy",
-  "final_runtime_archive_sha256": "8eb3b9a665751e0e2591a3054b178d884f9acc90f8e9c494c1cc2fbdb198d4e6",
+  "final_runtime_archive_sha256": "f42e75969310c0784e37bdf846681af37a458371255a8d87be49dd8b27c05bb0",
   "first_Luna_runtime_archive_sha256": "30c467f3a7dc1da192f813381aa29342c66d0a5080835e1461bb37d737db0a04",
   "offline_tests": 3080,
   "new_historical_tests_included_in_full": 54,
@@ -21,7 +21,8 @@
       "passed_assessed_turns": 28,
       "paid_requests": 32,
       "completed": false,
-      "failure": "Mock provider did not translate the configured expense append tab ID; stopped before completing new-expense confirmation and Calendar regression. Not reported as a full pass."
+      "failure": "Mock provider did not translate the configured expense append tab ID; stopped before completing new-expense confirmation and Calendar regression. Not reported as a full pass.",
+      "runtime_archive_sha256": "30c467f3a7dc1da192f813381aa29342c66d0a5080835e1461bb37d737db0a04"
     },
     {
       "name": "corrected_fixture_completion",
@@ -30,7 +31,8 @@
       "passed": 31,
       "recorded_Luna_decisions_replayed": 32,
       "new_paid_requests": 1,
-      "runtime_unchanged": true
+      "runtime_unchanged": true,
+      "runtime_archive_sha256": "30c467f3a7dc1da192f813381aa29342c66d0a5080835e1461bb37d737db0a04"
     },
     {
       "name": "final_artifact_controller_replay",
@@ -39,7 +41,8 @@
       "passed": 31,
       "recorded_Luna_decisions_replayed": 33,
       "new_paid_requests": 0,
-      "model_contract_invariance": "Only server control/resume changed to revalidate a prepared confirmed Action after restart; model instructions/tools/context/proposal/rendering unchanged. Replay is not fresh inference."
+      "model_contract_invariance": "Only server control/resume changed to revalidate a prepared confirmed Action after restart; model instructions/tools/context/proposal/rendering unchanged. Replay is not fresh inference.",
+      "runtime_archive_sha256": "8eb3b9a665751e0e2591a3054b178d884f9acc90f8e9c494c1cc2fbdb198d4e6"
     },
     {
       "name": "fresh_final_artifact_period_cases",
@@ -51,25 +54,67 @@
         "explicit Thai month and Buddhist year",
         "explicit old historical date range",
         "query-only consent"
-      ]
+      ],
+      "runtime_archive_sha256": "8eb3b9a665751e0e2591a3054b178d884f9acc90f8e9c494c1cc2fbdb198d4e6"
+    },
+    {
+      "name": "fresh_full_feature_matrix_before_pagination_fix",
+      "runtime_archive_sha256": "8eb3b9a665751e0e2591a3054b178d884f9acc90f8e9c494c1cc2fbdb198d4e6",
+      "scenarios": 16,
+      "turns": 43,
+      "passed": 42,
+      "new_paid_requests": 45,
+      "recorded_Luna_decisions_replayed": 0,
+      "completed": true,
+      "failures": [
+        {
+          "scenario": "all_history_pages",
+          "turn": 2,
+          "failure": "After previous-page navigation, the second model step returned text instead of proposing labels; page remained unclassified and no write occurred."
+        }
+      ],
+      "mixed_conversation_turns_passed": 12,
+      "financial_and_Calendar_regressions": "All passed, including query totals, saved edits, new expense and Calendar creation; all providers mocked."
+    },
+    {
+      "name": "fresh_corrected_final_source_compact_matrix",
+      "runtime_archive_sha256": "f42e75969310c0784e37bdf846681af37a458371255a8d87be49dd8b27c05bb0",
+      "scenarios": 3,
+      "turns": 15,
+      "passed": 15,
+      "new_paid_requests": 18,
+      "recorded_Luna_decisions_replayed": 0,
+      "coverage": [
+        "all-history scan",
+        "next and previous display pages",
+        "correction with partial selection and separate permanent consent",
+        "partial query-only consent",
+        "natural cancellation",
+        "mixed historical query to expense total, saved expense correction and all-day Calendar reschedule"
+      ],
+      "deterministic_confirmations": "Confirmed business effects use server controls with zero model calls; preceding interpretation/review uses fresh Luna.",
+      "fix": "The remaining model step after a historical scan/navigation selects the proposal function explicitly; transport requires an unclassified pending historical page and exact owner-bound request reservation. No additional model calls."
     }
   ],
   "paid_development_total": {
-    "unique_received_requests": 37,
+    "unique_received_requests": 100,
     "uncertain_requests": 0,
-    "estimated_usage_USD": "0.011249650",
-    "all_input_cache_write_ceiling_USD": "0.041598625",
+    "estimated_usage_USD": "0.028124510",
+    "all_input_cache_write_ceiling_USD": "0.113901250",
     "unknown_holds_USD": "0",
     "automatic_retries": 0,
     "invoice_verified": false,
-    "failed_and_incomplete_runs_included": true
+    "failed_and_incomplete_runs_included": true,
+    "phase_request_guard": 100,
+    "phase_request_guard_reached": true
   },
   "limits": [
     "No general or held-out classification-accuracy claim; semantic suggestions need owner review",
     "No actual owner history/model fixtures, real business effects or live write-permission/traffic-rollback validation",
     "All-unmapped scope is the configured complete grid, not another workbook or an unbounded provider scan",
     "External Sheets writers must not overlap bot processing; no atomic Sheets CAS",
-    "Permanent mapping changes future and historical classification; query-only consent does not persist"
+    "Permanent mapping changes future and historical classification; query-only consent does not persist",
+    "The larger43-turn fresh matrix and fresh period/new-creation cases ran on the preceding8eb3b9a6 archive. The corrected final archive has15fresh turns, not43; no replay is reported as fresh. Final-source offline tests cover the complete existing suite."
   ],
   "frozen_v1_files_changed": 0,
   "human_style_ratings": "not performed",

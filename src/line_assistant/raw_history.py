@@ -356,6 +356,10 @@ def request(state,text,at,event,definitions,previous=None,*,production=False,sum
     if previous:
         call,result=previous
         body['input'] += [deepcopy(call),{'type':'function_call_output','call_id':call['call_id'],'output':json.dumps(result,ensure_ascii=False,separators=(',',':'))}]
+        if result.get('historical_categories') and result.get('continue_model'):
+            # A fresh page has no proposals yet. Complete its read-only review
+            # in the remaining step instead of returning an unclassified page.
+            body['tool_choice']={'type':'function','name':'propose_historical_categories'}
     bound=tokens_bound(body)
     if bound+body['max_output_tokens']>context_tokens:raise ContextOverflow('Full history exceeds the verified model context; summary needed')
     return body,refs,{'utf8_bytes':bound-FRAMING_TOKEN_RESERVE,'token_upper_bound':bound,'removed_records':0,'raw_speaker_records':len(view),'rolling_summary_used':bool(summary)}

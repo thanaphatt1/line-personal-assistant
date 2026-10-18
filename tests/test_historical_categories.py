@@ -94,6 +94,7 @@ def test_pagination_is_not_a_hidden_ten_name_source_cap_and_previous_is_read_onl
     r,_=turn(api,'ขอหน้าถัดไป',review('next'));assert [g['group_ref'] for g in r.data['tool_result']['groups']]==last
     r,_=turn(api,'หน้าก่อน',review('previous'),propose);assert [g['group_ref'] for g in r.data['tool_result']['groups']]==second
     assert api.mapping_posts==api.google.sheet_writes==api.calendar.posts==0
+    assert all(b['tool_choice']==({'type':'function','name':'propose_historical_categories'} if len(b['input'])>1 else 'auto') for b in api.model_bodies)
 
 def test_duplicate_names_group_counts_dates_without_rewriting_transactions():
     api=HistoricalHosted();serial=date_to_serial(date(2025,1,2))

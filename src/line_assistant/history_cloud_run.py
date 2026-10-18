@@ -132,7 +132,13 @@ class HistoryHttp(PilotHttp):
             expected=raw.SUMMARY_TOOLS if body['instructions']==raw.SUMMARY_INSTRUCTIONS else getattr(self.state,'raw_tool_definitions',None)
             if body.get('truncation')!='disabled' or not expected or body['tools']!=expected:raise LiveDisabled('Unbound raw tools')
             raw.reservation(body)
-        if (set(body)!=keys or body['model']!=MODEL_ID or body['tool_choice']!=('required' if raw_request and body['instructions']==raw.SUMMARY_INSTRUCTIONS else 'auto') or body['parallel_tool_calls'] is not False
+        expected_choice='required' if raw_request and body['instructions']==raw.SUMMARY_INSTRUCTIONS else 'auto'
+        proposal_choice={'type':'function','name':'propose_historical_categories'}
+        if raw_request and self.config.historical_categories_enabled and body['instructions']!=raw.SUMMARY_INSTRUCTIONS and body['tool_choice']==proposal_choice:
+            pending=self.state.pending if self.state is not None else None
+            if not pending or pending.kind!='historical_category_review' or pending.payload.get('stage')!='unclassified':raise LiveDisabled('No historical page awaiting proposals')
+            expected_choice=proposal_choice
+        if (set(body)!=keys or body['model']!=MODEL_ID or body['tool_choice']!=expected_choice or body['parallel_tool_calls'] is not False
                 or body['store'] is not False or body['reasoning']!={'effort':'none'} or body['max_output_tokens']!=(raw.CALENDAR_MAX_OUTPUT_TOKENS if raw_request and self.config.calendar_enabled and body['instructions']!=raw.SUMMARY_INSTRUCTIONS else MAX_OUTPUT_TOKENS)
                 or body['service_tier']!='default' or not raw_request and len(json.dumps(body,ensure_ascii=False,separators=(',',':')).encode())>MAX_BODY_BYTES
                 or self.state is None or not self.state.holder):raise LiveDisabled('Unbound history request')

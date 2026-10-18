@@ -1,0 +1,136 @@
+{
+  "synthetic_only": true,
+  "development_not_held_out": true,
+  "anchor": "2026-10-16T09:00:00+07:00",
+  "repetitions": 1,
+  "scope": "Compact fresh matrix on corrected final source: paging, correction plus partial permanent consent, provisional-only consent, natural cancellation, mixed financial and Calendar saved edits; prior larger fresh failures retained",
+  "cases": [
+    {
+      "name": "final_paging_correction_partial_mapping",
+      "fixture": "many",
+      "turns": [
+        {
+          "text": "ช่วยสแกนประวัติชื่อที่ยังไม่มีหมวดทั้งหมดแล้วเสนอหมวดให้ตรวจ",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 13
+        },
+        {
+          "text": "ขอหน้าถัดไป",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 3
+        },
+        {
+          "text": "กลับไปหน้าก่อน",
+          "expect": "review",
+          "total": 23,
+          "shown": 10,
+          "remaining": 13
+        },
+        {
+          "text": "แก้ Metro Rail Ticket 00 เป็น Food และเลือกเฉพาะชื่อนี้ ที่เหลือพักไว้ก่อน",
+          "expect": "corrected",
+          "item": "Metro Rail Ticket 00",
+          "category": "Food",
+          "subcategory": "",
+          "selected_names": [
+            "Metro Rail Ticket 00"
+          ],
+          "writes": 0
+        },
+        {
+          "text": "บันทึกหมวดย้อนหลัง",
+          "expect": "mapping_saved",
+          "names": [
+            "Metro Rail Ticket 00"
+          ],
+          "writes": 1
+        }
+      ]
+    },
+    {
+      "name": "final_mixed_query_expense_calendar",
+      "fixture": "all_day",
+      "turns": [
+        {
+          "text": "สแกนชื่อรายจ่ายเก่าที่ยังไม่มีหมวดทั้งหมดให้ตรวจ",
+          "expect": "review",
+          "total": 3,
+          "shown": 3,
+          "writes": 0
+        },
+        {
+          "text": "เลือกเฉพาะ Peanut Snack ที่เหลือพักไว้ก่อน",
+          "expect": "selection",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 0
+        },
+        {
+          "text": "ใช้ข้อเสนอย้อนหลังครั้งนี้",
+          "expect": "query_only",
+          "expense": "8.00",
+          "names": [
+            "Peanut Snack"
+          ],
+          "writes": 0
+        },
+        {
+          "text": "รายจ่ายทั้งหมดวันที่ 5 พ.ย. รวมกี่บาท",
+          "expect": "expense_summary",
+          "expense": "45.00",
+          "writes": 0
+        },
+        {
+          "text": "แก้รายจ่าย RailPass วันที่ 5 พ.ย. เป็น 35 บาท",
+          "expect": "saved_review",
+          "domain": "expense",
+          "writes": 0
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "expense",
+          "expense_updates": 1,
+          "writes": 0
+        },
+        {
+          "text": "เลื่อนนัดที่บันทึกไว้วันที่ 5 พ.ย. ไปวันที่ 9 พ.ย. ทั้งวันเท่าเดิม",
+          "expect": "saved_review",
+          "domain": "calendar",
+          "expense_updates": 1,
+          "writes": 0
+        },
+        {
+          "text": "ยืนยัน",
+          "expect": "saved_updated",
+          "domain": "calendar",
+          "expense_updates": 1,
+          "calendar_updates": 1,
+          "writes": 0
+        }
+      ]
+    },
+    {
+      "name": "final_natural_cancel",
+      "fixture": "core",
+      "turns": [
+        {
+          "text": "จัดหมวดชื่อที่ยังไม่มีหมวดให้ตรวจทั้งหมด",
+          "expect": "review",
+          "total": 3,
+          "shown": 3
+        },
+        {
+          "text": "ไม่เอาแล้ว ยกเลิกชุดจัดหมวดนี้",
+          "expect": "cancelled",
+          "writes": 0
+        }
+      ]
+    }
+  ]
+}
