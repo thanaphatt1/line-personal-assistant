@@ -533,6 +533,13 @@ class CalendarWorkflow:
             d.update(status='cancelled',review=None,version=d['version']+1,updated_at=self.h._current['at']);self.seal(d);self.h.state.checkpoint()
             return Result('cancelled','ยกเลิกร่างนัดแล้ว ไม่มีการลบนัดที่สร้างไว้',{'domain':'calendar'})
         if plain and active:
+            if (len(active)==1 and self.h.historical_categories.has_pending()
+                and not any(d['status']!='recorded' for d in self.h.state.drafts.values())
+                and self.delivered(active[0],latest=True)):
+                # A separately waiting historical mapping review is not an
+                # expense draft. The latest delivered Calendar review owns
+                # this confirmation; all Calendar guards still run below.
+                expenses=False
             if len(active)!=1 or expenses:return Result('clarification','มีหลายร่างหรือมีทั้งรายจ่ายและนัด ต้องการยืนยันร่างใดครับ? ระบุชื่อหรือวันของร่างที่ต้องการตรวจได้')
             d=active[0];return self.confirm(d['draft_ref'],d['review']['nonce'] if d['review'] else '',latest=True)
         if re.fullmatch(r'ยกเลิก(?:ร่าง)?นัด(?:ล่าสุด|นี้)?',text) and not active:

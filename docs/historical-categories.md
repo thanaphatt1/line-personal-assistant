@@ -37,6 +37,11 @@ creates a new review version and nonce. Examples include:
 - “ขอหน้าถัดไป” or “ตรวจใหม่”
 - “ยกเลิกจัดหมวดย้อนหลัง”
 
+Delayed or equal-timestamp scan, refresh, revision and cancellation requests cannot
+replace a newer review. Repeating the initial proposal tool cannot reset a reviewed
+selection. Correcting an excluded name while keeping the selection leaves that
+name excluded; adding it requires a separate selection change.
+
 “All correct” concerns only clear entries on the **currently displayed page**.
 Ambiguous names remain open. Possible aliases, spacing collisions and an existing
 Database item with a blank category require separate owner resolution; the append
@@ -44,6 +49,11 @@ workflow cannot overwrite an existing mapping or create aliases/new categories.
 If a review's labels are too long to display completely within the LINE text
 budget, confirmation is disabled and the owner must select a smaller subset for
 a complete review. A truncated review never authorizes a write.
+After an explicit subset selection, the review shows full details only for the
+selected names, gives the excluded count and says those names are omitted from
+both the display and confirmation. Selected names retain their complete labels
+and spelling examples within the same display budget. A still oversized subset
+remains unconfirmable until reduced further.
 
 ## Two distinct consent scopes
 
@@ -58,8 +68,13 @@ mapping affects the same stored identity across **all historical and future
 queries**, including outside an optional scan date range. Counts/date ranges in
 the review describe the selected scan scope; they are not a limit on permanent
 mapping effects. No transaction or existing Database row is rewritten. Bare
-“ยืนยัน”/“ใช่” asks which scope; a correction or mixed confirmation/correction never
+“ยืนยัน”/“ใช่” following the historical review asks which scope; a correction or mixed confirmation/correction never
 commits. Explicit reference/nonce forms are also supported.
+A separately waiting historical review does not intercept confirmation of a newer
+delivered expense or Calendar preview. That workflow still checks its own current
+draft, delivery, version and nonce; multiple expense/Calendar drafts keep their
+existing ambiguity guards. Generic cancellation with competing drafts can require
+an explicit target.
 
 After a completed page, the owner can request the next batch. Previously displayed
 but unselected/ambiguous names remain unmapped and are disclosed as skipped; a new
@@ -103,3 +118,20 @@ recovery cannot undo a mapping; never restore an old snapshot over newer data.
 Development and inference tests use synthetic providers/names only. They do not
 scan actual owner history, prove general classification accuracy or exercise a
 real business write or traffic rollback.
+
+## Adversarial review regressions
+
+An independent Astra review added 37 deterministic signed-webhook cases in
+`tests/test_historical_categories_adversarial.py`. The initial 23-case baseline
+had eight failures across five issues: confirmation routing, delayed review
+mutations, repeated proposals resetting selections, corrections reselecting an
+excluded name, and oversized subset reviews. Additional spelling-variant and
+Unicode cases extended the last issue. All are fixed and covered by regressions.
+
+The suite also checks stale/cross-page consent, failed delivery, duplicate events,
+partial observed mapping outcomes, feature-OFF reconciliation and competing
+Calendar/expense drafts. It does not execute actual concurrent lease holders or
+live provider writes. The synthetic 21-turn corpus
+`tests/fixtures/historical_categories_astra_development.json` is prepared for a
+fresh model run; preparation alone is not evidence that Luna passed it. Prior
+fresh results belong to their recorded source archives.

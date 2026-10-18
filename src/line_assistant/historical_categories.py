@@ -117,6 +117,10 @@ class HistoricalCategories(ProvisionalCategories):
         at=datetime.fromisoformat(v['at']);self.h.state.pending=Pending(KIND,v['ref'],v['origin_event'],int(at.timestamp()*1000),self.h.clock()+timedelta(seconds=self.h.settings.pending_ttl_seconds),v)
         self.h.state.checkpoint();return v
 
+    def require_newer(self):
+        if self.has_pending() and datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(self.h.state.pending.payload['at']):
+            raise ValueError('historical_operation_precedes_review')
+
     def page(self,v,snapshot,offset):
         skipped=set(v.get('skip_refs',[]));available=[g for g in snapshot['groups'] if g['group_ref'] not in skipped]
         if not available:
@@ -127,11 +131,12 @@ class HistoricalCategories(ProvisionalCategories):
             total_names=len(snapshot['groups']),scope_count=snapshot['scope_count'],source_count=snapshot['source_count'],
             skipped_names=sum(g['group_ref'] in skipped for g in snapshot['groups']),remaining_names=max(0,len(available)-offset-PAGE_SIZE),
             prefix_refs=[g['group_ref'] for g in available[:offset]],
-            groups=[{**deepcopy(g),'status':'ambiguous','category':None,'subcategory':None,'candidates':[],'included':False} for g in available[offset:offset+PAGE_SIZE]],stage='unclassified')
+            groups=[{**deepcopy(g),'status':'ambiguous','category':None,'subcategory':None,'candidates':[],'included':False} for g in available[offset:offset+PAGE_SIZE]],stage='unclassified',selection='all_clear')
         return self.render(self.store(v),continue_model=bool(v['groups']))
 
     def scan(self,args):
         if not self.enabled or self.h.state.pending and not self.has_pending():raise WriteBlocked('Another workflow is pending')
+        self.require_newer()
         p=Scan.model_validate(args);self.owner_sources(p.source_refs)
         scope={'mode':p.mode,'start':None,'end':None}
         if p.mode=='all':
@@ -160,6 +165,9 @@ class HistoricalCategories(ProvisionalCategories):
         if not self.enabled:raise WriteBlocked('Historical classification disabled')
         p=Propose.model_validate(args);v=deepcopy(self.pending().payload)
         if p.review_ref!=v['ref']:raise ValueError('foreign_historical_review')
+        # The first proposal follows scan/navigation in the same owner turn.
+        # Once reviewed, only the revision tool may change labels/selection.
+        if v['stage']!='unclassified' or datetime.fromisoformat(self.h._current['at'])<datetime.fromisoformat(v['at']):raise ValueError('historical_proposal_not_current')
         self.fresh(v);by_ref={r.group_ref:r for r in p.proposals}
         if len(by_ref)!=len(p.proposals) or set(by_ref)!={g['group_ref'] for g in v['groups']}:raise ValueError('propose_current_page_completely')
         v['groups']=[self.label(g,by_ref[g['group_ref']]) for g in v['groups']];v['stage']='review'
@@ -171,6 +179,7 @@ class HistoricalCategories(ProvisionalCategories):
 
     def review(self,args):
         if not self.enabled:raise WriteBlocked('Historical classification disabled')
+        self.require_newer()
         p=Review.model_validate(args);sources=self.owner_sources(p.source_refs)
         if not self.has_pending():
             _,shown=self.h._presented_result();v=deepcopy(shown.data.get('historical_continuation')) if shown else None
@@ -197,11 +206,14 @@ class HistoricalCategories(ProvisionalCategories):
         by_ref={c.group_ref:c for c in p.changes};known={g['group_ref'] for g in v['groups']}
         if len(by_ref)!=len(p.changes) or not set(by_ref)<=known or not set(p.selected_refs)<=known:raise ValueError('correction_outside_displayed_page')
         if any(not any(c.source_text in source['text'] for source in sources) for c in p.changes):raise ValueError('literal_owner_correction_required')
+        included={g['group_ref']:g['included'] for g in v['groups']}
         v['groups']=[self.label(g,by_ref[g['group_ref']]) if g['group_ref'] in by_ref else g for g in v['groups']]
         if p.selection!='only' and p.selected_refs:raise ValueError('unexpected_selected_refs')
         for g in v['groups']:
             if p.selection=='all_clear':g['included']=g['status']=='proposed'
             elif p.selection=='only':g['included']=g['status']=='proposed' and g['group_ref'] in p.selected_refs
+            else:g['included']=g['status']=='proposed' and included[g['group_ref']]
+        if p.selection!='keep':v['selection']=p.selection
         v['review_source_refs']=list(dict.fromkeys([*v.get('review_source_refs',[]),*p.source_refs]))
         return self.render(self.store(v))
 
@@ -209,12 +221,16 @@ class HistoricalCategories(ProvisionalCategories):
         scope='ทุกช่วงวันที่ในชีต' if not v['scope']['start'] else v['scope']['start']+' ถึง '+v['scope']['end']
         lines=[f"ตรวจชื่อที่ยังไม่มีหมวด: {scope}",f"อ่านครบ {v['scope_count']} รายการในช่วงนี้ พบ {v['total_names']} ชื่อ — หน้านี้ {len(v['groups'])} ชื่อ เหลือถัดไป {v['remaining_names']} ชื่อ"]
         if v['skipped_names']:lines.append(f"อีก {v['skipped_names']} ชื่อจากชุดก่อนยังไม่มี mapping; เริ่มตรวจใหม่เพื่อกลับไปดูได้")
+        if v.get('selection')=='only':
+            excluded=sum(not g['included'] for g in v['groups'])
+            lines.append(f'แสดงรายละเอียดครบเฉพาะชื่อที่เลือก อีก {excluded} ชื่อในหน้านี้ไม่ได้เลือก จึงไม่แสดงและไม่รวมในการยืนยัน; ขอทบทวนทุกชื่อเพื่อเลือกเพิ่มได้')
         for i,g in enumerate(v['groups'],1):
+            if v.get('selection')=='only' and not g['included']:continue
             label=(g['category']+('/'+g['subcategory'] if g['subcategory'] else '') if g['included'] else 'ไม่ได้เลือกในชุดนี้') if g['status']=='proposed' else 'พักไว้' if g['status']=='deferred' else 'ยังไม่ชัดเจน'
             selected='เลือกไว้' if g['included'] else 'ยังไม่เลือก'
             lines.append(f"{i}. {g['item']} → {label} [{selected}] | {g['count']} รายการ / {g['expense']} บาท | {g['first_date']}–{g['last_date']}")
-            if g['candidates']:lines.append('ตัวเลือกที่ยังไม่ยืนยัน: '+', '.join(c['category']+('/'+c['subcategory'] if c['subcategory'] else '') for c in g['candidates']))
-            if g['stored_names_count']>1:lines.append('ชื่อที่จัดกลุ่ม: '+', '.join(g['stored_names'])+f" ({g['stored_names_count']} รูปแบบการเขียน; แสดงไม่เกิน 3)")
+            if g['candidates'] and v.get('selection')!='only':lines.append('ตัวเลือกที่ยังไม่ยืนยัน: '+', '.join(c['category']+('/'+c['subcategory'] if c['subcategory'] else '') for c in g['candidates']))
+            if g['stored_names_count']>1 and (g['included'] or v.get('selection')!='only'):lines.append('ชื่อที่จัดกลุ่ม: '+', '.join(g['stored_names'])+f" ({g['stored_names_count']} รูปแบบการเขียน; แสดงไม่เกิน 3)")
         lines+=['ยังไม่ได้แก้รายการเดิมหรือ Database; ข้อเสนอเป็นหมวดชั่วคราวที่ต้องตรวจ','บอกแก้ได้ เช่น “ถูกหมด ยกเว้นชื่อ X ให้เป็นหมวด Y” หรือเลือกเฉพาะบางชื่อ แล้วตรวจร่างใหม่','พิมพ์ “ใช้ข้อเสนอย้อนหลังครั้งนี้” เพื่อสรุปชั่วคราวเฉพาะชื่อที่เลือกในหน้านี้ ไม่จำ mapping']
         if self.mapping_enabled:lines+=['พิมพ์ “บันทึกหมวดย้อนหลัง” เพื่อยืนยันเพิ่ม mapping เฉพาะชื่อที่เลือกและชัดเจนในหน้านี้','mapping ถาวรมีผลกับชื่อเดียวกันทุกช่วงย้อนหลังและคำถามในอนาคต ไม่ได้จำกัดเฉพาะช่วงที่แสดง']
         else:lines.append('การบันทึก mapping ถาวรยังปิดอยู่')
@@ -245,6 +261,7 @@ class HistoricalCategories(ProvisionalCategories):
     def cancel(self):
         blocked=self.h._blocked_action()
         if blocked:raise WriteBlocked('Uncertain external effect cannot be cancelled')
+        self.require_newer()
         self.h.state.pending=None;self.h.state.checkpoint()
         return {'historical_categories':True,'status':'historical_cancelled','cancelled':True,'message':'ยกเลิกเฉพาะร่างจัดหมวดย้อนหลังแล้วครับ ไม่ได้แก้รายการเดิมหรือ mapping','read_only':True}
 
@@ -264,6 +281,13 @@ class HistoricalCategories(ProvisionalCategories):
 
     def control(self,text):
         if not self.is_control(text):return None
+        if text in {'ยืนยัน','ยืนยันครับ','ยืนยันค่ะ','ใช่','ยกเลิก'}:
+            _,shown=self.h._presented_result()
+            if shown and shown.status=='preview' and not shown.data.get('historical_categories') and any(shown.data.get(k) for k in ['confirm_command','calendar_view','calendar_batch_view']):
+                # Let the displayed workflow enforce its own version, nonce,
+                # delivery and ambiguity checks. A waiting historical review
+                # cannot claim this confirmation/cancellation.
+                return None
         prefix=text.split()[0] if text.split() else ''
         allowed={'บันทึกหมวดย้อนหลัง','บันทึกหมวดถาวร','ใช้ข้อเสนอย้อนหลังครั้งนี้','รวมข้อเสนอครั้งนี้','ยกเลิกจัดหมวดย้อนหลัง','ยกเลิก','ยืนยัน','ยืนยันครับ','ยืนยันค่ะ','ใช่'}
         if prefix not in allowed:return Result('stale','คำสั่งไม่ตรงกับร่างจัดหมวดล่าสุดครับ ยังไม่ได้แก้ mapping')
@@ -273,6 +297,7 @@ class HistoricalCategories(ProvisionalCategories):
         if text in {'ยกเลิก','ยกเลิกจัดหมวดย้อนหลัง'} and self.has_pending():
             try:return self.result(self.cancel())
             except WriteBlocked:return self.h._uncertain(self.h._blocked_action())
+            except ValueError:return Result('stale','ข้อความยกเลิกมาก่อนร่างล่าสุดครับ ร่างปัจจุบันยังอยู่')
         if text in {'ยืนยัน','ยืนยันครับ','ยืนยันค่ะ','ใช่'}:return Result('clarification','ต้องการใช้ชั่วคราวเฉพาะหน้านี้ หรือบันทึกหมวดย้อนหลังถาวรครับ? ยังไม่ได้แก้ mapping')
         mode='query' if text in {'ใช้ข้อเสนอย้อนหลังครั้งนี้','รวมข้อเสนอครั้งนี้'} or text.startswith('ใช้ข้อเสนอย้อนหลังครั้งนี้ ') else 'permanent'
         try:
