@@ -16,12 +16,12 @@ from .model_api import DurableModelGuard,MAX_BODY_BYTES,MAX_OUTPUT_TOKENS,MODEL_
 from .history_first import tools,INSTRUCTIONS,ENROLLMENT_INSTRUCTIONS,SEMANTIC_NOTE,SEMANTIC_INSTRUCTIONS
 from .sheets_api import SheetsApi
 from .line_api import LineReplyApi
-from .transport import LiveDisabled
+from .transport import LiveDisabled,NotReady
 from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -39,6 +39,9 @@ class HistoryConfig:
     provisional_mapping_enabled: bool=False
     historical_categories_enabled: bool=False
     previous_prices_enabled: bool=False
+    calendar_read_all_enabled: bool=False
+    calendar_read_ids: tuple[str,...]=()
+    calendar_connections_enabled: bool=False
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -52,6 +55,18 @@ class HistoryConfig:
             or target and not re.fullmatch(r'[A-Za-z0-9_.+-]+@group\.calendar\.google\.com',target)
             or calendar=='true' and (h!='true' or s!='true' or not target)):
             raise ConfigError('Explicit separate Calendar ID and history opt-in required')
+        read_all=values.get('PILOT_CALENDAR_READ_ALL_ENABLED','false')
+        if read_all not in {'true','false'} or read_all=='true' and calendar!='true':
+            raise ConfigError('All-calendar reads require explicit Calendar/history opt-in')
+        from .calendar_provider import additional_calendar_ids
+        raw_ids=values.get('PILOT_CALENDAR_READ_IDS','[]')
+        try:
+            if not isinstance(raw_ids,str) or len(raw_ids)>8192:raise ValueError()
+            read_ids=additional_calendar_ids(json.loads(raw_ids),target)
+            if read_ids and calendar!='true':raise ValueError()
+        except (ValueError,TypeError):raise ConfigError('Additional Calendar reads require a JSON list of explicit IDs and Calendar/history opt-in') from None
+        connections=values.get('PILOT_CALENDAR_CONNECTIONS_ENABLED','false')
+        if connections not in {'true','false'} or connections=='true' and calendar!='true':raise ConfigError('Calendar connections require explicit Calendar/history opt-in')
         voice=values.get('PILOT_RESPONSE_REALIZATION_ENABLED','false')
         if voice not in {'true','false'} or voice=='true' and (h!='true' or s!='true'):
             raise ConfigError('Response realization requires explicit history/state opt-in')
@@ -75,10 +90,35 @@ class HistoryConfig:
             raise ConfigError('Firestore expense backend requires the full explicit history composition')
         if concurrency=='firestore_transaction' and core.expense_backend!='firestore':
             raise ConfigError('Transactional concurrency requires Firestore expense backend')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true')
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true')
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
+        from .calendar_provider import CALENDAR_LIST_PATH,calendar_list_page,MAX_READ_CALENDARS
+        if service=='calendar' and method=='GET' and path==CALENDAR_LIST_PATH:
+            self.allowed(service,method,path,body,params)
+            if not params.get('pageToken'):
+                from .calendar_connections import connected_ids
+                self.calendar_read_ids=frozenset();self.calendar_read_holder=None
+                registered=connected_ids(self.state,self.config.owner_id,self.config.calendar_id) if self.config.calendar_connections_enabled else ()
+                self.calendar_discovery_ids={self.config.calendar_id,*self.config.calendar_read_ids,*registered};self.calendar_discovery_pages=0
+                self.calendar_discovery_tokens=set();self.calendar_discovery_holder=self.state.holder
+            try:
+                value=super().request(service,method,path,body=body,params=params,headers=headers)
+                identifiers,page=calendar_list_page(value)
+                self.calendar_discovery_ids.update(identifiers);self.calendar_discovery_pages+=1
+                if (len(self.calendar_discovery_ids)>MAX_READ_CALENDARS
+                    or page and (page in self.calendar_discovery_tokens or self.calendar_discovery_pages>=3)):
+                    raise NotReady('Calendar discovery is incomplete')
+                self.calendar_next_page=page
+                if page:self.calendar_discovery_tokens.add(page)
+                else:
+                    self.calendar_read_ids=frozenset(self.calendar_discovery_ids)
+                    self.calendar_read_holder=self.state.holder
+                return value
+            except Exception:
+                self.calendar_read_ids=frozenset();self.calendar_read_holder=None;self.calendar_next_page=None
+                raise
         if service=='calendar' and method=='PATCH':
             from .saved_edit_transport import mutation
             if not mutation(self,service,method,path,body,params,headers):raise LiveDisabled('Unconfirmed conditional reschedule')
@@ -199,7 +239,9 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     legacy=ConversationAssistant(settings,sheets,DisabledCalendar(),ItemCatalog([],{}),state=state,clock=clock,expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง')
     legacy.production=True;legacy.planner=IntentPlanner(PilotPort(http,'model'),guard,lambda:legacy._active_event_id)
     from .calendar_provider import CalendarCreationApi
-    calendar=CalendarCreationApi(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=True,effect_guard=state.before_effect) if config.calendar_enabled else None
+    from .calendar_connections import connected_ids
+    calendar=CalendarCreationApi(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=True,effect_guard=state.before_effect,read_all_enabled=config.calendar_read_all_enabled,calendar_read_ids=config.calendar_read_ids,
+        connected_ids=lambda:connected_ids(state,config.owner_id,config.calendar_id) if config.calendar_connections_enabled else ()) if config.calendar_enabled else None
     from .expense_edits import SavedExpenseEditor
     from .calendar_reschedule import SavedCalendarEditor
     if config.expense_backend=='firestore':
@@ -208,7 +250,7 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     else:
         expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
     calendar_editor=SavedCalendarEditor(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=config.saved_calendar_enabled,effect_guard=state.before_effect) if config.calendar_enabled else None
-    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled,previous_prices_enabled=config.previous_prices_enabled)
+    assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled,previous_prices_enabled=config.previous_prices_enabled,calendar_connections_enabled=config.calendar_connections_enabled,calendar_sharing_email=config.service_account)
     assistant.production=True;assistant.expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง';assistant.guard=guard
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)

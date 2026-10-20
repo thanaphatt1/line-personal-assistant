@@ -182,7 +182,7 @@ def no_save_correction(text):
     return match[1] if match and intent_guard(match[1]) is None else None
 
 class HistoryFirstAssistant(Assistant):
-    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False,previous_prices_enabled=False):
+    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False,previous_prices_enabled=False,calendar_connections_enabled=False,calendar_sharing_email=None):
         if type(response_realization_enabled) is not bool:raise ValueError('Explicit response realization flag required')
         self.response_realization_enabled=response_realization_enabled
         if history_first_enabled is not True:raise ValueError('History-first prototype defaults off')
@@ -211,6 +211,8 @@ class HistoryFirstAssistant(Assistant):
         self._taxonomy_cache_event=None
         from .calendar_workflow import CalendarWorkflow
         self.calendar_flow=CalendarWorkflow(self,enabled=calendar_enabled,adapter=calendar_adapter,calendar_id=calendar_id,label=calendar_label)
+        if type(calendar_connections_enabled) is not bool or calendar_connections_enabled and (not calendar_enabled or not raw_history_enabled or not calendar_sharing_email):raise ValueError('Calendar connections require Calendar/raw history and sharing email')
+        self.calendar_connections_enabled=calendar_connections_enabled;self.calendar_sharing_email=calendar_sharing_email
         if calendar_enabled:self.calendar=calendar_adapter
         from .saved_edits import SavedEdits
         if (saved_expense_enabled or saved_calendar_enabled) and not raw_history_enabled:raise ValueError('Saved-record changes require raw history')
@@ -1111,6 +1113,9 @@ class HistoryFirstAssistant(Assistant):
     def tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='connect_calendar':
+                from .calendar_connections import execute
+                return execute(self,args)
             from .saved_edits import NAMES
             if self.raw_history_enabled and name in NAMES:return self.saved_edits.tool(name,args)
             from .historical_categories import NAMES as HISTORICAL_NAMES
@@ -1182,6 +1187,9 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('calendar_connection'):
+            from .calendar_connections import result
+            return result(tool_output)
         if tool_output and tool_output.get('historical_categories'):return self.historical_categories.result(tool_output)
         if tool_output and tool_output.get('provisional_categories'):return self.provisional_categories.result(tool_output)
         if tool_output and tool_output.get('saved_record_edit'):return self.saved_edits.result(tool_output)
@@ -1193,6 +1201,9 @@ class HistoryFirstAssistant(Assistant):
         if tool_output and tool_output.get('status')=='summary':
             from .read_queries import summary_result
             return summary_result(tool_output)
+        if self.calendar_connections_enabled:
+            from .calendar_connections import claims_connected
+            if claims_connected(model_text):return Result('clarification','ยังไม่มีผลยืนยันการเชื่อมปฏิทินจากระบบครับ จึงยังไม่รายงานว่าเชื่อมสำเร็จ')
         if tool_output and tool_output.get('domain')=='calendar':return self.calendar_flow.render(tool_output)
         if self.calendar_flow.enabled and re.search(r'(?:สร้าง|เพิ่ม|บันทึก).*?(?:นัด|ปฏิทิน).*?(?:แล้ว|เรียบร้อย)',model_text):
             return Result('clarification','ยังไม่มีผลยืนยันการสร้างนัดจากระบบ จึงยังไม่รายงานว่าสร้างแล้ว')
@@ -1408,6 +1419,7 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
+        if (result.data.get('tool_result') or {}).get('calendar_connection'):return result
         if not self.response_realization_enabled:return result
         from .response_realization import realize
         try:return realize(self,event,result)
@@ -1511,6 +1523,8 @@ class HistoryFirstAssistant(Assistant):
                     from .read_queries import definitions as query_definitions,context as query_context
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
+                    from .calendar_connections import definitions as connection_definitions,context as connection_context
+                    if self.calendar_connections_enabled:definitions_for_request+=connection_definitions()
                     definitions_for_request+=self.saved_edits.definitions()
                     definitions_for_request+=self.provisional_categories.definitions()
                     definitions_for_request+=self.historical_categories.definitions()
@@ -1520,7 +1534,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,previous,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1564,6 +1578,7 @@ class HistoryFirstAssistant(Assistant):
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('calendar_connection'):return self._finish(event,at,self._result(last))
                 if last.get('historical_categories'):
                     if step==0 and last.get('continue_model'):
                         previous=(call,last);continue

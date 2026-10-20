@@ -58,10 +58,13 @@ base = {
     'PILOT_MODEL_USAGE_GATES_ENABLED': 'false',
 }
 for backend in ('sheets','firestore'):
-    for enabled,saved in ((False,False),(True,False),(True,True)):
+    for enabled,saved,read_all in ((False,False,False),(True,False,False),(True,True,False),(True,True,True)):
         flag = 'true' if enabled else 'false'
         result = run_checks({
             **base, 'PILOT_CALENDAR_ENABLED': flag, 'PILOT_EXPENSE_BACKEND': backend,
+            'PILOT_CALENDAR_READ_ALL_ENABLED': 'true' if read_all else 'false',
+            'PILOT_CALENDAR_READ_IDS': '["synthetic-reader@example.invalid"]' if enabled else '[]',
+            'PILOT_CALENDAR_CONNECTIONS_ENABLED': 'true' if saved else 'false',
             'PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED': 'true',
             'PILOT_RESPONSE_REALIZATION_ENABLED': flag,
             'PILOT_SAVED_EXPENSE_EDITS_ENABLED': 'true' if saved else 'false',

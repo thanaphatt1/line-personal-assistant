@@ -106,8 +106,9 @@ class PilotHttp:
     def google_token(self, purpose):
         with self.lock:
             now = self.clock()
-            if (purpose not in {"sheets", "firestore", "calendar_events"} or now.utcoffset() is None
-                    or purpose == "calendar_events" and not getattr(self.config, 'calendar_enabled', False)):
+            if (purpose not in {"sheets", "firestore", "calendar_events", "calendar_readonly"} or now.utcoffset() is None
+                    or purpose in {'calendar_events','calendar_readonly'} and not getattr(self.config, 'calendar_enabled', False)
+                    or purpose=='calendar_readonly' and not getattr(self.config,'calendar_read_all_enabled',False)):
                 raise NotReady("Fixed Google purpose/aware clock required")
             old = self.cached.get(purpose)
             if old and now + timedelta(seconds=60) < old[1]:
@@ -273,7 +274,8 @@ class PilotHttp:
             self.canary.reserve_attempt({"model": "model", "sheets": "append", "line": "reply"}[service])
         origins = {"sheets": "https://sheets.googleapis.com", "firestore": "https://firestore.googleapis.com",
                    "model": "https://api.openai.com", "line": "https://api.line.me", "calendar": "https://www.googleapis.com"}
-        token = self.google_token('calendar_events' if service == 'calendar' else service) if service in {"sheets", "firestore", "calendar"} else self.secrets["openai-api-key" if service == "model" else "line-channel-access-token"].get_secret_value()
+        purpose='calendar_readonly' if service=='calendar' and method=='GET' and getattr(self.config,'calendar_read_all_enabled',False) else 'calendar_events' if service=='calendar' else service
+        token = self.google_token(purpose) if service in {"sheets", "firestore", "calendar"} else self.secrets["openai-api-key" if service == "model" else "line-channel-access-token"].get_secret_value()
         response = self._http(method, origins[service] + path, json=body, params=params, headers={"Authorization": "Bearer " + token})
         return self._json(response)
 

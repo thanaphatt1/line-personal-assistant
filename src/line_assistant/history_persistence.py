@@ -27,6 +27,7 @@ def history_snapshot(state):
         value['calendar_v1']={'format':format_name,'drafts':deepcopy(state.calendar_drafts),'proofs':deepcopy(state.calendar_proofs)}
     if state.calendar_batches:
         value['calendar_batches_v1']={'format':'calendar-batches-v1','batches':deepcopy(state.calendar_batches),'proofs':deepcopy(state.calendar_batch_proofs)}
+    if state.calendar_connections is not None:value['calendar_connections_v1']=deepcopy(state.calendar_connections)
     if state.raw_history_enabled and state.raw_history_migrated:
         value['history']=[]
         value['raw_history']={'enabled':True,'rolling_summary':deepcopy(state.rolling_summary)}
@@ -110,6 +111,10 @@ def restore_history(state,value,owner):
     if 'calendar_batches_v1' in value:
         from .calendar_batches import restore_batches
         restore_batches(fresh,value['calendar_batches_v1'])
+    if 'calendar_connections_v1' in value:
+        from .calendar_connections import validate as validate_connections
+        validate_connections(value['calendar_connections_v1'],owner)
+        fresh.calendar_connections=deepcopy(value['calendar_connections_v1'])
     fresh.history=deepcopy(rows);fresh.history_removed=value['history_removed'];fresh.drafts=deepcopy(drafts);fresh.draft_proofs=deepcopy(proofs)
     for k,v in vars(fresh).items():
         if k not in {'lock','raw_journal','clock'}:setattr(state,k,v)

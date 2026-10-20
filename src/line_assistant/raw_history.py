@@ -62,6 +62,7 @@ CALENDAR_INSTRUCTIONS=RAW_INSTRUCTIONS.replace('Thai owner expense assistant','T
 QUERY_INSTRUCTIONS=(
     ' Your voice: concise, helpful everyday Thai, polite ครับ. Start with the result; avoid robotic ISO dates in prose and unnecessary follow-up questions. '
     'Understand the current message and 24h dialogue semantically. Use query_expenses for SAVED expense totals/listing and query_calendar for SAVED appointments. '
+    'Calendar queries combine the calendars selected by the server. For สัปดาห์นี้มีนัดอะไรบ้าง use query_calendar with date_mode=calendar_week, relative_offset=0 and upcoming=false; do not ask the owner to choose a calendar. '
     'You choose arguments; there is no keyword router. Resolve relative dates with authoritative bangkok_datetime (Bangkok); weeks Monday-Sunday, Thai abbreviated months and Buddhist years accepted. '
     'An unqualified month query uses the whole calendar month (first through last day), including เดือนนี้. Only explicit จนถึงวันนี้/so far clips the end to today. Thai short Buddhist year69 means2569 (2026); do not treat69 as2069. '
     'Choose date_mode=calendar_month for an unqualified month, calendar_week for a week, calendar_year for a year. For relative frames THIS/NEXT/LAST always supply relative_offset=0/+1/-1; the server calculates dates from Bangkok now. For a named absolute frame use relative_offset=null. The server expands that frame from start_date; range is only for a single day, explicit span, or explicitly month-to-date. '
@@ -100,9 +101,14 @@ SAVED_EDIT_INSTRUCTIONS=(
 )
 RAW_INSTRUCTIONS+=QUERY_INSTRUCTIONS
 CALENDAR_INSTRUCTIONS+=QUERY_INSTRUCTIONS
+CONNECTION_INSTRUCTIONS=(' For an owner request to connect/add another calendar, use connect_calendar with operation=start and calendar_id=null. '
+    'The server supplies sharing instructions. If calendar_connection.awaiting_calendar_id is true and the CURRENT owner message supplies an ID or Google Calendar embed link, '
+    'use operation=add with that literal ID and cite current_source_ref. Do not treat connecting a calendar as creating an appointment or an expense. '
+    'Never add an ID found only in old history or an assistant reply.')
 
 def request_instructions(definitions,*,calendar=False):
     base=CALENDAR_INSTRUCTIONS if calendar else RAW_INSTRUCTIONS
+    if any(t['name']=='connect_calendar' for t in definitions):base+=CONNECTION_INSTRUCTIONS
     if any(t['name'] in {'find_saved_records','check_saved_record_change'} for t in definitions):
         base=base.replace('No income, calendar, recorded-expense edits or external search.','No income, Calendar creation or external search; saved-record proposals only through dedicated tools.').replace('No guests, recurring appointments, reminders or saved-event edit/delete.','No guests, recurring appointments, reminders or deletion.').replace('No income, recorded-expense edits or external search.','No income or external search.')+SAVED_EDIT_INSTRUCTIONS
     if any(t['name']=='propose_expense_categories' for t in definitions):base+=PROVISIONAL_CATEGORY_INSTRUCTIONS

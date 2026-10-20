@@ -26,6 +26,7 @@ class HistoryState(MemoryState):
         self.drafts={};self.draft_proofs={};self.owner_id=None
         self.calendar_drafts={};self.calendar_proofs={}
         self.calendar_batches={};self.calendar_batch_proofs={}
+        self.calendar_connections=None;self.calendar_connection_probe=None
         self.raw_history_enabled=False;self.raw_history_migrated=False;self.raw_journal=None;self.rolling_summary=None
         self.raw_tool_definitions=[]
         self.clock=lambda:datetime.now(timezone.utc)

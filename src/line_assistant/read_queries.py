@@ -15,6 +15,7 @@ from .contracts import SpendingSummary
 from .language import BANGKOK
 from .catalog import normalized
 from .model_api import object_schema
+from .history_context import digest
 from .state import Result
 from .transport import ApiError, OutcomeUnknown, NotReady
 
@@ -56,7 +57,7 @@ def definitions():
          'parameters':object_schema({**common,'filter':{'anyOf':[{'type':'null'},object_schema({'kind':{'type':'string','enum':['item','category','subcategory']},'value':{'type':'string'}})]},
              'view':{'type':'string','enum':['total','list']},'measure':{'type':'string','enum':['expense','income','balance']}})},
         {'type':'function','name':'query_calendar','strict':True,
-         'description':'Read SAVED appointments from the one configured Calendar, max7 dates, including all-day/transparent. upcoming=true only for next/upcoming appointments, excluding already ended events. No title/type filters; clarify unsupported filters instead of ignoring them. Never create or edit.',
+         'description':'Read SAVED appointments from all server-selected readable calendars, max7 dates, including all-day/transparent. For สัปดาห์นี้มีนัดอะไรบ้าง use calendar_week, relative_offset=0, upcoming=false. upcoming=true only for next/upcoming appointments, excluding already ended events. No title/type filters; clarify unsupported filters instead of ignoring them. Never create or edit.',
          'parameters':object_schema({**common,'upcoming':{'type':'boolean'},'filter_text':{'type':['string','null'],'description':'Copy any requested saved-event title/type filter here, even though unsupported. Null only when no filter requested. Server clarifies instead of silently returning all events.'}})}]
 
 
@@ -65,6 +66,8 @@ def context(host):
     row, previous = host._presented_result()
     scope = previous.data.get('read_query') if previous else None
     if scope and (scope.get('workbook') != storage_scope(host.sheets) or scope.get('calendar') != host.calendar_flow.calendar_id):scope = None
+    if scope and scope.get('domain')=='calendar' and scope.get('calendar_read_all',False)!=getattr(host.calendar_flow.adapter,'read_all_enabled',False):scope=None
+    if scope and scope.get('domain')=='calendar' and scope.get('calendar_read_ids_hash')!=calendar_read_ids_hash(host):scope=None
     if scope and getattr(host,'production',False) and (not row.get('delivery_verified') or host.state.event_workbooks.get(row['event']) != storage_scope(host.sheets)):scope = None
     try:
         tax = host._taxonomy()
@@ -72,8 +75,13 @@ def context(host):
                    'categories':list(dict.fromkeys(r.category for r in tax.rows if r.category)),
                    'subcategories':list(dict.fromkeys(r.subcategory for r in tax.rows if r.subcategory))}
     except Exception:catalog = {'complete':False,'items':[],'categories':[],'subcategories':[]}
-    return {'previous_query':{k:deepcopy(v) for k,v in scope.items() if k not in {'workbook','calendar'}} if scope else None,
+    return {'previous_query':{k:deepcopy(v) for k,v in scope.items() if k not in {'workbook','calendar','calendar_read_ids_hash'}} if scope else None,
             'query_catalog':catalog}
+
+def calendar_read_ids_hash(host):
+    adapter=host.calendar_flow.adapter
+    identifiers=set(getattr(adapter,'calendar_read_ids',()))|set(getattr(adapter,'connected_ids',lambda:())())
+    return digest(sorted(identifiers)) if identifiers else None
 
 
 def label_text(value):
@@ -179,6 +187,8 @@ def execute(host, name, args):
     output['scope'].update(start=a.isoformat(),end=b.isoformat())
     if domain=='calendar':
         output['scope']['upcoming']=p.upcoming
+        output['scope']['calendar_read_all']=getattr(host.calendar_flow.adapter,'read_all_enabled',False)
+        if calendar_read_ids_hash(host):output['scope']['calendar_read_ids_hash']=calendar_read_ids_hash(host)
         if not host.calendar_flow.enabled:return error(output,'calendar_disabled')
         start=datetime.combine(a,time.min,BANGKOK);end=datetime.combine(b+timedelta(days=1),time.min,BANGKOK)
         if p.upcoming:start=max(start,datetime.fromisoformat(host._current['at']).astimezone(BANGKOK))

@@ -65,6 +65,7 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                 self.history=[];self.drafts={};self.draft_proofs={};self.history_removed=0
                 self.calendar_drafts={};self.calendar_proofs={}
                 self.calendar_batches={};self.calendar_batch_proofs={}
+                self.calendar_connections=None;self.calendar_connection_probe=None
 
 def production_binding(state,sheets,port):
     from .pilot_http import PilotPort

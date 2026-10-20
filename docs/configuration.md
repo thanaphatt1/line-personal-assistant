@@ -21,8 +21,86 @@ Use `deploy/runtime.env.example` as a checklist for environment values configure
 | `PILOT_SHEET_SCHEMA_VERIFIED` | Explicit operator assertion after the schema/access review below |
 | `PILOT_LEGACY_SPREADSHEET_ID` | Optional exact prior workbook allowed for compatible state recovery |
 | `PILOT_CALENDAR_ID` | A secondary `…@group.calendar.google.com` calendar; never `primary` |
+| `PILOT_CALENDAR_READ_IDS` | JSON list of additional shared calendar IDs for read-only summaries; default `[]` |
 
 Synthetic targets in code exist for offline tests. A real transport refuses those defaults. A supplied identity/target is bound through metadata, state, adapter and HTTP allowlists; changing a model argument does not change a resource target.
+
+## Reading all calendars
+
+Set `PILOT_CALENDAR_READ_ALL_ENABLED=true` alongside the existing Calendar/history
+flags to combine saved appointments from the runtime account's Google Calendar
+list and `PILOT_CALENDAR_ID`. For example, “สัปดาห์นี้มีนัดอะไรบ้าง” reads the
+whole Monday–Sunday week in Bangkok time, including appointments earlier in
+the week. Next/upcoming questions exclude appointments that have ended.
+
+Discovery includes hidden and unselected calendars with event-reading access.
+Free/busy-only and deleted calendars are excluded. This uses the attached
+runtime account's list, not the LINE owner's personal Google account. Each
+desired calendar must already be accessible and present on that runtime
+account's calendar list. Sharing alone does not necessarily add it to the list;
+this feature does not create subscriptions or change access.
+
+For a calendar shared with the bot but absent from its list, set
+`PILOT_CALENDAR_READ_IDS=["shared-reader@example.invalid"]` in private deployment
+configuration, using the actual Calendar ID from its settings. Up to 15 unique
+additional IDs are allowed; omit `PILOT_CALENDAR_ID` from this list. These
+calendars are included directly, without registering a calendar-list
+subscription. This works with `PILOT_CALENDAR_READ_ALL_ENABLED=false` using the
+existing event-read surface, or alongside discovery when that flag is `true`.
+The combined selection remains limited to 16 calendars. Real IDs belong outside
+the public checkout and are never model-selected tool arguments.
+
+Discovery and event GET requests use the read-only `calendar.readonly` scope.
+Additional event routes are admitted only after complete provider discovery
+under the active owner lease. Creation, conflict checks and confirmed
+rescheduling remain bound to `PILOT_CALENDAR_ID`; discovering a calendar grants
+no write route. With discovery disabled and an empty additional-ID list, reads
+retain the existing single-calendar behavior.
+
+The reader supports up to 16 calendars including the configured calendar,
+three discovery pages and three 20-event pages per calendar for a seven-date
+window, within the existing request budget and deadline. If discovery, access,
+pagination or validation fails, the assistant reports that it cannot complete
+the summary instead of returning a partial count or claiming there are no
+appointments. Shared invitation copies with the same iCalUID and occurrence
+boundaries count once; separate recurring occurrences remain separate.
+
+See Google's [CalendarList API](https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list),
+[sharing rules](https://developers.google.com/workspace/calendar/api/concepts/sharing)
+and [authorization scopes](https://developers.google.com/workspace/calendar/api/auth).
+Enabling the flag in production is a separate release/configuration action.
+
+## Connect a calendar through LINE
+
+Set `PILOT_CALENDAR_CONNECTIONS_ENABLED=true` with Calendar/history enabled to
+let the owner connect shared calendars in LINE. This works without calendar-list
+discovery or an operator-supplied additional-ID list:
+
+1. Owner: “เพิ่มปฏิทินใหม่” / “I want to add new calendar”.
+2. The model calls `connect_calendar` with `operation=start`. The server replies
+   with the configured runtime service-account email, asks the owner to share
+   with “See all event details”, and requests the Calendar ID or embed link.
+3. After the owner sends the ID, the model calls `operation=add` using the current
+   owner's literal ID. The server verifies the `events.list` access role before
+   saving the read source. A failed check keeps setup open for another attempt.
+4. Future saved-appointment questions automatically include that calendar.
+
+The bot remembers connections in its owner/workspace-bound state. Setup expires
+after 24 hours; saved connections do not expire with conversation history. The
+prompt must have been delivered before an ID can finish setup. Duplicate adds
+are idempotent; cancelling setup preserves existing connections.
+
+The access probe requests only `kind` and `accessRole` with `fields`; it does not
+return appointment contents to the model. It uses the existing event scope and
+requires a full event-reading role, not free/busy-only access. The source is
+registered in assistant state, so Google `CalendarList.insert`, a new OAuth
+scope, sharing/ACL changes and calendar write access are unnecessary. Calendar
+creation and rescheduling still target `PILOT_CALENDAR_ID`.
+
+The default is disabled. A same-image OFF bridge preserves the registry but
+does not read those connected calendars or expose the setup tool. Do not assume
+an older image preserves the new registry when saving state. Deployment and
+production enablement remain separate actions.
 
 ## Sheet schema
 
@@ -40,6 +118,8 @@ required versus generated fields, catalog relationships and Firestore storage.
 | `PILOT_HISTORY_STATE_ENABLED` | `false` | Authorized production conversation |
 | `PILOT_HISTORY_ENABLED` | `false` | History state enabled |
 | `PILOT_CALENDAR_ENABLED` | `false` | History/state and exact secondary calendar |
+| `PILOT_CALENDAR_READ_ALL_ENABLED` | `false` | Calendar/history enabled; read all event-readable calendars on the runtime account's list |
+| `PILOT_CALENDAR_CONNECTIONS_ENABLED` | `false` | Calendar/history enabled; owner can connect shared read sources through LINE |
 | `PILOT_RESPONSE_REALIZATION_ENABLED` | `false` | History/state |
 | `PILOT_MODEL_USAGE_GATES_ENABLED` | `true` | `false` requires explicit history state; counting remains |
 | `PILOT_PROVISIONAL_CATEGORIES_ENABLED` | `false` | History/state; proposals do not grant mapping consent |

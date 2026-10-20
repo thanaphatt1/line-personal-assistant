@@ -2,7 +2,7 @@
 from datetime import datetime,timedelta
 from urllib.parse import quote
 import hashlib,re
-from .calendar_provider import creation_body
+from .calendar_provider import creation_body,CALENDAR_LIST_PATH,CALENDAR_LIST_PARAMS
 from .calendar_event_types import parse_payload
 from .history_context import digest
 from .transport import LiveDisabled
@@ -12,7 +12,24 @@ def authorize(http,method,path,body,params):
     if (not getattr(c,'calendar_enabled',False) or not c.history_enabled or not s or not s.holder
         or s.owner_id!=c.owner_id or not s.production_ready or s.workbook_id!=c.storage_scope_id):raise LiveDisabled('Calendar requires explicit configuration and owner lease')
     base='/calendar/v3/calendars/'+quote(c.calendar_id,safe='')+'/events'
-    if method=='GET' and path==base and body is None and isinstance(params,dict):
+    from .calendar_connections import probe_allowed,connected_ids
+    if probe_allowed(http,method,path,body,params):return
+    all_reads=getattr(c,'calendar_read_all_enabled',False)
+    if all_reads and method=='GET' and path==CALENDAR_LIST_PATH and body is None and isinstance(params,dict):
+        if (set(params) not in [set(CALENDAR_LIST_PARAMS),set(CALENDAR_LIST_PARAMS)|{'pageToken'}]
+            or any(type(params.get(k)) is not type(v) or params[k]!=v for k,v in CALENDAR_LIST_PARAMS.items())
+            or 'pageToken' in params and (not isinstance(params['pageToken'],str) or not 1<=len(params['pageToken'])<=1024
+                or params['pageToken']!=getattr(http,'calendar_next_page',None)
+                or getattr(http,'calendar_discovery_holder',None)!=s.holder)):
+            raise LiveDisabled('Invalid Calendar discovery query')
+        return
+    read_paths={base}
+    read_paths.update('/calendar/v3/calendars/'+quote(identifier,safe='')+'/events' for identifier in getattr(c,'calendar_read_ids',()))
+    if getattr(c,'calendar_connections_enabled',False):
+        read_paths.update('/calendar/v3/calendars/'+quote(identifier,safe='')+'/events' for identifier in connected_ids(s,c.owner_id,c.calendar_id))
+    if all_reads and getattr(http,'calendar_read_holder',None)==s.holder:
+        read_paths.update('/calendar/v3/calendars/'+quote(identifier,safe='')+'/events' for identifier in http.calendar_read_ids)
+    if method=='GET' and path in read_paths and body is None and isinstance(params,dict):
         required={'timeMin','timeMax','singleEvents','orderBy','timeZone','maxResults'}
         if set(params) not in [required,required|{'pageToken'}]:raise LiveDisabled('Unbounded Calendar conflict query')
         try:a=datetime.fromisoformat(params['timeMin']);b=datetime.fromisoformat(params['timeMax'])

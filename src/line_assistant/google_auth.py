@@ -21,11 +21,12 @@ from .transport import DenyNetwork, LiveDisabled
 
 SCOPES = {
     "calendar_events": "https://www.googleapis.com/auth/calendar.events",
+    "calendar_readonly": "https://www.googleapis.com/auth/calendar.readonly",
     "sheets": "https://www.googleapis.com/auth/spreadsheets",
     "sheets_readonly": "https://www.googleapis.com/auth/spreadsheets.readonly",
     "firestore": "https://www.googleapis.com/auth/datastore",
 }
-Purpose = Literal["sheets", "sheets_readonly", "firestore", "calendar_events"]
+Purpose = Literal["sheets", "sheets_readonly", "firestore", "calendar_events", "calendar_readonly"]
 _ACCOUNT = re.compile(r"[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]{4,28}[a-z0-9]\.iam\.gserviceaccount\.com")
 _PREFIX = "/computeMetadata/v1/instance/service-accounts/default"
 _REFRESH_MARGIN = timedelta(seconds=60)
