@@ -26,6 +26,15 @@ The production path supports creation only in one configured secondary calendar.
 
 ## Replies and limits
 
+Saved appointment lists are grouped by Bangkok calendar day, with a Thai
+weekday/date heading and numbering that restarts at one for each day. All-day
+appointments appear before timed appointments; timed appointments are ordered
+by start time. An appointment spanning multiple days is shown once with its
+date range or end date. If it began before the requested period, it appears
+under the first requested day with its original start date retained. Counts
+still refer to appointments, and the existing 20-appointment display limit
+applies. Day headings and rows stay fixed during optional reply realization.
+
 The optional response phase composes short connective wording around immutable names, dates, amounts, outcomes and confirmation instructions. It does not freely rewrite facts. Its foreground deadline is four seconds; failure returns the deterministic server reply without another model attempt.
 
 The workflow permits at most two model requests per owner turn. External requests have bounded RPC scopes and per-request HTTP timeouts of at most twelve seconds. Budget/count gates are enabled by default. Observational mode requires an explicit single-owner history configuration and still records reservations and usage; it is not a billing-account spending cap.

@@ -21,6 +21,7 @@ from .transport import ApiError, OutcomeUnknown, NotReady
 
 NAMES = {'query_expenses', 'query_calendar'}
 MONTHS = ('ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.')
+WEEKDAYS = ('จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์','อาทิตย์')
 
 class Filter(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
@@ -225,6 +226,37 @@ def day_label(value):
     return f'{day.day} {MONTHS[day.month-1]} {day.year}'
 
 
+def calendar_rows(events,scope):
+    """One row per appointment, grouped by its first visible Bangkok day.
+
+    Spanning appointments retain their original date range instead of being
+    counted again on every day. A carry-in belongs under the query's first day.
+    """
+    first=date.fromisoformat(scope['start']);rows=[]
+    for event in events:
+        if event['all_day']:
+            start=date.fromisoformat(event['start']);last=date.fromisoformat(event['end'])-timedelta(days=1)
+            when='ทั้งวัน'+(' ('+day_label(start.isoformat())+' ถึง '+day_label(last.isoformat())+')' if last!=start else '')
+            day=start;order=event['start']
+        else:
+            start,end=(datetime.fromisoformat(event[key]).astimezone(BANGKOK) for key in ['start','end'])
+            day=start.date();order=start.isoformat()
+            if day<first:
+                when='เริ่ม '+day_label(day.isoformat())+' '+start.strftime('%H:%M')+' ถึง '+day_label(end.date().isoformat())+' '+end.strftime('%H:%M')
+            elif day!=end.date():when=start.strftime('%H:%M')+' ถึง '+day_label(end.date().isoformat())+' '+end.strftime('%H:%M')
+            else:when=start.strftime('%H:%M')+'–'+end.strftime('%H:%M')
+        rows.append((max(day,first),not event['all_day'],order,event['title'],when))
+    result=[];previous=None;ordinal=0
+    for day,_,_,title,when in sorted(rows):
+        heading=''
+        if day!=previous:
+            heading='\nวัน'+WEEKDAYS[day.weekday()]+'ที่ '+day_label(day.isoformat())+':\n'
+            ordinal=0;previous=day
+        ordinal+=1
+        result.append(heading+f'{ordinal}. {when} — '+label_text(title))
+    return result
+
+
 def period_label(scope, at):
     a,b=map(date.fromisoformat,(scope['start'],scope['end']));today=at.astimezone(BANGKOK).date()
     if a==b:
@@ -272,14 +304,7 @@ def facts(output, at):
         for i,e in enumerate(output['entries'],1):values[f'row{i}']=f"{day_label(e['date'])} — {label_text(e['item'])} {Decimal(e['amount']):.2f} บาท"
     else:
         values['count']=str(output['count'])+' นัด'
-        for i,e in enumerate(output['events'],1):
-            if e['all_day']:
-                last=(date.fromisoformat(e['end'])-timedelta(days=1)).isoformat()
-                when=day_label(e['start'])+(' ถึง '+day_label(last) if last!=e['start'] else '')+' ทั้งวัน'
-            else:
-                start,end=(datetime.fromisoformat(e[k]).astimezone(BANGKOK) for k in ['start','end'])
-                when=day_label(start.date().isoformat())+' '+start.strftime('%H:%M')+' ถึง '+(day_label(end.date().isoformat())+' ' if start.date()!=end.date() else '')+end.strftime('%H:%M')
-            values[f'row{i}']=when+' — '+label_text(e['title'])
+        for i,row in enumerate(calendar_rows(output['events'],scope),1):values[f'row{i}']=row
         if scope.get('upcoming'):values['upcoming']='เฉพาะนัดที่ยังไม่จบตั้งแต่เวลาปัจจุบัน'
     if output['count']>20 and output['shown']:values['truncation']='แสดง 20 รายการแรก ยอดและจำนวนรวมใช้ข้อมูลทั้งหมดที่อ่านครบแล้ว' if scope['domain']=='expense' else 'แสดง 20 รายการแรกจากนัดทั้งหมดที่อ่านครบแล้ว'
     return values
