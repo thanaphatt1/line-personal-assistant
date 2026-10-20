@@ -1114,6 +1114,9 @@ class HistoryFirstAssistant(Assistant):
     def tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='inspect_data_sources':
+                from .data_inventory import execute
+                return execute(self,args)
             if self.raw_history_enabled and name=='finish_query_analysis':
                 from .query_analysis import finish
                 return finish(self,args)
@@ -1191,6 +1194,9 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('data_inventory'):
+            from .data_inventory import render
+            return render(tool_output)
         if tool_output and tool_output.get('query_analysis'):
             from .query_analysis import render
             return render(tool_output)
@@ -1208,6 +1214,9 @@ class HistoryFirstAssistant(Assistant):
         if tool_output and tool_output.get('status')=='summary':
             from .read_queries import summary_result
             return summary_result(tool_output)
+        if self.raw_history_enabled and not tool_output:
+            from .query_analysis import unverified_claim
+            if unverified_claim(model_text):return Result('clarification','รอบนี้ยังไม่ได้ค้นหรือจัดเรียงข้อมูลใหม่ครับ')
         if self.calendar_connections_enabled:
             from .calendar_connections import claims_connected
             if claims_connected(model_text):return Result('clarification','ยังไม่มีผลยืนยันการเชื่อมปฏิทินจากระบบครับ จึงยังไม่รายงานว่าเชื่อมสำเร็จ')
@@ -1426,7 +1435,7 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
-        if result.data.get('query_analysis'):return result
+        if result.data.get('query_analysis') or result.data.get('data_inventory'):return result
         if (result.data.get('tool_result') or {}).get('calendar_connection'):return result
         if not self.response_realization_enabled:return result
         from .response_realization import realize
@@ -1516,7 +1525,7 @@ class HistoryFirstAssistant(Assistant):
             if (len(targets)==1 and (editing or found or problem)
                 and at>datetime.fromisoformat(targets[0]['updated_at'])):targets[0]['review']=None
         previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
-        self._query_reads={};self._query_analysis_active=False
+        self._query_reads={};self._query_analysis_active=False;self._data_inventory={};self._last_inventory=None
         for step in count():
             if not self.raw_history_enabled and step>=2:break
             try:
@@ -1541,6 +1550,8 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     from .query_analysis import definitions as analysis_definitions,READ_TOOLS
                     definitions_for_request+=analysis_definitions()
+                    from .data_inventory import definitions as inventory_definitions,context as inventory_context
+                    definitions_for_request+=inventory_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     from .calendar_connections import definitions as connection_definitions,context as connection_context
                     if self.calendar_connections_enabled:definitions_for_request+=connection_definitions()
@@ -1554,7 +1565,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1590,6 +1601,8 @@ class HistoryFirstAssistant(Assistant):
                 call=saved['call']
                 if call is None:
                     if self._query_analysis_active:
+                        if not self._query_reads and self._last_inventory:
+                            return self._finish(event,at,self._result(self._last_inventory))
                         from .query_analysis import finish
                         return self._finish(event,at,self._result(finish(self,{'query_refs':list(self._query_reads),'operation':'report','source_refs':[self._current['source_ref']]})))
                     if previous and previous[1].get('review_refresh'):
@@ -1597,7 +1610,7 @@ class HistoryFirstAssistant(Assistant):
                     return self._finish(event,at,self._result(last,saved['text']))
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
-                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar'}:
+                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar','inspect_data_sources'}:
                     signature=digest([call['name'],json.loads(call['arguments'])])
                     if signature in seen_reads:
                         return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
@@ -1606,6 +1619,11 @@ class HistoryFirstAssistant(Assistant):
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('data_inventory'):
+                    self._last_inventory=last
+                    if last.get('continue_analysis') and last['ok']:
+                        self._query_analysis_active=True;previous=(call,last);continue
+                    return self._finish(event,at,self._result(last))
                 if last.get('query_analysis'):return self._finish(event,at,self._result(last))
                 if self.raw_history_enabled and last.get('status')=='stored_query' and last.get('scope',{}).get('continue_analysis'):
                     from .query_analysis import remember

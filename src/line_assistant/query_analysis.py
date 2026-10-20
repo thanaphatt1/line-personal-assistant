@@ -4,18 +4,33 @@ Working results live only in the current request. Model arguments select result
 references and an operation; they cannot supply totals, provider targets or SQL.
 """
 from copy import deepcopy
-from datetime import datetime
+from datetime import date,datetime,timedelta
 from decimal import Decimal
 from typing import Literal
+import re
 from pydantic import BaseModel,ConfigDict,Field
 from .history_context import digest
 from .model_api import object_schema
 from .state import Claim,Result
 
-READ_TOOLS={'lookup_catalog','query_expenses','query_calendar','finish_query_analysis'}
+READ_TOOLS={'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis'}
+
+def unverified_claim(text):
+    # Output-claim check only, never an owner intent/date/keyword router.
+    if re.search(r'ไม่ได้|ไม่รองรับ|ยังไม่สามารถ',text):return False
+    verbs=r'(?:เรียง|จัดอันดับ|จัดกลุ่ม|รวมยอด|คำนวณ|จับคู่)'
+    return bool(re.search(r'ผม(?:จะ|สามารถ|ช่วย)?'+verbs+r'.{0,80}(?:ให้|ได้|แล้ว)',text)
+                or re.search(verbs+r'.{0,60}(?:เรียบร้อยแล้ว|เสร็จแล้ว)',text))
+
 INSTRUCTIONS=(
     ' For multi-part saved-data questions, set continue_analysis=true on reads, examine their result refs and continue reading as needed. '
     'A read can select a smaller window inside the requested period. There is no fixed number of model steps. '
+    'For spending conditioned on an ACTIVITY (e.g. เดือนที่แล้วที่ไปคุมสอบผมใช้ตังไปเท่าไหร่), '
+    'FIRST query_calendar for that month with filter_text copied from the activity (คุมสอบ), continue_analysis=true. '
+    'Calendar semantic selection can recognize EXAM/proctoring when event context supports it; ambiguous exams stay uncertain. '
+    'THEN query_expenses with calendar_query_refs=[that query_ref], date_mode=previous, filter=null. '
+    'The server joins ALL expenses on the matching Bangkok dates; do not misclassify the activity as an item/category. '
+    'A new turn must re-read Calendar; stored refs are request-local. previous_query.calendar_basis describes prior activity conditions. '
     'Use finish_query_analysis with stored query_refs when enough evidence is available: report combines grounded results, '
     'expense_sum adds complete non-overlapping expense reads, calendar_count counts distinct saved occurrences across reads, '
     'compare calculates differences between complete reads of the same domain. Never calculate or invent the final financial totals yourself. '
@@ -60,6 +75,43 @@ def fail(code,message):
             'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
             'error_code':code,'message':message}
 
+def calendar_dates(host,refs,start,end):
+    """Union Bangkok dates of complete source events, never model-supplied dates."""
+    from .language import BANGKOK
+    try:
+        if not refs or len(set(refs))!=len(refs):raise KeyError()
+        reads=[host._query_reads[ref] for ref in refs]
+        if any(row['domain']!='calendar' for row in reads):raise KeyError()
+    except (KeyError,TypeError):raise ValueError('invalid_calendar_refs') from None
+    if not all(row['complete'] for row in reads):raise ValueError('incomplete_calendar_basis')
+    if len({row['scope'].get('filter_text') for row in reads})!=1:raise ValueError('calendar_condition_mismatch')
+    intervals=sorted((date.fromisoformat(row['scope']['start']),date.fromisoformat(row['scope']['end'])) for row in reads)
+    covered=start
+    for first,last in intervals:
+        if first>covered:break
+        covered=max(covered,last+timedelta(days=1))
+    if covered<=end:raise ValueError('calendar_scope_incomplete')
+    dates=set();occurrences=set()
+    for row in reads:
+        events=row.get('analysis_records',[])
+        if len(events)!=row['count'] or any(not e.get('read_ref') for e in events):raise ValueError('missing_calendar_event_refs')
+        for e in events:
+            if e['all_day']:
+                first=date.fromisoformat(e['start']);last=date.fromisoformat(e['end'])-timedelta(days=1)
+            else:
+                first=datetime.fromisoformat(e['start']).astimezone(BANGKOK).date()
+                last=(datetime.fromisoformat(e['end']).astimezone(BANGKOK)-timedelta(microseconds=1)).date()
+            # An event appearing in several windows only proves dates inside
+            # windows that were actually read with the selected criteria.
+            first=max(first,start,date.fromisoformat(row['scope']['start']))
+            last=min(last,end,date.fromisoformat(row['scope']['end']))
+            if first<=last:occurrences.add(e['read_ref'])
+            while first<=last:
+                dates.add(first.isoformat());first+=timedelta(days=1)
+    return {'dates':sorted(dates),'event_count':len(occurrences),
+            'criteria':list(dict.fromkeys(row['scope'].get('filter_text') or 'นัดในปฏิทิน' for row in reads)),
+            'meaning':'all_expenses_on_matching_Bangkok_dates_not_proven_event_costs'}
+
 def finish(host,args):
     from .read_queries import result as render_query
     try:
@@ -72,6 +124,9 @@ def finish(host,args):
     scopes=[{k:deepcopy(v) for k,v in row['scope'].items() if k not in {'workbook','calendar','calendar_read_ids_hash','continue_analysis'}} for row in selected]
     common={'query_analysis':True,'ok':True,'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
             'query_refs':p.query_refs,'scopes':scopes,'operation':p.operation,'complete':all(row['complete'] for row in selected)}
+    expenses=[row for row in selected if row['domain']=='expense']
+    if len(expenses)==1:common['followup_scope']=deepcopy(expenses[0]['scope'])
+    elif len(selected)==1:common['followup_scope']=deepcopy(selected[0]['scope'])
     if p.operation=='report':
         # Counts, units and incomplete-read qualifiers remain original facts.
         message='\n\n'.join(report.message for report in reports)
@@ -79,7 +134,6 @@ def finish(host,args):
     if not common['complete']:return fail('incomplete_basis','ผลค้นหาบางส่วนยังไม่ครบหรือมีนัดที่จัดประเภทไม่ชัดเจนครับ จึงยังรวมเป็นยอดทั้งหมดไม่ได้')
     headers=[report.message.split('\n',1)[0] for report in reports]
     if p.operation=='expense_sum':
-        expenses=[row for row in selected if row['domain']=='expense']
         if not expenses:return fail('domain','การรวมรายจ่ายต้องเลือกผลค้นหารายจ่ายครับ')
         intervals=sorted((row['scope']['start'],row['scope']['end']) for row in expenses)
         if any(a[1]>=b[0] for a,b in zip(intervals,intervals[1:])):
@@ -116,4 +170,5 @@ def render(output):
         return Result('clarification','ผลวิเคราะห์ยาวเกินกว่าจะส่งในข้อความเดียวครับ ช่วยระบุส่วนที่ต้องการดูให้แคบลง',
                       {'domain':'query_analysis','query_analysis':True,'read_only':True,'complete':False})
     return Result(output['status'],message,{'domain':'query_analysis','query_analysis':True,'read_only':True,
+        **({'read_query':deepcopy(output['followup_scope'])} if output.get('followup_scope') else {}),
         'financial_write_authorized':False,'calendar_write_authorized':False,'tool_result':deepcopy(output)})

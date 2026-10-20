@@ -94,9 +94,10 @@ def summary_output(body):
 
 def test_overflow_summary_keeps_raw_originals_and_recent_exchange_without_loop():
     # The field-source schema increases the fixed tool header. This positive
-    # compaction probe, including typed query tools, must fit it after summary. Negative 14k probes below
+    # Ranking/join/inventory schemas need about35k after summary and43k
+    # before; this positive probe must compact. Negative14k probes below
     # still verify safe stopping and original retention.
-    h=Harness(raw_context_tokens=30000);seed(h,9,300)
+    h=Harness(raw_context_tokens=35000);seed(h,9,300)
     count=len(h.state.history)
     r=h.send('คุยต่อ',summary_output,response(text='คุยต่อครับ'))
     assert r.status=='answer' and len(h.port.requests)==2

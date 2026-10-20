@@ -43,6 +43,11 @@ class Expenses(Query):
     filter: Filter | None
     view: Literal['total', 'list']
     measure: Literal['expense', 'income', 'balance']
+    group_by: Literal['none','item','date','category','subcategory']='none'
+    order_by: Literal['date','amount','count','label']='date'
+    descending: bool=False
+    limit: int=Field(default=20,ge=1,le=20)
+    calendar_query_refs: list[str]=Field(default_factory=list,max_length=16)
 
 class Calendar(Query):
     upcoming: bool
@@ -57,9 +62,14 @@ def definitions():
               'source_refs': {'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}}
     return [
         {'type':'function','name':'query_expenses','strict':True,
-         'description':'Read saved expenses, totals or entries. Interpret aliases/typos with query_catalog; choose an exact existing label. Follow-ups carry only intended prior scope; new general questions clear filters. Never write, classify unknown stored rows, or claim income/balance supported.',
+         'description':'Read complete saved expenses; filter, group and sort BEFORE limiting displayed rows. For ใช้ไรเยอะสุด group_by=item, order_by=amount, descending=true, view=list; for largest individual payments group_by=none. For expenses on days of an activity, FIRST query_calendar with continue_analysis=true and the activity as filter_text, THEN pass its query_ref in calendar_query_refs (never use an activity as an expense category). Follow-ups reuse verified scope with date_mode=previous. Exact catalog filters only; no writes or income/balance.',
          'parameters':object_schema({**common,'filter':{'anyOf':[{'type':'null'},object_schema({'kind':{'type':'string','enum':['item','category','subcategory']},'value':{'type':'string'}})]},
-             'view':{'type':'string','enum':['total','list']},'measure':{'type':'string','enum':['expense','income','balance']}})},
+             'view':{'type':'string','enum':['total','list']},'measure':{'type':'string','enum':['expense','income','balance']},
+             'group_by':{'type':'string','enum':['none','item','date','category','subcategory'],'description':'none=individual payments; item/date/category/subcategory=SUM amounts and COUNT payments per group. Unknown category mappings fail honestly.'},
+             'order_by':{'type':'string','enum':['date','amount','count','label'],'description':'Sort the FULL result before top limit. amount is numeric; count requires groups. date requires individual rows or date groups.'},
+             'descending':{'type':'boolean','description':'True for largest/highest first; false for smallest/earliest first.'},
+             'limit':{'type':'integer','minimum':1,'maximum':20,'description':'Displayed top rows/groups; totals use ALL matching payments.'},
+             'calendar_query_refs':{'type':'array','items':{'type':'string'},'maxItems':16,'description':'Current-request complete Calendar query refs whose matching events define the Bangkok DATES to include. Empty for ordinary expenses. Server unions dates, clips spans and never double-counts same-day expenses. date_mode=previous can use these Calendar periods directly. Re-read Calendar on a new turn; refs cannot be reused across turns.'}})},
         {'type':'function','name':'query_calendar','strict':True,
          'description':'Read SAVED appointments from all server-selected readable calendars, max31 dates, including all-day/transparent. For เดือน พ.ย. มีนัด TA กี่ครั้ง use calendar_month anchored in November and filter_text=TA. The server reads the whole period then semantically classifies saved events. For สัปดาห์นี้มีนัดอะไรบ้าง use calendar_week, relative_offset=0, upcoming=false. upcoming=true only for next/upcoming appointments. Never create or edit.',
          'parameters':object_schema({**common,'upcoming':{'type':'boolean'},'filter_text':{'type':['string','null'],'description':'Literal appointment subject/type/condition from a cited owner message; server classifies fetched events semantically. Null only when no filter requested.'}})}]
@@ -67,12 +77,26 @@ def definitions():
 
 def context(host):
     """Trusted scope and bounded catalog data for model interpretation, not rules."""
-    row, previous = host._presented_result()
-    scope = previous.data.get('read_query') if previous else None
-    if scope and (scope.get('workbook') != storage_scope(host.sheets) or scope.get('calendar') != host.calendar_flow.calendar_id):scope = None
-    if scope and scope.get('domain')=='calendar' and scope.get('calendar_read_all',False)!=getattr(host.calendar_flow.adapter,'read_all_enabled',False):scope=None
-    if scope and scope.get('domain')=='calendar' and scope.get('calendar_read_ids_hash')!=calendar_read_ids_hash(host):scope=None
-    if scope and getattr(host,'production',False) and (not row.get('delivery_verified') or host.state.event_workbooks.get(row['event']) != storage_scope(host.sheets)):scope = None
+    scope=None
+    # Read focus may survive a clarification/chat turn. This is intentionally
+    # separate from _presented_result: write consent still uses the latest reply.
+    for row in sorted(host.state.history,key=lambda r:datetime.fromisoformat(r['at']),reverse=True):
+        if row['role']!='assistant' or row['event']==host._active_event_id or datetime.fromisoformat(row['at'])>=datetime.fromisoformat(host._current['at']):continue
+        receipt=host.state.receipts.get(row['event'])
+        if not receipt or receipt.expires_at<=host.clock():continue
+        candidate=receipt.result.data.get('read_query')
+        if not candidate or not candidate.get('start') or not candidate.get('end'):continue
+        if candidate.get('workbook')!=storage_scope(host.sheets) or candidate.get('calendar')!=host.calendar_flow.calendar_id:continue
+        if candidate.get('domain')=='calendar' or candidate.get('calendar_basis'):
+            if candidate.get('calendar_read_all',False)!=getattr(host.calendar_flow.adapter,'read_all_enabled',False):continue
+            if candidate.get('calendar_read_ids_hash')!=calendar_read_ids_hash(host):continue
+        if getattr(host,'production',False):
+            from . import semantic_tools
+            reply=host.state.replies.get(row['event'])
+            if (not row.get('delivery_verified') or not reply or reply.status!='sent'
+                or reply.content_hash!=semantic_tools.message_hash(semantic_tools.rendered_message(receipt.result))
+                or host.state.event_workbooks.get(row['event'])!=storage_scope(host.sheets)):continue
+        scope=candidate;break
     try:
         tax = host._taxonomy()
         catalog = {'complete':True,'items':[r.item for r in tax.rows],
@@ -80,6 +104,10 @@ def context(host):
                    'subcategories':list(dict.fromkeys(r.subcategory for r in tax.rows if r.subcategory))}
     except Exception:catalog = {'complete':False,'items':[],'categories':[],'subcategories':[]}
     return {'previous_query':{k:deepcopy(v) for k,v in scope.items() if k not in {'workbook','calendar','calendar_read_ids_hash'}} if scope else None,
+            'query_capabilities':{'expense_group_by':['item','date','category','subcategory'],
+                'expense_order_by':['date','amount','count','label'],'top_rows':20,'sort_before_limit':True,
+                'calendar_date_join':'complete current-request Calendar query refs; unions Bangkok dates; all spending on those dates, not causal event costs',
+                'unavailable':['income','balance','arbitrary_SQL','causal_expense_attribution']},
             'query_catalog':catalog}
 
 def calendar_read_ids_hash(host):
@@ -157,8 +185,16 @@ def execute(host, name, args):
     except (ValueError,TypeError,KeyError):return error(output,'invalid_arguments','clarification')
     if domain=='expense' and p.measure!='expense':return error(output,'income_unconfigured','income_unconfigured')
     if p.date_mode=='previous':
-        previous=context(host)['previous_query']
+        if domain=='expense' and p.calendar_query_refs:
+            reads=getattr(host,'_query_reads',{})
+            try:
+                scopes=[reads[ref]['scope'] for ref in p.calendar_query_refs]
+                if any(s['domain']!='calendar' for s in scopes):raise ValueError()
+                previous={'start':min(s['start'] for s in scopes),'end':max(s['end'] for s in scopes)}
+            except (KeyError,ValueError,TypeError):return error(output,'invalid_calendar_refs','clarification')
+        else:previous=context(host)['previous_query']
         if not previous or not previous.get('start') or not previous.get('end') or p.relative_offset is not None:return error(output,'date_required','clarification')
+        if domain=='expense' and previous.get('calendar_basis') and not p.calendar_query_refs:return error(output,'calendar_basis_required','clarification')
         p=p.model_copy(update={'start_date':previous['start'],'end_date':previous['end'],'date_mode':'range'})
     if domain=='calendar' and p.filter_text is not None:
         if not p.filter_text.strip() or not any(p.filter_text in row['text'] for row in sources):return error(output,'invalid_arguments','clarification')
@@ -214,25 +250,58 @@ def execute(host, name, args):
                 **({'analysis_records':events} if p.continue_analysis else {})}
     chosen=p.filter
     output['scope'].update(filter={chosen.kind:chosen.value} if chosen else None,listing=p.view=='list')
+    if (p.order_by=='count' and p.group_by=='none' or p.order_by=='date' and p.group_by not in {'none','date'}):
+        return error(output,'invalid_arguments','clarification')
+    if p.view!='list' and (p.group_by!='none' or p.order_by!='date' or p.descending):return error(output,'invalid_arguments','clarification')
+    if p.group_by!='none' or p.order_by!='date' or p.descending or p.limit!=20:
+        output['scope'].update(group_by=p.group_by,order_by=p.order_by,descending=p.descending,limit=p.limit)
+    if p.calendar_query_refs:
+        from .query_analysis import calendar_dates
+        try:basis=calendar_dates(host,p.calendar_query_refs,a,b)
+        except ValueError as problem:return error(output,str(problem),'clarification')
+        output['scope'].update(calendar_basis=basis,calendar_read_all=getattr(host.calendar_flow.adapter,'read_all_enabled',False),calendar_read_ids_hash=calendar_read_ids_hash(host))
     try:
-        tax=host._taxonomy() if chosen else None
+        tax=host._taxonomy() if chosen or p.group_by in {'category','subcategory'} else None
         if chosen:
             choices = {r.item if chosen.kind=='item' else getattr(r,chosen.kind) for r in tax.rows}
             matches={v for v in choices if normalized(v)==normalized(chosen.value)}
             if len(matches)!=1:return error(output,'filter_unknown','clarification')
             chosen=chosen.model_copy(update={'value':matches.pop()});output['scope']['filter']={chosen.kind:chosen.value}
         entries=host.sheets.saved_entries(a,b)
+        if p.calendar_query_refs:entries=[e for e in entries if e['date'] in basis['dates']]
         if chosen:
             entries,issues,identities=filtered_entries(tax,entries,chosen)
             if issues:return mapping_failure(output,entries,issues,identities,p.view=='list')
         entries.sort(key=lambda e:(e['date'],e['item']))
         total=sum((Decimal(e['amount']) for e in entries),Decimal('0'))
         if not total.is_finite() or total<0:raise ValueError()
+        groups=[]
+        if p.group_by!='none':
+            by_name={normalized(r.item):r for r in tax.rows} if tax else {}
+            grouped={}
+            for e in entries:
+                if p.group_by in {'item','date'}:label=e[p.group_by]
+                else:
+                    identity=tax.catalog.identity(e['item'])
+                    mapped=by_name.get(normalized(identity.canonical)) if identity.canonical else None
+                    if not mapped or not getattr(mapped,p.group_by).strip():return error(output,'mapping_incomplete','clarification')
+                    label=getattr(mapped,p.group_by)
+                group=grouped.setdefault(label,{'label':label,'amount':Decimal(0),'count':0})
+                group['amount']+=Decimal(e['amount']);group['count']+=1
+            groups=sorted(grouped.values(),key=lambda g:g['label'])
+            if p.order_by in {'amount','count'}:groups.sort(key=lambda g:g[p.order_by],reverse=p.descending)
+            elif p.descending:groups.reverse()
+            groups=[{**g,'amount':f"{g['amount']:.2f}"} for g in groups]
+        elif p.order_by=='amount':entries.sort(key=lambda e:Decimal(e['amount']),reverse=p.descending)
+        elif p.order_by=='label':entries.sort(key=lambda e:(e['item'],e['date']),reverse=p.descending)
+        elif p.descending:entries.reverse()
     except (ApiError,OutcomeUnknown):return error(output,'provider_failure')
     except NotReady:return error(output,'schema_failure')
     except Exception:return error(output,'schema_failure')
     return {**output,'complete':True,'outcome':'summary','expense':f'{total:.2f}','count':len(entries),
-            'entries':entries[:20] if p.view=='list' else [],'shown':min(20,len(entries)) if p.view=='list' else 0,'income_supported':False,
+            'entries':entries[:p.limit] if p.view=='list' and p.group_by=='none' else [],
+            'shown':min(p.limit,len(groups) if p.group_by!='none' else len(entries)) if p.view=='list' else 0,'income_supported':False,
+            **({'groups':groups[:p.limit] if p.view=='list' else [],'group_count':len(groups)} if p.group_by!='none' else {}),
             **({'analysis_records':entries if p.view=='list' else []} if p.continue_analysis else {})}
 
 
@@ -286,6 +355,12 @@ ERRORS = {
  'date_bounds':'ช่วงวันที่ไม่ถูกต้องหรือยาวเกินขอบเขตครับ รายจ่ายดูได้ไม่เกิน 367 วัน และปฏิทินไม่เกิน 31 วัน',
  'income_unconfigured':'ยังไม่มีข้อมูลรายรับที่รองรับครับ จึงสรุปรายรับหรือยอดคงเหลือไม่ได้',
  'filter_unknown':'ยังจับคู่ชื่อหรือหมวดที่ต้องการกับฐานข้อมูลไม่ได้ครับ ช่วยระบุให้ชัดอีกนิด',
+ 'invalid_calendar_refs':'ยังไม่มีผลค้นหาปฏิทินที่ใช้อ้างอิงได้ในคำถามรอบนี้ครับ ต้องค้นหานัดก่อนจับคู่รายจ่ายตามวัน',
+ 'incomplete_calendar_basis':'ผลค้นหาปฏิทินยังไม่ครบหรือมีนัดที่ยังจัดประเภทไม่ชัดเจนครับ จึงยังรวมรายจ่ายของทุกวันที่ถามไม่ได้',
+ 'calendar_condition_mismatch':'ผลค้นหาปฏิทินใช้เงื่อนไขกิจกรรมต่างกันครับ ต้องอ่านทุกช่วงด้วยเงื่อนไขเดียวกันก่อนรวมรายจ่ายตามวัน',
+ 'calendar_scope_incomplete':'ผลค้นหาปฏิทินยังไม่ครอบคลุมช่วงวันที่รายจ่ายที่ถามครบครับ ต้องอ่านปฏิทินให้ครบก่อน',
+ 'missing_calendar_event_refs':'ยังไม่มีหลักฐานนัดครบทุกนัดสำหรับจับคู่วันกับรายจ่ายครับ ต้องอ่านปฏิทินใหม่ก่อน',
+ 'calendar_basis_required':'คำถามก่อนเป็นรายจ่ายเฉพาะวันที่มีนัดครับ ต้องอ่านปฏิทินตามเงื่อนไขเดิมใหม่ก่อน จึงจะไม่เผลอรวมรายจ่ายทุกวัน',
  'mapping_incomplete':'มีรายการในช่วงนี้ที่จับคู่หมวดไม่ได้ครับ จึงยังรวมยอดเฉพาะหมวดนี้ให้ครบไม่ได้',
  'provider_failure':'ตอนนี้เชื่อมต่อแหล่งข้อมูลไม่สำเร็จครับ เลยยังสรุปผลให้ไม่ได้',
  'schema_failure':'รูปแบบข้อมูลที่อ่านมายังตรวจสอบไม่ผ่านครับ จึงยังสรุปยอดหรือยืนยันว่าไม่มีรายการไม่ได้',
@@ -318,7 +393,21 @@ def facts(output, at):
     scope=output['scope'];values={'period':period_label(scope,at)}
     if scope['domain']=='expense':
         if scope.get('filter'):values['filter']=label_text(next(iter(scope['filter'].values())))
+        if scope.get('calendar_basis'):
+            basis=scope['calendar_basis'];activity=' / '.join(label_text(c) for c in basis['criteria'])
+            values['filter']='วันที่มีนัดที่เข้าข่าย '+activity+(' และ '+values['filter'] if 'filter' in values else '')
         values.update(total=output['expense']+' บาท',count=str(output['count'])+' รายการ')
+        if scope.get('calendar_basis'):
+            values['row_basis']=f"จับคู่ได้ {len(basis['dates'])} วัน จาก {basis['event_count']} นัด: "+(', '.join(day_label(d) for d in basis['dates']) or 'ไม่พบวันที่เข้าข่าย')
+            values['row_method']='ยอดนี้รวมรายจ่ายทั้งหมดในวันที่ตรงกัน ไม่ได้ยืนยันว่าแต่ละรายการเป็นค่าใช้จ่ายของนัดนั้นโดยตรง'
+        grouping=scope.get('group_by','none');order=scope.get('order_by','date')
+        if grouping!='none' or order!='date' or scope.get('descending'):
+            groups={'none':'รายการ','item':'ชื่อรายการ','date':'วัน','category':'หมวด','subcategory':'หมวดย่อย'}
+            sort={'amount':'ยอดเงิน','count':'จำนวนรายการ','label':'ชื่อ','date':'วันที่'}[order]
+            values['row_order']=('รวมยอดแยกตาม'+groups[grouping]+' ' if grouping!='none' else '')+'เรียงตาม'+sort+('จากมากไปน้อย' if scope.get('descending') else 'จากน้อยไปมาก')
+        for i,g in enumerate(output.get('groups',[]),1):
+            label=day_label(g['label']) if grouping=='date' else label_text(g['label'])
+            values[f'row{i}']=f"{i}. {label} — {g['amount']} บาท ({g['count']} รายการ)"
         for i,e in enumerate(output['entries'],1):values[f'row{i}']=f"{day_label(e['date'])} — {label_text(e['item'])} {Decimal(e['amount']):.2f} บาท"
     else:
         if scope.get('filter_text'):values['filter']=label_text(scope['filter_text'])
@@ -331,7 +420,11 @@ def facts(output, at):
             for i,row in enumerate(calendar_rows(output['uncertain_events'],scope),1):
                 values[f'row_uncertain{i}']=('นัดที่ยังไม่แน่ใจว่าเข้าข่าย:\n' if i==1 else '')+row
             if selection['uncertain_count']>len(output['uncertain_events']):values['uncertainty_limit']='แสดงนัดที่ยังไม่แน่ใจ 5 รายการแรก'
-    if output['count']>20 and output['shown']:values['truncation']='แสดง 20 รายการแรก ยอดและจำนวนรวมใช้ข้อมูลทั้งหมดที่อ่านครบแล้ว' if scope['domain']=='expense' else 'แสดง 20 รายการแรกจากนัดทั้งหมดที่อ่านครบแล้ว'
+    if output.get('group_count',output['count'])>output['shown'] and output['shown']:
+        if scope['domain']=='expense':
+            unit='กลุ่ม' if scope.get('group_by','none')!='none' else 'รายการ'
+            values['truncation']=f"แสดง {output['shown']} {unit}แรก ยอดและจำนวนรวมใช้ข้อมูลทั้งหมดที่อ่านครบแล้ว"
+        else:values['truncation']='แสดง 20 รายการแรกจากนัดทั้งหมดที่อ่านครบแล้ว'
     return values
 
 

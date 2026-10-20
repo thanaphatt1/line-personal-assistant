@@ -11,7 +11,9 @@ The framework uses LLM interpretation with deterministic checks. It calls tools 
 1. **Log expenses.** Prepare and correct THB expense entries, resolve catalog names, fill missing information and save after reviewing. New catalog entries require the owner's category choices.
 2. **Create Calendar appointments.** Prepare timed or single-date all-day appointments, including groups. Review the date, timing and conflicts, then confirm creation.
 
-Read-only expense and Calendar queries support these two workflows. In this source revision, the LLM interprets questions and follow-ups and selects bounded read tools; code validates arguments, reads complete data and calculates totals. Queries create no write draft. This revision requires a separate deployment to change a running service. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
+Read-only expense and Calendar queries support these two workflows. In this source revision, the LLM interprets questions and follow-ups and selects bounded read tools; code validates arguments, reads complete data and calculates totals. Expense queries can group/rank full results before display truncation and sum spending on dates selected from complete Calendar results. Queries create no write draft. This revision requires a separate deployment to change a running service. See [query examples and limits](docs/read-queries.md). Publishing a later source change does not deploy it automatically.
+
+The planner sees its actual tools and configured data scope, and can inspect verified expense years/date bounds before answering. Calendar global coverage stays unknown until established; a query-window limit is not the age of stored data. See [capability and data metadata](docs/data-inventory.md).
 
 Development also includes [saved expense corrections and appointment rescheduling](docs/saved-record-edits.md), disabled by default. These select stable saved records, show before/after values and require a new owner confirmation. Calendar uses conditional ETag updates; expense edits additionally require a reviewed policy controlling other Sheets writers.
 

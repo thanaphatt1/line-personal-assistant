@@ -83,6 +83,7 @@ class ProvisionalCategories:
     def pairs(self):return sorted({(r.category,r.subcategory) for r in self.h._taxonomy().rows if r.category})
     def eligible(self,output):
         return (self.enabled and output.get('error_code')=='mapping_incomplete' and output.get('input_read_complete') is True
+            and not output.get('scope',{}).get('calendar_basis') and output.get('scope',{}).get('group_by','none')=='none'
             and output.get('scope',{}).get('filter') and next(iter(output['scope']['filter'])) in {'category','subcategory'}
             and (not self.h.state.pending or self.has_pending()))
     def make_basis(self,args,output):

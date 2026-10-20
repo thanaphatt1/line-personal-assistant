@@ -12,6 +12,10 @@ For every independent repetition, start fresh synthetic state and advance the de
 - carry-over for a real follow-up and clearing filters for a new question;
 - honest clarification for a missing/ambiguous period or unsupported filter, and distinct provider/schema/mapping failures;
 - all-day exclusive ends, timed offsets, pagination and long-list disclosure;
+- numeric sorting before truncation, grouped item/category totals versus individual-payment maxima, and preserving a verified month across clarification/yes turns;
+- activity-conditioned Calendar-to-expense date joins, same-day deduplication, exclusive midnight ends, complete coverage and uncertain membership; a generic activity must not become an expense category;
+- actual execution instead of a future capability promise, and an honest unsupported-operation response when the requested operation is absent;
+- capability/source inspection when necessary: actual current tools, observed expense years/counts/date bounds, timestamped freshness, unknown Calendar global extent, access failure versus verified empty records, and no confusion between query limits/dialogue history and stored-data coverage;
 - no provider write on a query or preview, no old consent consumed after a read;
 - exact saved expense names, amounts and dates, and exact created event titles and boundaries after explicit confirmation;
 - grounded Thai wording, factual fallback, complete tool transcripts and correct termination without a fixed per-turn call count; frozen historical runs retain their original two-call baseline.

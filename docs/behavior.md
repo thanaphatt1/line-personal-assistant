@@ -37,6 +37,10 @@ requests; multi-step analysis can continue without a fixed turn-call limit.
 
 ## Replies and limits
 
+Expense reads can sort all matching payments numerically before limiting the displayed rows, or sum/count by item, date, category or subcategory before ranking. “ใช้ไรเยอะสุด” defaults to item totals; a request for the largest individual payment uses ungrouped rows. Follow-ups retain the last verified delivered read period through clarification/chat turns. This read focus grants no write consent.
+
+For spending on dates of an activity, the model first reads Calendar, then supplies the complete current-request Calendar result refs to the expense tool. Code derives and unions Bangkok dates, counts each matching payment once, and discloses the selected dates. Ambiguous/incomplete Calendar classification cannot produce a complete total. “คุมสอบ” can use EXAM/proctoring/invigilation context; an EXAM-only title with an unclear owner role remains uncertain. Same-day spending is not proof that the appointment caused that expense. A later turn must re-read Calendar; old refs cannot silently broaden the query to every day.
+
 Saved appointment lists are grouped by Bangkok calendar day, with a Thai
 weekday/date heading and numbering that restarts at one for each day. All-day
 appointments appear before timed appointments; timed appointments are ordered
