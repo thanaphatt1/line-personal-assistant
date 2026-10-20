@@ -76,9 +76,9 @@ def test_invalid_relative_offsets_cannot_expand_query(offset):
     assert r.data['tool_result']['error_code']=='invalid_arguments'
 
 
-def test_calendar_title_filter_is_explicitly_declined_not_ignored():
-    api=VoiceHosted();r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='กีฬา'))
-    assert r.status=='clarification' and r.data['tool_result']['error_code']=='calendar_filter_unsupported'
+def test_calendar_filter_must_come_from_cited_owner_wording():
+    api=VoiceHosted();r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='TA'))
+    assert r.status=='clarification' and r.data['tool_result']['error_code']=='invalid_arguments'
     assert not r.data['tool_result']['complete'] and not api.calendar_requests
 
 

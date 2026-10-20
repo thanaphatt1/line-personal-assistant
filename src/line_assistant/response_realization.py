@@ -53,6 +53,8 @@ INSTRUCTIONS=(
     'End the result sentence with ครับ once. Avoid decorative intros and awkward connectors. '
     'locked_rows are shown automatically by the server after your header: never output their contents or references. '
     'A reason fact is already a full honest error/question; place it directly without redundant framing.')
+from . import calendar_inference as selection
+INSTRUCTIONS+=selection.INSTRUCTIONS
 
 def encoded(value):return json.dumps(value,ensure_ascii=False,separators=(',',':')).encode()
 def identity(result):return hashlib.sha256(encoded({'status':result.status,'message':result.message,'data':result.data})).hexdigest()
@@ -178,6 +180,7 @@ def facts_for(host,result):
     return facts
 
 def body_for(host,result):
+    if selection.pending(result):return selection.body_for(host,result,INSTRUCTIONS)
     facts=facts_for(host,result)
     if not facts:return None
     current=getattr(host,'_current',{});history=getattr(host.state,'history',[])
@@ -203,6 +206,7 @@ def validate_body(body):
     keys={'model','instructions','input','tools','tool_choice','parallel_tool_calls','reasoning','max_output_tokens','store','service_tier','truncation','text'}
     try:
         p=json.loads(body['input'][0]['content'])
+        if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
         return (set(body)==keys and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
             and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'} and body['max_output_tokens']==MAX_OUTPUT
             and body['store'] is False and body['service_tier']=='default' and body['truncation']=='disabled'
@@ -214,7 +218,7 @@ def parse(value,body):
     from .raw_history import tokens_bound
     if value.get('status')!='completed' or value.get('model')!=MODEL_ID:raise ValueError('incomplete')
     usage=value.get('usage',{})
-    if any(type(usage.get(k)) is not int or not 0<=usage[k]<=n for k,n in [('input_tokens',tokens_bound(body)),('output_tokens',MAX_OUTPUT)]):raise OverflowError('usage')
+    if any(type(usage.get(k)) is not int or not 0<=usage[k]<=n for k,n in [('input_tokens',tokens_bound(body)),('output_tokens',body['max_output_tokens'])]):raise OverflowError('usage')
     outputs=value.get('output',[])
     if not outputs or any(x.get('type') not in {'message','reasoning'} for x in outputs):raise ValueError('tools_not_allowed')
     messages=[x for x in outputs if x['type']=='message']
@@ -233,7 +237,9 @@ def parse(value,body):
     def pairs(values):
         if len(dict(values))!=len(values):raise ValueError('duplicate_keys')
         return dict(values)
-    document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content']);facts=payload['facts']
+    document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
+    if payload.get('calendar_selection'):return selection.parse(document,payload)
+    facts=payload['facts']
     if payload.get('query_reply'):
         if set(document)!={'opening','parts'} or document['opening']!='' or not isinstance(document['parts'],dict) or set(document['parts'])!=set(facts):raise ValueError('query_parts')
         chunks=[]
@@ -277,6 +283,7 @@ def parse(value,body):
     return result
 
 def apply(result,text,metadata):
+    if selection.pending(result):return selection.apply(result,text,metadata)
     data=deepcopy(result.data);data['response_realization']=metadata
     if data.get('line_message'):
         old=data['line_message'];actions=[b['action'] for b in old.get('contents',{}).get('footer',{}).get('contents',[]) if 'action' in b]
@@ -292,16 +299,16 @@ def realize(host,event,result):
     if previous and previous.result.data.get('response_realization') and (reply and reply.status=='sent' or previous.result.data['response_realization'].get('core_hash')==identity(result)):return deepcopy(previous.result)
     if result.status in {'denied','ignored'} or result.status=='summary' and not result.data.get('read_query') or result.status=='answer' and not result.data.get('tool_result'):return result
     started=monotonic();core_hash=identity(result)
-    def fallback(reason):return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':{'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}})
+    def fallback(reason):
+        metadata={'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}
+        if selection.pending(result):return selection.fallback(result,metadata)
+        return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
     if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')
-    root=host.state.claims[event]
-    core_calls=sum(key in host.state.claims and host.state.claims[key].fingerprint==root.fingerprint
-        and not key.startswith('realize01_') for key in host.state.model_runs)
-    if core_calls>=2:return fallback('core_step_budget')
     body=body_for(host,result)
     if body is None:return fallback('body_bound')
     from .pilot_http import remaining_rpc_seconds
-    remaining=remaining_rpc_seconds();timeout=min(TIMEOUT_SECONDS,remaining-2) if remaining is not None else TIMEOUT_SECONDS
+    deadline=selection.TIMEOUT_SECONDS if selection.pending(result) else TIMEOUT_SECONDS
+    remaining=remaining_rpc_seconds();timeout=min(deadline,remaining-2) if remaining is not None else deadline
     if timeout<0.05:return fallback('deadline')
     if not _inflight.acquire(blocking=False):return fallback('inflight')
     key='realize01_'+hashlib.sha256(encoded([event])).hexdigest()[:40]

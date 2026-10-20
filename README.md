@@ -42,8 +42,11 @@ The baseline Calendar creation path uses one explicitly configured secondary cal
 | Hosting and build | A non-root Python container runs on Cloud Run. Cloud Build verifies a reviewed source archive from Cloud Storage, builds with pinned base/builder images and publishes to Artifact Registry. Cloud Logging supplies startup/error evidence. | [Production Dockerfile](deploy/history-production.Dockerfile), [build template](deploy/cloudbuild.json), [deployment](docs/deployment.md) |
 | Tests and CI | pytest, FastAPI's test client, `httpx.MockTransport`, synthetic providers and temporary SQLite stores cover behavior and recovery. GitHub Actions runs offline tests plus source/wheel/startup checks on Ubuntu with Python 3.11. | [Test guide](tests/README.md), [CI workflow](.github/workflows/ci.yml) |
 
-The history-enabled runtime has a maximum of two model calls per owner turn;
-verified direct controls can use none. Reply realization, saved-record changes
+The raw-history runtime has no fixed model-call limit per owner turn. Read-only
+analysis can continue across expense and Calendar queries; repeated reads stop
+without repeating provider work. Provider deadlines/context and configured
+accounting gates still apply. Verified direct controls can use no model calls.
+Reply realization, saved-record changes
 and category workflows are optional features with explicit flags. The critic
 prototype in the [benchmark work](benchmarks/PROTOCOL.md) is not a runtime phase.
 Models used to write or review this repository are engineering choices, separate

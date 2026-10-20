@@ -14,7 +14,7 @@ For every independent repetition, start fresh synthetic state and advance the de
 - all-day exclusive ends, timed offsets, pagination and long-list disclosure;
 - no provider write on a query or preview, no old consent consumed after a read;
 - exact saved expense names, amounts and dates, and exact created event titles and boundaries after explicit confirmation;
-- grounded Thai wording, factual fallback, and at most two model calls per owner turn.
+- grounded Thai wording, factual fallback, complete tool transcripts and correct termination without a fixed per-turn call count; frozen historical runs retain their original two-call baseline.
 
 Treat a correct factual fallback separately from a semantic or business-effect failure. Record its reason and wording success rate; do not label it a successful LLM realization. API schema rejection is a test failure, even when a safe fallback reaches the user.
 

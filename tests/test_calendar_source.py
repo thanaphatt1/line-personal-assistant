@@ -24,7 +24,7 @@ def test_bundle_is_deterministic_includes_calendar_and_excludes_runtime_data(tmp
             assert archive.extractfile(path).read()==(ROOT/path).read_bytes()
         runtime_names={n for n in names if n.startswith('src/line_assistant/') and n.endswith('.py')}
         expected={n for n in packager.INPUTS if n.startswith('src/line_assistant/') and n.endswith('.py')}
-        assert runtime_names==expected and len(runtime_names)==90
+        assert runtime_names==expected and len(runtime_names)==92
         path='src/line_assistant/response_realization.py'
         assert archive.extractfile(path).read()==(ROOT/path).read_bytes()
         assert not any(n.startswith(('tests/','local-data/','.git/','docs/')) or n in {'.env','.env.example','RELEASE_V11.json'} for n in names)

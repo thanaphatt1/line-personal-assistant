@@ -2,7 +2,7 @@
 from datetime import datetime,timedelta
 from urllib.parse import quote
 import hashlib,re
-from .calendar_provider import creation_body,CALENDAR_LIST_PATH,CALENDAR_LIST_PARAMS
+from .calendar_provider import creation_body,CALENDAR_LIST_PATH,CALENDAR_LIST_PARAMS,MAX_QUERY_DAYS
 from .calendar_event_types import parse_payload
 from .history_context import digest
 from .transport import LiveDisabled
@@ -34,7 +34,7 @@ def authorize(http,method,path,body,params):
         if set(params) not in [required,required|{'pageToken'}]:raise LiveDisabled('Unbounded Calendar conflict query')
         try:a=datetime.fromisoformat(params['timeMin']);b=datetime.fromisoformat(params['timeMax'])
         except (ValueError,TypeError):raise LiveDisabled('Invalid Calendar time window') from None
-        if (a.utcoffset() is None or b.utcoffset() is None or not timedelta(0)<b-a<=timedelta(days=7)
+        if (a.utcoffset() is None or b.utcoffset() is None or not timedelta(0)<b-a<=timedelta(days=MAX_QUERY_DAYS)
             or params['singleEvents']!='true' or params['orderBy']!='startTime' or params['timeZone']!='Asia/Bangkok' or type(params['maxResults']) is not int or params['maxResults']!=20
             or 'pageToken' in params and (not isinstance(params['pageToken'],str) or not 1<=len(params['pageToken'])<=1024)):
             raise LiveDisabled('Invalid Calendar query bounds')

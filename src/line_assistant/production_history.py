@@ -64,9 +64,11 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         if getattr(self,'_legacy_turn',False):
             run=self.state.model_runs.get(event)
             if run and run.status=='completed':run.decision=None
-        for step in range(2):
-            run=self.state.model_runs.get('history01_'+digest([event,step]))
-            if run and run.status=='completed':run.decision=None
+        parent=self.state.claims.get(event)
+        for key,run in self.state.model_runs.items():
+            claim=self.state.claims.get(key)
+            if (parent and claim and claim.fingerprint==parent.fingerprint
+                and key.startswith(('history01_','realize01_')) and run.status=='completed'):run.decision=None
         # Receipt and consumed proposal caches commit together; fingerprints,
         # reservations and every unknown attempt remain retained.
         return super()._receipt(event,fingerprint,result)

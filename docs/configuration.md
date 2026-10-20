@@ -58,12 +58,21 @@ no write route. With discovery disabled and an empty additional-ID list, reads
 retain the existing single-calendar behavior.
 
 The reader supports up to 16 calendars including the configured calendar,
-three discovery pages and three 20-event pages per calendar for a seven-date
+three discovery pages and eight 20-event pages per calendar for a31-date
 window, within the existing request budget and deadline. If discovery, access,
 pagination or validation fails, the assistant reports that it cannot complete
 the summary instead of returning a partial count or claiming there are no
 appointments. Shared invitation copies with the same iCalUID and occurrence
 boundaries count once; separate recurring occurrences remain separate.
+
+Calendar subject/type analysis also requires
+`PILOT_RESPONSE_REALIZATION_ENABLED=true`. It uses the existing second model
+request and usage reservation to classify at most120 deduplicated fetched
+events, with an eight-second foreground deadline and a48,000-byte request
+limit. The ordinary reply deadline remains four seconds. Model-selected
+event references are validated and counted by code. Ambiguous membership is
+shown separately, and unavailable inference cannot produce a guessed count.
+See [semantic query limits](read-queries.md).
 
 See Google's [CalendarList API](https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list),
 [sharing rules](https://developers.google.com/workspace/calendar/api/concepts/sharing)

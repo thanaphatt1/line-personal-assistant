@@ -81,8 +81,9 @@ Flags are `PILOT_PROVISIONAL_CATEGORIES_ENABLED=false` and
 `PILOT_PROVISIONAL_MAPPING_ENABLED=false`. Mapping enablement also requires
 `PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY=reviewed_single_writer` and existing
 history/state configuration. Enabling suggestions alone allows query-only
-consent without Database writes. Model interpretation stays within the existing
-two-call turn budget; tools never supply confirmation.
+consent without Database writes. Tools never supply confirmation; the current
+raw-history loop has no fixed turn-call count and retains per-request/provider
+limits and configured accounting gates.
 
 Rollback uses the same compatible image with all new mutation/proposal flags
 OFF. It preserves pending reviews, query-only receipts, uncertain actions and raw

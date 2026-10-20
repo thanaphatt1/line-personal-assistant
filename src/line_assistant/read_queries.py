@@ -18,6 +18,7 @@ from .model_api import object_schema
 from .history_context import digest
 from .state import Result
 from .transport import ApiError, OutcomeUnknown, NotReady
+from .calendar_provider import MAX_QUERY_DAYS
 
 NAMES = {'query_expenses', 'query_calendar'}
 MONTHS = ('ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.')
@@ -36,6 +37,7 @@ class Query(BaseModel):
     date_mode: Literal['range','calendar_month','calendar_week','calendar_year','previous','upcoming'] = 'range'
     period_text: str | None = Field(default=None,max_length=120)
     relative_offset: int | None = Field(default=None,ge=-120,le=120)
+    continue_analysis: bool=False
 
 class Expenses(Query):
     filter: Filter | None
@@ -50,7 +52,8 @@ class Calendar(Query):
 def definitions():
     common = {'period_text':{'type':['string','null'],'description':'Copy the literal DATE/PERIOD phrase from a cited owner message (e.g. เมื่อวาน, เดือนนี้, 1-7 ต.ค., นัดถัดไป). Null when no period was stated; the current clock is NOT date evidence. For a filter/view-only follow-up choose date_mode=previous instead. Do not invent date wording.'},'relative_offset':{'type':['integer','null'],'description':'For THIS/NEXT/LAST calendar week/month/year use0/+1/-1; server computes from current Bangkok clock. Use null for named/absolute periods or range. Do not calculate relative frame dates yourself.'},'date_mode':{'type':'string','enum':['calendar_month','calendar_week','calendar_year','previous','upcoming','range'],'description':'For next/upcoming appointments with no explicit period choose upcoming (server uses now through next6dates). For a filter/view-only follow-up choose previous: the server reuses the latest verified query dates, no date copy needed. Otherwise interpret the intended interval: unqualified month/monthly uses calendar_month, week uses calendar_week, year uses calendar_year. Server expands the start date to the WHOLE calendar frame. Use range for one day, explicit date spans, or explicitly month-to-date.'},
               'start_date': {'type':['string','null'], 'description':'Bangkok ISO anchor date. For a NAMED/absolute calendar frame with relative_offset=null, MUST supply an anchor such as2026-10-01; period_text is evidence, not a parsed date. Null only for a relative_offset frame, previous/upcoming, or genuinely missing period.'},
-              'end_date': {'type':['string','null'], 'description':'Inclusive Bangkok ISO end; weeks Monday-Sunday. Expense max367 dates, Calendar max7.'},
+              'end_date': {'type':['string','null'], 'description':'Inclusive Bangkok ISO end; weeks Monday-Sunday. Expense max367 dates, Calendar max31.'},
+              'continue_analysis':{'type':'boolean','description':'True when this read is part of multi-step analysis, comparison or combining Expense/Calendar; inspect its query_ref and continue with read tools, then finish_query_analysis. False for a simple standalone answer.'},
               'source_refs': {'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}}
     return [
         {'type':'function','name':'query_expenses','strict':True,
@@ -58,8 +61,8 @@ def definitions():
          'parameters':object_schema({**common,'filter':{'anyOf':[{'type':'null'},object_schema({'kind':{'type':'string','enum':['item','category','subcategory']},'value':{'type':'string'}})]},
              'view':{'type':'string','enum':['total','list']},'measure':{'type':'string','enum':['expense','income','balance']}})},
         {'type':'function','name':'query_calendar','strict':True,
-         'description':'Read SAVED appointments from all server-selected readable calendars, max7 dates, including all-day/transparent. For สัปดาห์นี้มีนัดอะไรบ้าง use calendar_week, relative_offset=0, upcoming=false. upcoming=true only for next/upcoming appointments, excluding already ended events. No title/type filters; clarify unsupported filters instead of ignoring them. Never create or edit.',
-         'parameters':object_schema({**common,'upcoming':{'type':'boolean'},'filter_text':{'type':['string','null'],'description':'Copy any requested saved-event title/type filter here, even though unsupported. Null only when no filter requested. Server clarifies instead of silently returning all events.'}})}]
+         'description':'Read SAVED appointments from all server-selected readable calendars, max31 dates, including all-day/transparent. For เดือน พ.ย. มีนัด TA กี่ครั้ง use calendar_month anchored in November and filter_text=TA. The server reads the whole period then semantically classifies saved events. For สัปดาห์นี้มีนัดอะไรบ้าง use calendar_week, relative_offset=0, upcoming=false. upcoming=true only for next/upcoming appointments. Never create or edit.',
+         'parameters':object_schema({**common,'upcoming':{'type':'boolean'},'filter_text':{'type':['string','null'],'description':'Literal appointment subject/type/condition from a cited owner message; server classifies fetched events semantically. Null only when no filter requested.'}})}]
 
 
 def context(host):
@@ -157,7 +160,8 @@ def execute(host, name, args):
         previous=context(host)['previous_query']
         if not previous or not previous.get('start') or not previous.get('end') or p.relative_offset is not None:return error(output,'date_required','clarification')
         p=p.model_copy(update={'start_date':previous['start'],'end_date':previous['end'],'date_mode':'range'})
-    if domain=='calendar' and p.filter_text:return error(output,'calendar_filter_unsupported','clarification')
+    if domain=='calendar' and p.filter_text is not None:
+        if not p.filter_text.strip() or not any(p.filter_text in row['text'] for row in sources):return error(output,'invalid_arguments','clarification')
     if args.get('date_mode')!='previous' and (not p.period_text or not any(p.period_text in row['text'] for row in sources)):return error(output,'date_required','clarification')
     if p.date_mode=='upcoming':
         if domain!='calendar':return error(output,'invalid_arguments','clarification')
@@ -183,21 +187,31 @@ def execute(host, name, args):
         elif p.date_mode=='calendar_week':a=a-timedelta(days=a.weekday());b=a+timedelta(days=6)
         elif p.date_mode=='calendar_year':a,b=date(a.year,1,1),date(a.year,12,31)
         SpendingSummary(start_date=a,end_date=b)
-        if not 1900<=a.year<=b.year<=2100 or domain=='calendar' and (b-a).days>6:raise ValueError()
+        if not 1900<=a.year<=b.year<=2100 or domain=='calendar' and (b-a).days>=MAX_QUERY_DAYS:raise ValueError()
     except ValueError:return error(output,'date_bounds','clarification')
     output['scope'].update(start=a.isoformat(),end=b.isoformat())
+    if p.continue_analysis:output['scope']['continue_analysis']=True
     if domain=='calendar':
         output['scope']['upcoming']=p.upcoming
+        output['scope']['filter_text']=p.filter_text
         output['scope']['calendar_read_all']=getattr(host.calendar_flow.adapter,'read_all_enabled',False)
         if calendar_read_ids_hash(host):output['scope']['calendar_read_ids_hash']=calendar_read_ids_hash(host)
         if not host.calendar_flow.enabled:return error(output,'calendar_disabled')
+        if p.filter_text and not getattr(host,'response_realization_enabled',False):return error(output,'calendar_inference_disabled','clarification')
         start=datetime.combine(a,time.min,BANGKOK);end=datetime.combine(b+timedelta(days=1),time.min,BANGKOK)
         if p.upcoming:start=max(start,datetime.fromisoformat(host._current['at']).astimezone(BANGKOK))
-        try:events=host.calendar_flow.adapter.saved_events(start,end) if start<end else []
+        try:events=(host.calendar_flow.adapter.saved_events(start,end,include_details=bool(p.filter_text),include_refs=True) if p.continue_analysis
+                    else host.calendar_flow.adapter.saved_events(start,end,include_details=True) if p.filter_text
+                    else host.calendar_flow.adapter.saved_events(start,end)) if start<end else []
         except (ApiError,OutcomeUnknown):return error(output,'provider_failure')
         except NotReady:return error(output,'read_incomplete')
         except Exception:return error(output,'schema_failure')
-        return {**output,'complete':True,'outcome':'answer','events':events[:20],'count':len(events),'shown':min(20,len(events))}
+        if p.filter_text and events:
+            from .calendar_inference import MAX_CANDIDATES
+            if len(events)>MAX_CANDIDATES:return error(output,'calendar_inference_capacity','clarification')
+            return {**output,'outcome':'clarification','error_code':'calendar_inference_pending','source_complete':True,'calendar_candidates':events}
+        return {**output,'complete':True,'outcome':'answer','events':events[:20],'count':len(events),'shown':min(20,len(events)),
+                **({'analysis_records':events} if p.continue_analysis else {})}
     chosen=p.filter
     output['scope'].update(filter={chosen.kind:chosen.value} if chosen else None,listing=p.view=='list')
     try:
@@ -218,7 +232,8 @@ def execute(host, name, args):
     except NotReady:return error(output,'schema_failure')
     except Exception:return error(output,'schema_failure')
     return {**output,'complete':True,'outcome':'summary','expense':f'{total:.2f}','count':len(entries),
-            'entries':entries[:20] if p.view=='list' else [],'shown':min(20,len(entries)) if p.view=='list' else 0,'income_supported':False}
+            'entries':entries[:20] if p.view=='list' else [],'shown':min(20,len(entries)) if p.view=='list' else 0,'income_supported':False,
+            **({'analysis_records':entries if p.view=='list' else []} if p.continue_analysis else {})}
 
 
 def day_label(value):
@@ -268,7 +283,7 @@ def period_label(scope, at):
 ERRORS = {
  'invalid_arguments':'ข้อมูลที่ใช้ค้นหายังไม่ชัดเจนครับ ช่วยระบุช่วงวันหรือสิ่งที่ต้องการดูอีกครั้ง',
  'date_required':'ต้องการดูช่วงวันไหนครับ?',
- 'date_bounds':'ช่วงวันที่ไม่ถูกต้องหรือยาวเกินขอบเขตครับ รายจ่ายดูได้ไม่เกิน 367 วัน และปฏิทินไม่เกิน 7 วัน',
+ 'date_bounds':'ช่วงวันที่ไม่ถูกต้องหรือยาวเกินขอบเขตครับ รายจ่ายดูได้ไม่เกิน 367 วัน และปฏิทินไม่เกิน 31 วัน',
  'income_unconfigured':'ยังไม่มีข้อมูลรายรับที่รองรับครับ จึงสรุปรายรับหรือยอดคงเหลือไม่ได้',
  'filter_unknown':'ยังจับคู่ชื่อหรือหมวดที่ต้องการกับฐานข้อมูลไม่ได้ครับ ช่วยระบุให้ชัดอีกนิด',
  'mapping_incomplete':'มีรายการในช่วงนี้ที่จับคู่หมวดไม่ได้ครับ จึงยังรวมยอดเฉพาะหมวดนี้ให้ครบไม่ได้',
@@ -276,11 +291,14 @@ ERRORS = {
  'schema_failure':'รูปแบบข้อมูลที่อ่านมายังตรวจสอบไม่ผ่านครับ จึงยังสรุปยอดหรือยืนยันว่าไม่มีรายการไม่ได้',
  'read_incomplete':'อ่านข้อมูลได้ไม่ครบครับ จึงยังยืนยันรายการทั้งหมดหรือการไม่มีนัดไม่ได้',
  'calendar_filter_unsupported':'ตอนนี้อ่านนัดได้ตามช่วงวันครับ ยังกรองชื่อหรือประเภทนัดไม่ได้ ต้องการดูทุกนัดในช่วงนั้นไหมครับ?',
+ 'calendar_inference_pending':'อ่านนัดในช่วงที่ถามแล้ว แต่ยังแยกนัดที่เข้าข่ายให้ไม่ได้ครับ จึงยังสรุปจำนวนเฉพาะที่ถามไม่ได้',
+ 'calendar_inference_disabled':'ยังไม่ได้เปิดการวิเคราะห์นัดที่เข้าข่ายครับ จึงยังสรุปจำนวนเฉพาะที่ถามไม่ได้',
+ 'calendar_inference_capacity':'นัดในช่วงนี้มีมากเกินกว่าจะวิเคราะห์ได้ครบในครั้งเดียวครับ ช่วยระบุช่วงวันที่สั้นลงหน่อย',
  'calendar_disabled':'ยังไม่ได้เปิดการอ่านปฏิทินครับ จึงตรวจนัดที่บันทึกไว้ไม่ได้'}
 
 
 def facts(output, at):
-    if not output['complete']:
+    if not output['complete'] and not output.get('calendar_selection'):
         if output['error_code']!='mapping_incomplete' or not output.get('mapping_diagnostics'):return {'reason':ERRORS[output['error_code']]}
         scope=output['scope'];diagnostics=output['mapping_diagnostics'];partial=output['partial']
         label=label_text(next(iter(scope['filter'].values())))
@@ -303,22 +321,30 @@ def facts(output, at):
         values.update(total=output['expense']+' บาท',count=str(output['count'])+' รายการ')
         for i,e in enumerate(output['entries'],1):values[f'row{i}']=f"{day_label(e['date'])} — {label_text(e['item'])} {Decimal(e['amount']):.2f} บาท"
     else:
-        values['count']=str(output['count'])+' นัด'
+        if scope.get('filter_text'):values['filter']=label_text(scope['filter_text'])
+        values['count']=str(output['count'])+(' ครั้ง' if scope.get('filter_text') else ' นัด')
         for i,row in enumerate(calendar_rows(output['events'],scope),1):values[f'row{i}']=row
         if scope.get('upcoming'):values['upcoming']='เฉพาะนัดที่ยังไม่จบตั้งแต่เวลาปัจจุบัน'
+        selection=output.get('calendar_selection',{})
+        if selection.get('uncertain_count'):
+            values['uncertainty']=f"อีก {selection['uncertain_count']} นัดยังไม่แน่ใจว่าเข้าข่าย {values['filter']} จึงยังยืนยันจำนวนทั้งหมดไม่ได้ครับ"
+            for i,row in enumerate(calendar_rows(output['uncertain_events'],scope),1):
+                values[f'row_uncertain{i}']=('นัดที่ยังไม่แน่ใจว่าเข้าข่าย:\n' if i==1 else '')+row
+            if selection['uncertain_count']>len(output['uncertain_events']):values['uncertainty_limit']='แสดงนัดที่ยังไม่แน่ใจ 5 รายการแรก'
     if output['count']>20 and output['shown']:values['truncation']='แสดง 20 รายการแรก ยอดและจำนวนรวมใช้ข้อมูลทั้งหมดที่อ่านครบแล้ว' if scope['domain']=='expense' else 'แสดง 20 รายการแรกจากนัดทั้งหมดที่อ่านครบแล้ว'
     return values
 
 
 def result(output, at):
     values=facts(output,at)
-    if not output['complete']:message='\n'.join(v for k,v in values.items() if not k.startswith('row') and k!='truncation')
+    if not output['complete'] and not output.get('calendar_selection'):message='\n'.join(v for k,v in values.items() if not k.startswith('row') and k!='truncation')
     elif output['domain']=='expense':
         message=values['period']+(' เฉพาะ '+values['filter'] if 'filter' in values else '')+f" ใช้ไป {values['total']} จาก {values['count']}ครับ"
-    else:message=values['period']+f" มี {values['count']}ครับ"
-    message+=''.join('\n'+v for k,v in values.items() if k.startswith('row') or k in {'truncation','upcoming'})
+    else:message=values['period']+(' มีนัดที่เข้าข่าย '+values['filter'] if 'filter' in values else ' มี')+f" {values['count']}ครับ"
+    message+=''.join('\n'+v for k,v in values.items() if k.startswith('row') or k in {'truncation','upcoming','uncertainty','uncertainty_limit'})
     data={'domain':output['domain'],'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
           'read_query':deepcopy(output['scope']),'query_facts':values,'tool_result':output}
+    if output.get('calendar_candidates'):data['calendar_selection_at']=at.isoformat()
     return Result(output['outcome'],message,data)
 
 

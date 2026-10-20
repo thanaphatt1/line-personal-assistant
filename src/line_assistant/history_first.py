@@ -3,6 +3,7 @@ from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime,timedelta
 from decimal import Decimal
+from itertools import count
 import hmac,json,re,secrets
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field,field_validator
@@ -1113,6 +1114,9 @@ class HistoryFirstAssistant(Assistant):
     def tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='finish_query_analysis':
+                from .query_analysis import finish
+                return finish(self,args)
             if self.raw_history_enabled and name=='connect_calendar':
                 from .calendar_connections import execute
                 return execute(self,args)
@@ -1187,6 +1191,9 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('query_analysis'):
+            from .query_analysis import render
+            return render(tool_output)
         if tool_output and tool_output.get('calendar_connection'):
             from .calendar_connections import result
             return result(tool_output)
@@ -1419,12 +1426,15 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
+        if result.data.get('query_analysis'):return result
         if (result.data.get('tool_result') or {}).get('calendar_connection'):return result
         if not self.response_realization_enabled:return result
         from .response_realization import realize
         try:return realize(self,event,result)
         except Exception:
             # Text generation must not unwind an already completed effect.
+            from .calendar_inference import pending,fallback
+            if pending(result):return fallback(result,{'status':'fallback','reason':'unavailable'})
             return Result(result.status,result.message,{**result.data,'response_realization':{'status':'fallback','reason':'unavailable'}})
 
     def _route(self,text,event,stamp,at):
@@ -1505,9 +1515,16 @@ class HistoryFirstAssistant(Assistant):
             targets=named or active if len(active)==1 and (editing or date_only) else named
             if (len(targets)==1 and (editing or found or problem)
                 and at>datetime.fromisoformat(targets[0]['updated_at'])):targets[0]['review']=None
-        previous=None;last=None;summary_attempted=False
-        for step in range(2):
+        previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
+        self._query_reads={};self._query_analysis_active=False
+        for step in count():
+            if not self.raw_history_enabled and step>=2:break
             try:
+                if previous and (not exchanges or exchanges[-1] is not previous):
+                    if any(old[0]['call_id']==previous[0]['call_id'] for old in exchanges):
+                        return self._finish(event,at,Result('clarification','โมเดลส่งรหัสคำขอซ้ำ จึงหยุดก่อนค้นต่อครับ',
+                            {'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'duplicate_call_id'}))
+                    exchanges.append(previous)
                 enrollment=self.item_enrollment_enabled and any(d['status']!='recorded' and (any('item_resolution' in f or 'existing_or_new' in f for f in d['missing_fields'])
                                or any(e.get('enrollment') for e in d['entries'])) for d in self.state.drafts.values())
                 controls=self.semantic_enabled and any(d['status']!='recorded' for d in self.state.drafts.values())
@@ -1522,16 +1539,19 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets,previous_prices=self.previous_prices.enabled)
                     from .read_queries import definitions as query_definitions,context as query_context
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
+                    from .query_analysis import definitions as analysis_definitions,READ_TOOLS
+                    definitions_for_request+=analysis_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     from .calendar_connections import definitions as connection_definitions,context as connection_context
                     if self.calendar_connections_enabled:definitions_for_request+=connection_definitions()
                     definitions_for_request+=self.saved_edits.definitions()
                     definitions_for_request+=self.provisional_categories.definitions()
                     definitions_for_request+=self.historical_categories.definitions()
+                    if self._query_analysis_active:definitions_for_request=[t for t in definitions_for_request if t['name'] in READ_TOOLS]
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
                     try:
                         request,self.visible,stats=raw.request(self.state,self._current['text'],at,event,
-                            definitions_for_request,previous,available_drafts=available,date_references=date_targets,
+                            definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
                             production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
@@ -1551,7 +1571,7 @@ class HistoryFirstAssistant(Assistant):
                         try:raw.accept_summary(self.state,selected,protected,json.loads(saved['call']['arguments']),at)
                         except (raw.HistoryUnavailable,ValueError):return self._finish(event,at,Result('history_summary_unavailable','ผลสรุปหรือต้นทางไม่ผ่านการตรวจ จึงไม่ใช้สรุปและไม่เขียนรายการ'))
                         self.state.checkpoint()
-                        continue  # Summary consumes one of the existing two calls.
+                        continue
                 else:
                     request,self.visible,stats=build_request(self.state,text,at,event,tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),
                                                             instructions,previous,max_body_bytes=self.max_body_bytes,semantic=self.semantic_enabled)
@@ -1569,35 +1589,49 @@ class HistoryFirstAssistant(Assistant):
                 if saved.get('failure'):return self._finish(event,at,Result('model_unavailable','ยังตอบรอบนี้ไม่ได้ งานที่ค้างยังอยู่'))
                 call=saved['call']
                 if call is None:
+                    if self._query_analysis_active:
+                        from .query_analysis import finish
+                        return self._finish(event,at,self._result(finish(self,{'query_refs':list(self._query_reads),'operation':'report','source_refs':[self._current['source_ref']]})))
                     if previous and previous[1].get('review_refresh'):
                         return self._finish(event,at,self.calendar_flow.batches.refresh_unavailable())
                     return self._finish(event,at,self._result(last,saved['text']))
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
-                if call['name']=='prepare_expenses' and previous and previous[0]['name']=='prepare_expenses':last={'ok':False,'error':'one_snapshot_per_turn'}
+                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar'}:
+                    signature=digest([call['name'],json.loads(call['arguments'])])
+                    if signature in seen_reads:
+                        return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
+                    seen_reads.add(signature)
+                if call['name']=='prepare_expenses' and any(exchange[0]['name']=='prepare_expenses' for exchange in exchanges):last={'ok':False,'error':'one_snapshot_per_turn'}
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('query_analysis'):return self._finish(event,at,self._result(last))
+                if self.raw_history_enabled and last.get('status')=='stored_query' and last.get('scope',{}).get('continue_analysis'):
+                    from .query_analysis import remember
+                    last=remember(self,last,at,step);self._query_analysis_active=True
+                    previous=(call,last);continue
                 if last.get('calendar_connection'):return self._finish(event,at,self._result(last))
                 if last.get('historical_categories'):
-                    if step==0 and last.get('continue_model'):
+                    if last.get('continue_model'):
                         previous=(call,last);continue
                     return self._finish(event,at,self._result(last))
                 if last.get('provisional_categories'):return self._finish(event,at,self._result(last))
-                if step==0 and last.get('category_proposals_available'):
+                if last.get('category_proposals_available'):
                     proposal_context=deepcopy(last);proposal_context['scope']={k:v for k,v in proposal_context['scope'].items() if k not in {'workbook','calendar'}}
                     previous=(call,proposal_context);continue
                 if last.get('saved_record_edit'):
-                    if step==0 and last.get('continue_model'):
+                    if last.get('continue_model'):
                         previous=(call,last);continue
                     return self._finish(event,at,self._result(last))
                 if (last.get('domain')=='calendar' and (last.get('status')=='draft_read' or
                     last.get('status')=='invalid_request' and last.get('error') in {'calendar_batch_stale','calendar_draft_stale_or_unavailable','calendar_stale_draft_version'})
                     and self.calendar_flow.batches.refresh_requested(text)):
-                    if step!=0:return self._finish(event,at,self.calendar_flow.batches.refresh_unavailable())
+                    if refresh_attempted:return self._finish(event,at,self.calendar_flow.batches.refresh_unavailable())
+                    refresh_attempted=True
                     # A requested fresh review may begin with an expired
                     # historical ID or an empty read. Neither is write consent.
-                    # Use only the remaining existing model step for recovery.
+                    # A fresh review remains a proposal, never write consent.
                     previous=(call,{**last,'review_refresh':{'requested':True,'write_authorized':False,
                         'instruction':'Present a fresh reviewed draft. Use control_calendar_events review for an active set; if expired, prepare from original literal owner sources still visible in24h history. Ask only for unavailable or ambiguous facts. Never infer consent or create saved events.'}})
                     continue

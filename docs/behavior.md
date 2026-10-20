@@ -24,6 +24,17 @@ Only confirmation of the delivered, unchanged review creates events. Edits, mode
 
 The production path supports creation only in one configured secondary calendar. It has no guests, recurrence, saved-event edit/delete or reminders. Multi-day all-day wording requires a single date or explicitly separated events. Conflict warnings cover that calendar only, not the owner's primary calendar or every account calendar.
 
+`เดือน พ.ย. มีนัด TA กี่ครั้ง` reads the entire named month across the
+configured/readable calendars. A second model request uses titles, descriptions,
+locations and relevant owner wording to label which saved appointments match.
+Code counts the selected event references and renders a natural Thai reply with
+the original appointments. Ambiguous matches are shown separately and do not
+become a definitive total. A failed or incomplete read/analysis cannot mean zero
+matches. Calendar query ranges support up to31 dates; analysis supports at
+most120 events before the existing20-row display limit. This analysis requires
+response realization enabled. A simple question usually uses two model
+requests; multi-step analysis can continue without a fixed turn-call limit.
+
 ## Replies and limits
 
 Saved appointment lists are grouped by Bangkok calendar day, with a Thai
@@ -35,6 +46,6 @@ under the first requested day with its original start date retained. Counts
 still refer to appointments, and the existing 20-appointment display limit
 applies. Day headings and rows stay fixed during optional reply realization.
 
-The optional response phase composes short connective wording around immutable names, dates, amounts, outcomes and confirmation instructions. It does not freely rewrite facts. Its foreground deadline is four seconds; failure returns the deterministic server reply without another model attempt.
+The optional response phase composes short connective wording around immutable names, dates, amounts, outcomes and confirmation instructions. It does not freely rewrite facts. Its foreground deadline is four seconds for ordinary replies and eight seconds for Calendar semantic selection, within the overall request deadline. Failure returns the deterministic server reply without another model attempt; a semantic-selection failure leaves the requested count unavailable.
 
-The workflow permits at most two model requests per owner turn. External requests have bounded RPC scopes and per-request HTTP timeouts of at most twelve seconds. Budget/count gates are enabled by default. Observational mode requires an explicit single-owner history configuration and still records reservations and usage; it is not a billing-account spending cap.
+The raw-history workflow has no fixed number of model requests per owner turn. A query can set `continue_analysis=true`, inspect its result reference, read another period or domain, and finish with `finish_query_analysis`. Subsequent tools are read-only. Code adds complete non-overlapping expense totals, deduplicates Calendar occurrences or computes comparison differences; a model cannot supply the final number. Identical reads and duplicate tool-call identifiers stop without another request. External requests retain bounded RPC scopes, overall request deadlines, per-request HTTP timeouts of at most twelve seconds and model-context/output limits. Configured daily/monthly accounting gates still apply; removing the per-turn ceiling does not alter those settings. Observational mode requires explicit single-owner history configuration and still records reservations and usage; it is not a billing-account spending cap.

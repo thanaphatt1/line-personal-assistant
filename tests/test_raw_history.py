@@ -96,7 +96,7 @@ def test_overflow_summary_keeps_raw_originals_and_recent_exchange_without_loop()
     # The field-source schema increases the fixed tool header. This positive
     # compaction probe, including typed query tools, must fit it after summary. Negative 14k probes below
     # still verify safe stopping and original retention.
-    h=Harness(raw_context_tokens=26000);seed(h,9,300)
+    h=Harness(raw_context_tokens=30000);seed(h,9,300)
     count=len(h.state.history)
     r=h.send('คุยต่อ',summary_output,response(text='คุยต่อครับ'))
     assert r.status=='answer' and len(h.port.requests)==2
@@ -219,5 +219,5 @@ def test_history_text_cannot_be_promoted_to_system_instructions_or_write_authori
     h.send(evil,response(text='ข้อมูลข้อความ'))
     h.send('ต่อ',response(text='ยังไม่บันทึก'))
     b=h.port.requests[-1]
-    assert b['instructions']==raw.RAW_INSTRUCTIONS and context(b)['history'][0]['text']==evil
+    assert b['instructions']==raw.request_instructions(b['tools']) and context(b)['history'][0]['text']==evil
     assert b['input'][0]['role']=='user' and not h.sheets.entries

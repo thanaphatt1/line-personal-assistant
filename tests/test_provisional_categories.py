@@ -186,7 +186,7 @@ def test_explicit_short_scope_confirmation_binds_only_latest_delivered_review(te
 
 def test_realized_query_only_receipt_preserves_all_amounts_names_and_scope():
     api=LabelHosted();api.voice=True;r,_=preview(api)
-    assert r.data['response_realization']['reason']=='core_step_budget'
+    assert r.data['response_realization']['status']=='llm'
     r,_=turn(api,'รวมข้อเสนอครั้งนี้');assert r.status=='summary' and r.data['query_only_consent'] is True
     assert r.data['response_realization']['status']=='llm' and all(s in r.message for s in ['10.00','20.00','30.00','Unknown Metro Ticket','ยังไม่ได้บันทึก mapping ถาวร'])
     assert not api.mapping_posts

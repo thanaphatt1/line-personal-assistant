@@ -80,7 +80,7 @@ QUERY_INSTRUCTIONS=(
     'For any Calendar title/type filter, copy its literal text to filter_text; never silently query all events instead. '
     'Select the exact known filter label; do not invent categories, silently ignore an unknown filter, or classify unknown historical items yourself. If no filter is requested send null. '
     'Saved expense queries require view=total or list and measure=expense/income/balance; income/balance are unsupported and the tool reports that honestly. '
-    'Calendar reads max7 inclusive dates, include all-day/transparent events; upcoming=true only for upcoming/next appointments. No saved title/type filter: clarify rather than ignore it. '
+    'Calendar reads cover up to31 inclusive dates, including a whole named calendar month, all-day/transparent events. Copy the literal requested subject/type/condition to filter_text so the server can classify fetched appointments semantically and count their verified references. Do not guess the count yourself or replace a semantic filter with a keyword search. upcoming=true only for upcoming/next appointments. '
     'For terse dated titles like พรุ่งนี้ Workshop with no clear add/read intent, ask which intent; do not create a draft or run a read yet. '
     'Queries never authorize writes or select old confirmation. Use current owner source_ref and any original owner refs needed for follow-up provenance. '
     'A requested expense or appointment WRITE still uses the existing prepare/review tools; do not replace a write with a saved-data query. '
@@ -109,6 +109,9 @@ CONNECTION_INSTRUCTIONS=(' For an owner request to connect/add another calendar,
 def request_instructions(definitions,*,calendar=False):
     base=CALENDAR_INSTRUCTIONS if calendar else RAW_INSTRUCTIONS
     if any(t['name']=='connect_calendar' for t in definitions):base+=CONNECTION_INSTRUCTIONS
+    if any(t['name']=='finish_query_analysis' for t in definitions):
+        from .query_analysis import INSTRUCTIONS
+        base+=INSTRUCTIONS
     if any(t['name'] in {'find_saved_records','check_saved_record_change'} for t in definitions):
         base=base.replace('No income, calendar, recorded-expense edits or external search.','No income, Calendar creation or external search; saved-record proposals only through dedicated tools.').replace('No guests, recurring appointments, reminders or saved-event edit/delete.','No guests, recurring appointments, reminders or deletion.').replace('No income, recorded-expense edits or external search.','No income or external search.')+SAVED_EDIT_INSTRUCTIONS
     if any(t['name']=='propose_expense_categories' for t in definitions):base+=PROVISIONAL_CATEGORY_INSTRUCTIONS
@@ -369,8 +372,9 @@ def request(state,text,at,event,definitions,previous=None,*,production=False,sum
           'tools':deepcopy(definitions),'tool_choice':'auto','parallel_tool_calls':False,'reasoning':{'effort':'none'},
           'max_output_tokens':CALENDAR_MAX_OUTPUT_TOKENS if calendar_drafts is not None else MAX_OUTPUT_TOKENS,'store':False,'service_tier':'default','truncation':'disabled'}
     if previous:
-        call,result=previous
-        body['input'] += [deepcopy(call),{'type':'function_call_output','call_id':call['call_id'],'output':json.dumps(result,ensure_ascii=False,separators=(',',':'))}]
+        exchanges=previous if isinstance(previous,list) else [previous]
+        for call,result in exchanges:
+            body['input'] += [deepcopy(call),{'type':'function_call_output','call_id':call['call_id'],'output':json.dumps(result,ensure_ascii=False,separators=(',',':'))}]
         if result.get('historical_categories') and result.get('continue_model'):
             # A fresh page has no proposals yet. Complete its read-only review
             # in the remaining step instead of returning an unclassified page.

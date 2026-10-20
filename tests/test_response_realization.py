@@ -205,14 +205,14 @@ def test_ambiguous_or_invalid_final_is_not_salvaged(mode):
     api.voice=broken;result,_=turn(api,text(),proposed)
     assert result.data['response_realization']['status']=='fallback' and not api.calendar.posts
 
-def test_read_then_prepare_uses_two_core_calls_and_skips_optional_third_call():
+def test_read_then_prepare_can_realize_after_two_core_calls_without_turn_cap():
     from test_calendar_refresh_quota_v13 import rebuild
     from test_calendar_text_confirmation_v13 import retained
     api=VoiceHosted();retained(api);api.now+=timedelta(minutes=31)
     before=len(api.model_bodies);voices=len(api.voice_bodies)
     fresh,_=turn(api,'ช่วยตรวจร่างชุดนัดเดิมสองนัดอีกครั้ง',response('read_calendar_drafts',{'draft_ref':None}),rebuild)
-    assert fresh.status=='preview' and len(api.model_bodies)==before+2 and len(api.voice_bodies)==voices
-    assert fresh.data['response_realization']['reason']=='core_step_budget' and not api.calendar.posts
+    assert fresh.status=='preview' and len(api.model_bodies)==before+3 and len(api.voice_bodies)==voices+1
+    assert fresh.data['response_realization']['status']=='llm' and not api.calendar.posts
 
 def test_observational_config_allows_existing_exhausted_usage_without_reset_or_write():
     from line_assistant.state import ModelBudget

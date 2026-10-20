@@ -45,9 +45,9 @@ flowchart TD
 
 History includes original owner messages and delivered assistant replies. A rolling 24-hour context window does not delete stored originals. The interpretation request carries owner source references, message timestamps, draft views and date references. Verified older-context summaries are conditional; the system stops rather than silently clipping required context.
 
-The development-only critic benchmark is separate from this production flow: it can add one two-second Luna review after exact validation, with a trusted fallback on rejection or timeout. The production factory and two-call limit remain unchanged; see the [benchmark protocol](../benchmarks/PROTOCOL.md).
+The development-only critic benchmark is separate from this runtime flow: it can add one two-second Luna review after exact validation, with a trusted fallback on rejection or timeout. Its frozen two-call baseline remains historical benchmark evidence; see the [benchmark protocol](../benchmarks/PROTOCOL.md).
 
-All production LLM roles use the configured model, with **at most two provider calls per owner turn in total**. A verified direct control can use zero interpretation calls. Stored-data queries use one interpretation call and, when enabled with a slot remaining, one grounded wording call. A proposal may need another tool-result step. General conversation can return plain interpretation text without any business tool. Optional wording runs only when enabled and a call slot remains; a failed, rejected or slow response uses the code-produced message. Wording receives admitted facts and short relevant snippets, not the full interpretation history, and cannot call business tools.
+All runtime LLM roles use the configured model. The raw-history path has **no fixed provider-call count per owner turn**. A verified direct control can use zero interpretation calls. A simple stored-data query normally uses interpretation and optional grounded wording. Multi-step read analysis can continue across Expense and Calendar results, with a complete call/result transcript and read-only tools. Repeated reads stop rather than executing again. Provider/context/output bounds, request deadlines, replay protections and configured accounting gates remain. A proposal may need another tool-result step; optional wording is no longer suppressed just because two core requests ran. Failed or slow wording uses the code-produced message and cannot call business tools.
 
 ## 2. Expense write: proposal, review, then effect
 
@@ -135,20 +135,22 @@ flowchart TD
     Model -->|"Typed read arguments"| Scope
     Model -->|"Ambiguous intent or unsupported filter"| Error
     Scope -->|"Expense range and item or category"| Expense --> Money --> Mapping
-    Scope -->|"Calendar day or week"| Calendar --> Events
+    Scope -->|"Calendar period"| Calendar --> Events
     Scope -->|"Ambiguous, missing or unsupported scope"| Error
     Expense -->|"Unavailable or incomplete"| Error
     Calendar -->|"Unavailable or incomplete"| Error
     Mapping -->|"Verified membership"| Facts
     Mapping -->|"Missing, ambiguous or unassigned mapping"| Partial --> Facts
     Events --> Facts
+    Facts -->|"continue_analysis: result ref and grounded data"| Model
+    Model -->|"finish_query_analysis: select refs and arithmetic"| Facts
     Error --> Facts
     classDef code fill:#E8F0FE,stroke:#1A73E8,color:#111;
     classDef llm fill:#F3E8FD,stroke:#8430CE,color:#111;
     classDef ext fill:#E6F4EA,stroke:#188038,color:#111;
 ```
 
-There is no semantic keyword pre-router for queries. The LLM chooses typed calendar frames or explicit dates, filter and total/list mode from the current text and trusted context; it clarifies ambiguity. Code expands model-selected relative calendar frames, validates the typed range and exact catalog identity, performs complete reads and calculates every amount. The old competing `spending_summary` is absent from the raw planner tool set; compatibility applications retain their separate legacy contract. Expense queries use inclusive local dates and the **current** catalog mapping. Calendar queries cover at most seven dates and three pages of 20 events; unfinished pagination yields an unavailable response. Complete replies show at most 20 rows and disclose additional results. Saved all-day events can span several dates even though new all-day creation is single-date only.
+There is no semantic keyword pre-router for queries. The LLM chooses typed calendar frames or explicit dates, filter and total/list mode from the current text and trusted context; it clarifies ambiguity. Code expands model-selected relative calendar frames, validates the typed range and exact catalog identity, performs complete reads and calculates every amount. The old competing `spending_summary` is absent from the raw planner tool set; compatibility applications retain their separate legacy contract. Expense queries use inclusive local dates and the **current** catalog mapping. A Calendar read covers at most31 dates and eight pages of20 events per selected calendar; unfinished pagination yields an unavailable response. A semantic request labels at most120 fetched event references as matching, excluded or uncertain. Code counts the references and renders the original appointments, with uncertain membership kept separate from a complete total. A multi-step analysis may combine multiple such reads without a fixed turn-call count. Complete replies show at most20 rows per read and disclose additional results. Saved all-day events can span several dates even though new all-day creation is single-date only.
 
 A complete empty read can report zero saved records. It does not establish availability in another calendar, income or a remaining balance. A mapping failure after a verified complete input read can show a separately labeled partial subtotal and actionable unresolved names; a provider/schema/incomplete-input failure cannot. Partial qualifiers and resolution instructions are immutable wording facts, and the server appends the unresolved-name rows. Reads create no business write, action, draft or nonce; normal conversation receipts and usage records still persist. Provider reads are bounded but are not a transactionally frozen snapshot across external edits. See [query examples and limits](read-queries.md).
 

@@ -115,7 +115,7 @@ def test_calendar_preserves_transparent_all_day_overlap_and_exclusive_end():
 
 
 def test_calendar_bounds_disabled_and_upcoming():
-    h=Harness();assert h.send('ทั้งเดือน',plan('calendar','2026-10-01','2026-10-31')).data['tool_result']['error_code']=='date_bounds'
+    h=Harness();assert h.send('เกินหนึ่งเดือน',plan('calendar','2026-10-01','2026-11-01')).data['tool_result']['error_code']=='date_bounds'
     h.provider.events={'past':event('past','2026-10-16T09:00:00+07:00','2026-10-16T10:00:00+07:00'),'current':event('current','2026-10-16T14:00:00+07:00','2026-10-16T16:00:00+07:00')}
     assert h.send('ถัดไป',plan('calendar','2026-10-16','2026-10-22',upcoming=True)).data['tool_result']['count']==1
     assert Harness(enabled=False).send('นัด',plan('calendar')).data['tool_result']['error_code']=='calendar_disabled'

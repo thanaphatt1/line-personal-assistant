@@ -17,6 +17,8 @@ from .transport import ApiError,OutcomeUnknown,WriteBlocked,NotReady
 CALENDAR_LIST_PATH='/calendar/v3/users/me/calendarList'
 CALENDAR_LIST_PARAMS={'maxResults':20,'minAccessRole':'reader','showHidden':'true','showDeleted':'false'}
 MAX_READ_CALENDARS=16
+MAX_QUERY_DAYS=31
+MAX_EVENT_PAGES=8
 
 def additional_calendar_ids(identifiers,calendar_id):
     if (not isinstance(identifiers,(list,tuple)) or len(identifiers)>=MAX_READ_CALENDARS
@@ -153,22 +155,23 @@ class CalendarCreationApi:
             raise NotReady('Calendar event-reading role unavailable')
         return value['accessRole']
 
-    def saved_events(self,start,end):
+    def saved_events(self,start,end,*,include_details=False,include_refs=False):
         """Read every selected calendar completely before returning an answer."""
-        if start.utcoffset() is None or end.utcoffset() is None or not timedelta(0)<end-start<=timedelta(days=7):
-            raise NotReady('Calendar query requires an offset and at most seven days')
+        if start.utcoffset() is None or end.utcoffset() is None or not timedelta(0)<end-start<=timedelta(days=MAX_QUERY_DAYS):
+            raise NotReady('Calendar query requires an offset and at most31 days')
         result={}
         for calendar_id in self.readable_calendars():
-            for identity,row in self._saved_events(calendar_id,start,end):
+            for identity,row in self._saved_events(calendar_id,start,end,include_details=include_details):
+                if include_refs:row={**row,'read_ref':hashlib.sha256(json.dumps(identity,separators=(',',':')).encode()).hexdigest()}
                 # Copies of an invitation share iCalUID. Preserve separate
                 # recurring occurrences and unrelated events with equal titles.
                 result.setdefault(identity,row)
         return sorted(result.values(),key=lambda e:(e['start'],e['title']))
 
-    def _saved_events(self,calendar_id,start,end):
+    def _saved_events(self,calendar_id,start,end,*,include_details=False):
         base='/calendar/v3/calendars/'+quote(calendar_id,safe='')+'/events'
         result={};page=None;seen=set()
-        for _ in range(3):
+        for _ in range(MAX_EVENT_PAGES):
             params={'timeMin':start.isoformat(),'timeMax':end.isoformat(),'singleEvents':'true','orderBy':'startTime','timeZone':'Asia/Bangkok','maxResults':20}
             if page:params['pageToken']=page
             value=self.client.request('GET',base,params=params)
@@ -197,6 +200,13 @@ class CalendarCreationApi:
                 if a<end and start<b:
                     row={'title':title,'start':a.date().isoformat() if all_day else a.isoformat(),
                          'end':b.date().isoformat() if all_day else b.isoformat(),'all_day':all_day}
+                    if include_details:
+                        row['details_truncated']=False
+                        for field,limit in [('description',1000),('location',500)]:
+                            text=event.get(field,'')
+                            if not isinstance(text,str):raise NotReady('Calendar event details malformed')
+                            row[field]=text[:limit]
+                            row['details_truncated']|=len(text)>limit
                     uid=event.get('iCalUID')
                     if uid is not None and (not isinstance(uid,str) or not 1<=len(uid)<=1024):raise NotReady('Calendar event identity malformed')
                     identity=('ical',uid,row['start'],row['end'],all_day) if uid else ('event',calendar_id,identifier)
