@@ -3,7 +3,8 @@ from .catalog import normalized
 from .source_spans import finditer
 from .conversation_evidence import command_text
 from .catalog import ItemCatalog
-from .language import expense_source
+from .language import expense_source,intent_guard
+import re
 from datetime import datetime
 
 
@@ -80,7 +81,7 @@ def clarification(h,output):
     label=selected['item']
     if len(names)==1:question=f'ชื่อ {label} หมายถึง {names[0]} ใช่ไหมครับ หรือเป็นรายการใหม่?'
     elif names:question=f'ชื่อ {label} หมายถึงชื่อไหนครับ: '+ ' / '.join(names)+' หรือเป็นรายการใหม่?'
-    else:question=f'ชื่อ {label} ตรงกับชื่อเดิมใน Database หรือเป็นรายการใหม่ครับ?'
+    else:question=f'ยังไม่พบชื่อ {label} ที่ตรงใน Database ครับ ให้เตรียมเพิ่มเป็นรายการใหม่ไหมครับ?'
     if names and getattr(h,'previous_prices',None) and h.previous_prices.enabled and next(e for e in output['entries'] if e['entry_ref']==selected['entry_ref'])['amount'] is None:
         question+='\nเลือกชื่อก่อนครับ แล้วจะตรวจยอดที่เคยบันทึกให้ ยังไม่ได้บันทึกรายจ่าย'
     rows='\n'.join(f"{e['item'] or '(ยังไม่ระบุชื่อ)'} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in output['entries'])
@@ -105,3 +106,26 @@ def focused_choice(h,d,entry):
             if not reply or reply.status!='sent' or reply.content_hash!=message_hash(rendered_message(receipt.result)):continue
         return pending['draft_ref']==d['draft_ref'] and target==entry['entry_ref']
     return None
+
+
+def enrollment_target(h,d,candidates):
+    """Resolve an omitted row from literal targeting or a delivered question.
+
+    This selects one owned draft row for preparation only. It cannot broaden
+    a singular question to all rows or supply a category or write permission.
+    """
+    named=[e for e in candidates if e['item'] and h._has_item(command_text(h._current['text']),e['item'])]
+    if named:return named if len(named)==1 else []
+    focused=[e for e in candidates if focused_choice(h,d,e) is True]
+    return focused if len(focused)==1 else []
+
+
+def conditional_new_item(text):
+    """A missing-catalog condition is not a hypothetical financial fact.
+
+    Only used with a verified delivered name question, a still-unknown name,
+    and begin_new_item. The general financial source guard stays unchanged.
+    """
+    text=command_text(text)
+    match=re.search(r'ถ้า(?:ยัง)?(?:ไม่มี|ไม่พบ)(?:\s*ใน(?:รายการ|ฐานข้อมูล|Database))?\s*(?:ก็|ให้)\s*เพิ่ม(?:เป็น)?(?:รายการ|ชื่อ)?ใหม่(?:\s*(?:ครับ|ค่ะ|คะ))?\s*[.!]?$',text,re.I)
+    return bool(match and intent_guard(text[:match.start()]) is None)

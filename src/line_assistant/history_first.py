@@ -195,6 +195,12 @@ class HistoryFirstAssistant(Assistant):
         if state.owner_id not in {None,settings.owner_id}:raise ValueError('History state belongs to another owner')
         state.owner_id=settings.owner_id
         super().__init__(settings,sheets,MockCalendar(),ItemCatalog([],{}),state=state,clock=clock)
+        from . import action_trace
+        original_phase_hook=self.phase_hook
+        def observed_phase(name,key):
+            action_trace.phase(self,name,key)
+            original_phase_hook(name,key)
+        self.phase_hook=observed_phase
         self.port=port;self.guard=DurableModelGuard(state,monthly_micro_usd=500000,max_calls_day=100,max_calls_month=300,clock=self.clock)
         self.bound_sheets=sheets
         self.max_body_bytes=max_body_bytes;self.trace=[];self.context_stats=[];self.visible=set()
@@ -253,10 +259,15 @@ class HistoryFirstAssistant(Assistant):
         original=event.get('message',{}).get('text')
         token=RAW_SOURCE.set((event.get('webhookEventId'),original))
         try:
-            result=super().handle(event)
-            if self.raw_history_enabled and not getattr(self,'production',False):
-                self.state.mark_history_delivered(event.get('webhookEventId'),result,at=self.clock())
-            return result
+            from .action_trace import turn,code
+            with turn(self,event) as operational_trace:
+                result=super().handle(event)
+                if self.raw_history_enabled and not getattr(self,'production',False):
+                    self.state.mark_history_delivered(event.get('webhookEventId'),result,at=self.clock())
+                if operational_trace:
+                    operational_trace.emit('turn_finished',final=True,status=code(result.status),
+                                           dropped_records=operational_trace.dropped,sink_failures=operational_trace.sink_failures)
+                return result
         finally:RAW_SOURCE.reset(token)
 
     def _bind_context(self,event):
@@ -305,7 +316,8 @@ class HistoryFirstAssistant(Assistant):
 
     def _enroll_item(self,args):
         if not self.item_enrollment_enabled:return {'ok':False,'error':'enrollment_not_enabled','clarification_required':True}
-        if intent_guard(self._current['text']):return {'ok':False,'error':'owner_no_write','clarification_required':True}
+        blocked_intent=intent_guard(self._current['text'])
+        if blocked_intent and blocked_intent!='non_action':return {'ok':False,'error':'owner_no_write','clarification_required':True}
         p=ItemEnrollment.model_validate(args);d=self._draft(p.draft_ref)
         self._bound_update(p,d)
         stamp=datetime.fromisoformat(self._current['at']);updated=datetime.fromisoformat(d['updated_at'])
@@ -314,9 +326,17 @@ class HistoryFirstAssistant(Assistant):
         if stamp<updated or stamp==updated and not prepared_here:raise ValueError('older_draft_update')
         tax=self._taxonomy();unknown=[e for e in d['entries'] if tax.catalog.match(e['item'] or '').status!='exact']
         candidates=[e for e in unknown if p.entry_ref is None or e['entry_ref']==p.entry_ref]
+        if self.raw_history_enabled and p.entry_ref is None and len(candidates)>1:
+            from .catalog_names import enrollment_target
+            candidates=enrollment_target(self,d,candidates)
         if len(candidates)!=1:return {'ok':False,'error':'ambiguous_unknown_item','clarification_required':True}
         e=candidates[0]
         if not e['item']:return {'ok':False,'error':'item_missing','clarification_required':True}
+        if blocked_intent:
+            from .catalog_names import conditional_new_item,focused_choice
+            if not (self.raw_history_enabled and p.resolution_step=='begin_new_item'
+                    and conditional_new_item(self._current['text']) and focused_choice(self,d,e) is True):
+                return {'ok':False,'error':'owner_no_write','clarification_required':True}
         if self.raw_history_enabled:
             step=p.resolution_step
             selection=e.get('enrollment')
@@ -349,7 +369,7 @@ class HistoryFirstAssistant(Assistant):
                         if not explicit or len(subs)!=1 or proposed_sub!=subs:compound=False
             if step=='choose_category' and ((selection is None and not compound) or p.category is None):raise ValueError('category_step_not_ready')
             if step=='choose_subcategory' and (not selection or not selection.get('category_id') or p.subcategory is None or p.category is not None):raise ValueError('subcategory_step_not_ready')
-            if step=='begin_new_item' and selection is not None:raise ValueError('new_item_already_started')
+            if step=='begin_new_item' and selection is not None and any(v is not None for v in [p.category,p.subcategory]):raise ValueError('new_item_already_started')
             if selection is None and (p.category is not None or p.subcategory is not None) and not compound:raise ValueError('new_item_requires_category_clarification')
             if p.category is not None and p.category not in {v for c in offered['category_choices'] for v in [c['id'],c['label']]}:raise ValueError('category_not_offered')
             if p.subcategory is not None:
@@ -367,7 +387,23 @@ class HistoryFirstAssistant(Assistant):
             delivered=focused_choice(self,d,e)
             if delivered is not None:focused=delivered
         if len(all_unknown)>1 and not focused and not self._has_item(command_text(self._current['text']),e['item']):
+            # A repeated begin can be proposed for a sibling by the model.
+            # Re-present the delivered category question; do not retarget or
+            # mutate either row, and do not revive confirmation controls.
+            if (self.raw_history_enabled and p.resolution_step=='begin_new_item'
+                    and all(v is None for v in [p.category,p.subcategory,p.existing_item])
+                    and not any(v['item'] and self._has_item(command_text(self._current['text']),v['item']) for v in unknown)):
+                from .catalog_names import focused_choice
+                reminders=[v for v in unknown if v.get('enrollment') is not None and focused_choice(self,d,v) is True]
+                if len(reminders)==1:
+                    output=self._enrollment_result(d,reminders[0]['entry_ref'])
+                    output.update(name_question_resumed=True,confirmation_required=False)
+                    return output
             return {'ok':False,'error':'ambiguous_unknown_item','clarification_required':True}
+        if self.raw_history_enabled and p.resolution_step=='begin_new_item' and e.get('enrollment') is not None:
+            output=self._enrollment_result(d,e['entry_ref'])
+            if not d['missing_fields']:output.update(status='draft_read',confirmation_required=False)
+            return output
         if p.existing_item is not None:
             if not self.semantic_enabled:raise ValueError('existing_choice_disabled')
             offers=[]
@@ -1469,6 +1505,8 @@ class HistoryFirstAssistant(Assistant):
             return Result(result.status,result.message,{**result.data,'response_realization':{'status':'fallback','reason':'unavailable'}})
 
     def _route(self,text,event,stamp,at):
+        from .action_trace import emit
+        emit('route',route='history')
         self._taxonomy_cache=None
         from . import raw_history as raw
         if self.state.owner_id!=self.settings.owner_id:return Result('denied','')
@@ -1602,11 +1640,14 @@ class HistoryFirstAssistant(Assistant):
                         key='history01_'+digest([event,step])
                         self.state.claims.setdefault(key,Claim(self.state.claims[event].fingerprint,self.state.claims[event].expires_at))
                         saved=self.guard.reserve(key,summary_body)
+                        from .action_trace import emit,ref,code
+                        emit('model_request',role='history_summary',run_ref=ref(key),cached=saved is not None)
                         if saved is None:
                             try:saved=parse_response(self.port.request('POST','/v1/responses',body=summary_body),max_input_tokens=raw.tokens_bound(summary_body),allowed_tools={'roll_history_summary'})
                             except OverflowError:self.guard.halt();saved={'failure':'usage_bound'}
                             except Exception:saved={'failure':'summary_unavailable'}
                             self.guard.complete(key,saved)
+                        emit('model_result',role='history_summary',run_ref=ref(key),status=code(saved.get('failure','completed')))
                         if saved.get('failure') or not saved.get('call'):return self._finish(event,at,Result('history_summary_unavailable','สรุปบริบทไม่สำเร็จ จึงหยุดรอบนี้โดยเก็บ raw history ไว้ครบ'))
                         try:raw.accept_summary(self.state,selected,protected,json.loads(saved['call']['arguments']),at)
                         except (raw.HistoryUnavailable,ValueError):return self._finish(event,at,Result('history_summary_unavailable','ผลสรุปหรือต้นทางไม่ผ่านการตรวจ จึงไม่ใช้สรุปและไม่เขียนรายการ'))
@@ -1621,11 +1662,16 @@ class HistoryFirstAssistant(Assistant):
                 key='history01_'+digest([event,step])
                 self.state.claims.setdefault(key,Claim(self.state.claims[event].fingerprint,self.state.claims[event].expires_at))
                 saved=self.guard.reserve(key,request)
+                from .action_trace import emit,ref,code
+                emit('model_request',role='planner',run_ref=ref(key),cached=saved is not None)
                 if saved is None:
                     try:saved=parse_response(self.port.request('POST','/v1/responses',body=request),max_input_tokens=stats['token_upper_bound'] if self.raw_history_enabled else MAX_INPUT_TOKENS_BOUND,allowed_tools={t['name'] for t in request['tools']} if self.raw_history_enabled else None,max_output_tokens=request['max_output_tokens'])
                     except OverflowError:self.guard.halt();saved={'failure':'usage_bound'}
                     except Exception:saved={'failure':'model_unavailable'}
                     self.guard.complete(key,saved)
+                emit('model_result',role='planner',run_ref=ref(key),status=code(saved.get('failure','completed')),
+                     call_ref=ref((saved.get('call') or {}).get('call_id')),
+                     tool=code((saved.get('call') or {}).get('name')) if saved.get('call') else None)
                 if saved.get('failure'):return self._finish(event,at,Result('model_unavailable','ยังตอบรอบนี้ไม่ได้ งานที่ค้างยังอยู่'))
                 call=saved['call']
                 if call is None:
@@ -1647,8 +1693,11 @@ class HistoryFirstAssistant(Assistant):
                     if signature in seen_reads:
                         return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
                     seen_reads.add(signature)
+                from .action_trace import arguments,snapshot,outcome
+                emit('tool_request',tool=code(call['name']),call_ref=ref(call.get('call_id')),arguments=arguments(call),state=snapshot(self))
                 if call['name']=='prepare_expenses' and any(exchange[0]['name']=='prepare_expenses' for exchange in exchanges):last={'ok':False,'error':'one_snapshot_per_turn'}
                 else:last=self.tool(call)
+                emit('tool_result',tool=code(call['name']),call_ref=ref(call.get('call_id')),result=outcome(last),state=snapshot(self))
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
                 if last.get('table_tool'):
@@ -1710,7 +1759,8 @@ class HistoryFirstAssistant(Assistant):
                     missing=[r for r in view['item_resolutions'] if r['step'] in {'choose_category','choose_subcategory'}] if view else []
                     if len(missing)==1:
                         output=self._enrollment_result(self._draft(view['draft_ref']),missing[0]['entry_ref'])
-                        last={**output,'available_drafts':last['available_drafts']}
+                        last={**output,'available_drafts':last['available_drafts'],
+                              **({'name_question_resumed':True} if last.get('name_question_resumed') else {})}
                 if last.get('status') in {'review','choose_draft','cancelled','no_pending'} or self.raw_history_enabled and last.get('status') in {'draft_read','needs_information','invalid_request','stored_query'} or last.get('item_enrollment') or self.semantic_enabled and last.get('status')=='summary':
                     self.phase_hook('history_review_pre_receipt',event)
                     return self._finish(event,at,self._result(last))

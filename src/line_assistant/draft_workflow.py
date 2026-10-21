@@ -6,7 +6,7 @@ from copy import deepcopy
 from .catalog import normalized
 from .history_context import draft_index
 from .model_api import object_schema
-from .catalog_names import choices as name_choices
+from .catalog_names import choices as name_choices,focused_choice
 
 def views(h):
     result=draft_index(h.state)
@@ -33,6 +33,7 @@ def views(h):
             step='choose_existing_or_new' if selected is None else 'choose_category' if category is None else 'choose_subcategory' if subcategory is None else 'resolved'
             categories=tax.choices(e['item'])['categories']
             view['item_resolutions'].append({'entry_ref':e['entry_ref'],'item':e['item'],'step':step,
+                'question_focus':focused_choice(h,d,e) is True,
                 'existing_item_choices':choices,'category_choices':categories,
                 'selected_category':{'id':category,'label':tax.categories[category]} if category else None,
                 'subcategory_choices':[{'id':k,'label':v} for k,v in tax.pairs.get(category,{}).items()][:8],

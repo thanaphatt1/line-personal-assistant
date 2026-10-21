@@ -114,6 +114,12 @@ release-operation evidence are not part of this repository.
 | [Deployment](docs/deployment.md) | Container startup, staging and compatible rollback |
 | [Security](SECURITY.md) | Data handling and private vulnerability reports |
 
+## Operational diagnostics
+
+Hosted turns emit redacted [action traces](docs/action-traces.md) for model/tool
+steps, validation codes and draft transitions. They use existing Cloud Run logs
+and preserve the current confirmation and replay rules.
+
 ## License
 
 A license has not been selected. No license file is currently provided.

@@ -294,12 +294,14 @@ def apply(result,text,metadata):
     return Result(result.status,text,data)
 
 def realize(host,event,result):
+    from .action_trace import emit,ref,code
     if not getattr(host,'response_realization_enabled',False) or result.data.get('response_realization'):return result
     previous=host.state.receipts.get(event);reply=host.state.replies.get(event)
     if previous and previous.result.data.get('response_realization') and (reply and reply.status=='sent' or previous.result.data['response_realization'].get('core_hash')==identity(result)):return deepcopy(previous.result)
     if result.status in {'denied','ignored'} or result.status=='summary' and not result.data.get('read_query') or result.status=='answer' and not result.data.get('tool_result'):return result
     started=monotonic();core_hash=identity(result)
     def fallback(reason):
+        emit('reply_fallback',reason=code(reason))
         metadata={'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}
         if selection.pending(result):return selection.fallback(result,metadata)
         return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
@@ -318,6 +320,7 @@ def realize(host,event,result):
         _inflight.release();return fallback('quota')
     except Exception:
         _inflight.release();return fallback('reservation')
+    emit('model_request',role='reply',run_ref=ref(key),cached=cached is not None)
     if cached is None:
         queue=Queue(maxsize=1);context=copy_context()
         def worker():
@@ -335,6 +338,8 @@ def realize(host,event,result):
         except Exception:cached={'status':'fallback','reason':'invalid_output'}
         host.guard.complete(key,cached)
     else:_inflight.release()
+    emit('model_result',role='reply',run_ref=ref(key),status=code(cached.get('status')),
+         reason=code(cached['reason']) if 'reason' in cached else None)
     if cached.get('status')!='llm':return fallback(cached.get('reason','unavailable'))
     try:return apply(result,cached['text'],{'status':'llm','core_hash':core_hash,'run_key':key,'elapsed_ms':round((monotonic()-started)*1000)})
     except Exception:return fallback('render_bound')

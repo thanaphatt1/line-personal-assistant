@@ -6,7 +6,7 @@ import prepare_build_source as base
 EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
     'firestore_expenses','expense_initialization',
     'conversation_mocks','domain_notes','domain_tools','domain_runtime','tool_loop','draft_patch',
-    'history_context','history_dates','history_first','semantic_tools','raw_history',
+    'history_context','history_dates','history_first','semantic_tools','raw_history','action_trace',
     'history_persistence','history_integration','production_history_state',
     'production_history','history_cloud_run','expense_evidence','draft_workflow','catalog_names',
     'expense_sources','validation_explanations','calendar_dates','calendar_provider','calendar_workflow',

@@ -11,6 +11,8 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
     def bind_legacy(self,legacy,*,history_enabled):
         self.legacy=legacy;self.history_enabled=history_enabled;self._legacy_turn=False
     def _legacy_route(self,text,event,stamp,at):
+        from .action_trace import emit
+        emit('route',route='legacy')
         self._legacy_turn=True;self.state.append('user',event,at,text=text)
         self.legacy._active_event_id=event;self.legacy._active_event_kind=self._active_event_kind
         text=re.sub(r'^เพิ่มรายการใหม่\s+','',text)
