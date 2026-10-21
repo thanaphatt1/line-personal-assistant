@@ -111,14 +111,16 @@ def test_failed_item_source_retains_independently_cited_date_and_amount():
     r=prepare(h,'เครื่องดื่ม 56 บาท เมื่อวาน',[entry(item='Tea',amount=56,date_text='เมื่อวาน',field_sources=refs)])
     assert r.status=='clarification';e=h.draft()['entries'][0]
     assert (e['item'],e['amount'],e['date'])==(None,'56','2026-10-15')
-    assert 'จำนวนเงิน' not in r.message and 'ไม่ต้องส่งประโยคเดิมซ้ำ' in r.message
+    assert 'จำนวนเงิน' not in r.message and 'ไม่ต้องส่งประโยคเดิมซ้ำ' not in r.message
+    assert '56' in r.message and '2026-10-15' in r.message
 
 def test_internal_failure_cannot_echo_model_advice_to_repeat_the_same_sentence():
     h=harness()
     def call(body):
         return response(name='prepare_expenses',args={'draft_ref':None,'draft_version':None,'entries':[entry(item='MRT',amount=56,source_refs=['invented'])]})
     r=h.send('เพิ่ม mrt 56 บาท เมื่อวาน',call,response(text='กรุณาส่ง เพิ่ม MRT 56 บาท เมื่อวาน อีกครั้ง'))
-    assert r.status=='clarification' and 'ไม่ต้องส่งประโยคเดิมซ้ำ' in r.message and 'กรุณาส่ง' not in r.message
+    assert r.status=='clarification' and 'ไม่ต้องส่งประโยคเดิมซ้ำ' not in r.message and 'กรุณาส่ง' not in r.message
+    assert 'อ้างอิงข้อความต้นทาง' in r.message
     assert not h.state.drafts and not h.sheets.entries
 
 def test_partial_validation_reply_shows_verified_facts_and_only_requests_failed_field():

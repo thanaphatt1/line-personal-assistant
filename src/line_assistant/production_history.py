@@ -46,7 +46,7 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         active=[d for d in self.state.drafts.values() if d['status']!='recorded']
         if not self.history_enabled:
             if active and (re.match(r'^(?:แก้|เปลี่ยน|ล้าง|บันทึก|ยืนยัน)',text) or any(d['draft_ref'] in text for d in active)):
-                lines=['ร่างเดิมยังอยู่ กรุณายืนยันด้วยคำสั่งของร่าง หรือยกเลิกร่างก่อนเริ่มใหม่']
+                lines=['กรุณายืนยันด้วยคำสั่งของร่าง หรือยกเลิกร่างก่อนเริ่มใหม่']
                 for d in active:
                     if d['review']:lines.append('ยืนยัน '+d['draft_ref']+' '+d['review']['nonce'])
                     lines.append('ยกเลิก '+d['draft_ref'])
@@ -62,7 +62,7 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         pending=self.state.drafts.get(ref)
         if output and pending and pending['status']!='recorded' and not output.get('item_enrollment') and (any('item_resolution' in f or 'existing_or_new' in f for f in output.get('missing_fields',[]))
                        or output.get('matches')==[]):
-            return Result('clarification',result.message+'\nถ้าต้องการเพิ่มชื่อนี้ บอกได้เลยครับ จะใช้ข้อมูลร่างเดิมแล้วถามเฉพาะหมวดที่ยังขาด',result.data)
+            return Result('clarification',result.message+'\nถ้าต้องการเพิ่มชื่อนี้ บอกได้เลยครับ',result.data)
         return result
     def _receipt(self,event,fingerprint,result):
         if getattr(self,'_legacy_turn',False):

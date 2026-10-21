@@ -87,7 +87,7 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
             p['category']={'type':['string','null'],'enum':[None,*dict.fromkeys(v for c in categories for v in [c['id'],c['label']])]}
             p['subcategory']={'type':['string','null'],'enum':[None,*dict.fromkeys(v for s in subs for v in [s['id'],s['label']])]}
             p['existing_item']={'type':['string','null'],'enum':[None,*dict.fromkeys(c['item'] for r in pending for c in r['existing_item_choices'])]}
-            t['description']='Use for a requested draft name/category choice. begin_new_item may include an explicitly owner-supplied offered category in the same answer; null lets the server match that answer. choose_category/subcategory propose offered IDs or labels; use_existing_item selects an offered name. show_choices only reads. Proposals require owner review; never writes.'
+            t['description']='Use for a requested draft name/category choice. begin_new_item: category/subcategory MUST be null unless the owner explicitly selected an offered category in this answer. Never infer from the name. null lets the server match that answer. choose_category/subcategory propose offered IDs or labels; use_existing_item selects an offered name. show_choices only reads. Proposals require owner review; never writes.'
         if t['name']=='read_expense_drafts':t['description']='Read pending expense facts/choices and verified conversation summary. Does not alter dates, version, nonce or consent, and never creates save buttons.'
         if t['name']=='control_expense_draft':
             p['operation']['enum']=['cancel']

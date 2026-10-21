@@ -6,7 +6,7 @@ from decimal import Decimal
 from itertools import count
 import hmac,json,re,secrets
 from typing import Literal
-from pydantic import BaseModel,ConfigDict,Field,field_validator
+from pydantic import BaseModel,ConfigDict,Field,field_validator,ValidationError
 from .adapters import MockCalendar,Conflict
 from .catalog import ItemCatalog,normalized
 from .source_spans import finditer as item_spans,map_outside
@@ -1151,6 +1151,13 @@ class HistoryFirstAssistant(Assistant):
         return {'entries':entries,**({'catalog':mappings} if mappings else {})}
 
     def tool(self,call):
+        output=self._tool(call)
+        if self.raw_history_enabled:
+            from .validation_explanations import enrich
+            return enrich(self,call,output)
+        return output
+
+    def _tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
             from .table_workflow import NAMES as TABLE_NAMES
@@ -1234,7 +1241,21 @@ class HistoryFirstAssistant(Assistant):
                 from .read_queries import summary_output
                 return summary_output(totals,p.model_dump())
             raise ValueError('unknown_tool')
-        except (ValueError,TypeError,KeyError) as e:return {'ok':False,'error':str(e).split('\n')[0][:160],'clarification_required':True}
+        except ValidationError as e:
+            # Provider/proposed input values and exception prose are not a
+            # diagnosis. Expose only typed field locations, never raw input.
+            fields=[]
+            for issue in e.errors(include_input=False,include_url=False):
+                path=''
+                for part in issue['loc']:
+                    path+=f'[{part}]' if type(part) is int else ('.' if path else '')+str(part)
+                if re.fullmatch(r'[a-z_]+(?:\[[0-4]\])?(?:\.[a-z_]+)*',path):fields.append(path)
+            return {'ok':False,'error':'invalid_tool_arguments','invalid_fields':list(dict.fromkeys(fields))[:20],'clarification_required':True}
+        except (ValueError,TypeError,KeyError) as e:
+            value=str(e).split('\n')[0]
+            code=(value if type(e) is ValueError and re.fullmatch(r'[a-z][a-z_0-9]{0,79}',value) else
+                  'invalid_tool_arguments' if isinstance(e,json.JSONDecodeError) else 'tool_failed')
+            return {'ok':False,'error':code,'clarification_required':True}
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
@@ -1281,7 +1302,7 @@ class HistoryFirstAssistant(Assistant):
             explanation=message(tool_output)
             if explanation:return Result('clarification',explanation,{'tool_result':tool_output})
             if tool_output.get('status')=='invalid_request':
-                return Result('clarification','ยังไม่ได้เปลี่ยนร่าง ระบบตีความส่วนที่ต้องแก้ไขไม่ครบ ข้อมูลเดิมยังอยู่',{'tool_result':tool_output})
+                return Result('clarification','ยังไม่ได้เปลี่ยนร่าง ระบบตีความส่วนที่ต้องแก้ไขไม่ครบ',{'tool_result':tool_output})
             if tool_output.get('error')=='category_fields_belong_to_item_resolution':
                 return Result('clarification','ยังไม่ได้เปลี่ยนร่าง กรุณาเลือกหมวดของชื่อใหม่จากตัวเลือกใน Database ก่อน แล้วตรวจสอบยอดอีกครั้ง',{'tool_result':tool_output})
             if tool_output.get('error')=='expense_facts_missing':
@@ -1336,7 +1357,7 @@ class HistoryFirstAssistant(Assistant):
                 if detail['issue']=='invalid_calendar_date':return Result('clarification',f"วันที่ระบุไม่มีอยู่จริง: {detail['parts']} กรุณาแก้วันที่",{'tool_result':tool_output})
             error=tool_output.get('error','')
             if self.raw_history_enabled and (error in {'invalid_fields','tool_unavailable','full_item_name_required','item_source_conflicts_with_current_expense','amount_occurrence_missing_or_reused','source_not_in_visible_context','field_source_unavailable','field_source_not_owner_fact','stale_or_unrelated_fact_source'} or error.endswith('_source')):
-                return Result('clarification','ยังไม่ได้บันทึก ระบบตรวจสอบหลักฐานของรายการไม่ผ่าน ข้อความต้นฉบับยังอยู่ ไม่ต้องส่งประโยคเดิมซ้ำ',{'tool_result':tool_output})
+                return Result('clarification','ยังไม่ได้บันทึก ระบบตรวจสอบหลักฐานของรายการไม่ผ่าน',{'tool_result':tool_output})
         if tool_output and tool_output.get('status')=='review':
             d=self.state.drafts[tool_output['draft_ref']];command=f"ยืนยัน {d['draft_ref']} {d['review']['nonce']}"
             rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {e['date']}"+(f" หมายเหตุ {e['note']}" if e['note'] else '')+
@@ -1373,7 +1394,7 @@ class HistoryFirstAssistant(Assistant):
             missing=[labels.get(re.sub(r'^entries\[\d+\]\.','',f),'ข้อมูลรายการ') for f in tool_output['missing_fields']]
             if self.raw_history_enabled and tool_output.get('validation_issues'):
                 rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or 'ยังตรวจสอบไม่ได้'}" for e in tool_output['entries'])
-                model_text='ยังไม่ได้บันทึก ข้อมูลที่ตรวจสอบได้ยังอยู่ในร่าง:\n'+rows+'\nขอเฉพาะข้อมูลที่ยังตรวจสอบไม่ได้: '+', '.join(dict.fromkeys(missing))+'\nข้อความต้นฉบับยังอยู่ ไม่ต้องส่งประโยคเดิมซ้ำ'
+                model_text='ยังไม่ได้บันทึก:\n'+rows+'\nขอเฉพาะข้อมูลที่ยังตรวจสอบไม่ได้: '+', '.join(dict.fromkeys(missing))
             return Result('clarification',model_text or 'ขอข้อมูลเพิ่ม: '+', '.join(dict.fromkeys(missing)),{'tool_result':tool_output})
         if not model_text and tool_output:
             if 'matches' in tool_output:
@@ -1481,7 +1502,9 @@ class HistoryFirstAssistant(Assistant):
             output=result.data.get('tool_result',{})
             if codes(output):
                 result=Result(result.status,result.message,{**result.data,'validation_receipt':{
-                    'event':event,'source_ref':self._current['source_ref'],'codes':codes(output),'explanation':message(output),
+                    'event':event,'source_ref':self._current['source_ref'],'codes':codes(output),'explanation':result.message if output.get('validation_feedback') else message(output),
+                    'failure_kind':output.get('validation_feedback',{}).get('kind'),
+                    'next_action':output.get('validation_feedback',{}).get('next_action'),
                     'draft_ref':output.get('draft_ref'),'draft_version':output.get('draft_version'),
                     'missing_fields':output.get('missing_fields',[]),'date_default_policy':'omitted new date uses Bangkok today; unchanged update keeps certified date'}})
         shown=re.sub(r'(ยืนยัน draft_[a-f0-9]{20}) [a-f0-9]{16}',r'\1 [owner confirmation omitted]',result.message)
@@ -1535,7 +1558,7 @@ class HistoryFirstAssistant(Assistant):
             calendar_control=self.calendar_flow.control(text)
             if calendar_control is not None:return self._finish(event,at,calendar_control)
         if self.calendar_flow.enabled and re.search(r'นัด|ปฏิทิน',text) and re.search(r'บาท',text) and re.search(r'รายจ่าย|ค่าใช้จ่าย|ซื้อ|จ่าย|รายรับ|รับเงิน|เงินเข้า',text):
-            return self._finish(event,at,Result('clarification','มีทั้งนัดและข้อมูลการเงินในข้อความเดียว ข้อมูลต้นฉบับยังอยู่ครบ กรุณาเลือกว่าจะเตรียมชุดนัดหรือรายจ่ายก่อน ยังไม่มีการบันทึก',{'domain_selection_required':True}))
+            return self._finish(event,at,Result('clarification','ต้องการเตรียมนัดหรือรายจ่ายก่อนครับ?',{'domain_selection_required':True}))
         if self.raw_history_enabled:
             from .validation_explanations import asks_why
             if asks_why(text):
@@ -1634,7 +1657,7 @@ class HistoryFirstAssistant(Assistant):
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
                             production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context()})
                     except raw.ContextOverflow:
-                        if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
+                        if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
                         summary_body,selected,protected=raw.summary_request(self.state,at,event,production=getattr(self,'production',False),context_tokens=self.raw_context_tokens)
                         key='history01_'+digest([event,step])
@@ -1648,7 +1671,7 @@ class HistoryFirstAssistant(Assistant):
                             except Exception:saved={'failure':'summary_unavailable'}
                             self.guard.complete(key,saved)
                         emit('model_result',role='history_summary',run_ref=ref(key),status=code(saved.get('failure','completed')))
-                        if saved.get('failure') or not saved.get('call'):return self._finish(event,at,Result('history_summary_unavailable','สรุปบริบทไม่สำเร็จ จึงหยุดรอบนี้โดยเก็บ raw history ไว้ครบ'))
+                        if saved.get('failure') or not saved.get('call'):return self._finish(event,at,Result('history_summary_unavailable','สรุปบริบทไม่สำเร็จ จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         try:raw.accept_summary(self.state,selected,protected,json.loads(saved['call']['arguments']),at)
                         except (raw.HistoryUnavailable,ValueError):return self._finish(event,at,Result('history_summary_unavailable','ผลสรุปหรือต้นทางไม่ผ่านการตรวจ จึงไม่ใช้สรุปและไม่เขียนรายการ'))
                         self.state.checkpoint()
@@ -1672,7 +1695,7 @@ class HistoryFirstAssistant(Assistant):
                 emit('model_result',role='planner',run_ref=ref(key),status=code(saved.get('failure','completed')),
                      call_ref=ref((saved.get('call') or {}).get('call_id')),
                      tool=code((saved.get('call') or {}).get('name')) if saved.get('call') else None)
-                if saved.get('failure'):return self._finish(event,at,Result('model_unavailable','ยังตอบรอบนี้ไม่ได้ งานที่ค้างยังอยู่'))
+                if saved.get('failure'):return self._finish(event,at,Result('model_unavailable','ยังตอบรอบนี้ไม่ได้ครับ'))
                 call=saved['call']
                 if call is None:
                     if self._query_analysis_active:

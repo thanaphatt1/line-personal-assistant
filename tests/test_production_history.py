@@ -125,7 +125,8 @@ def test_existing_legacy_unknown_item_preserves_enrollment_flow():
 def test_history_owner_selected_new_name_mapping_requires_complete_review_before_atomic_enrollment():
     api=Hosted()
     with TestClient(api.app()) as client:
-        r=api.create(client,'ปากกาทดสอบ 50 วันที่ 2026-10-13',item='ปากกาทดสอบ',amount=50);assert r.status=='clarification' and 'ร่างเดิม' in r.message and 'เพิ่มรายการใหม่' not in r.message
+        r=api.create(client,'ปากกาทดสอบ 50 วันที่ 2026-10-13',item='ปากกาทดสอบ',amount=50)
+        assert r.status=='clarification' and 'ถ้าต้องการเพิ่มชื่อนี้' in r.message and 'ร่างเดิม' not in r.message and 'เพิ่มรายการใหม่' not in r.message
         r=api.update(client,'หมวด Food',category='Food',subcategory='');assert r.status=='preview' and 'เพิ่มชื่อใหม่ใน Database: Food' in r.message
         ref=next(iter(api.snapshot()['history24']['current']['drafts']));nonce=api.snapshot()['history24']['current']['drafts'][ref]['review']['nonce']
         assert not api.google.sheet_writes

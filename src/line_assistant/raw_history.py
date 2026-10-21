@@ -24,7 +24,7 @@ SUMMARY_OUTPUT_TOKENS=1024
 CALENDAR_MAX_OUTPUT_TOKENS=4096
 RAW_SOURCE=ContextVar('raw_owner_source',default=None)
 RAW_INSTRUCTIONS=(
-    'Thai owner expense assistant, THB and Asia/Bangkok. Respond to the current owner message. '
+    'Thai owner expense assistant, THB/Bangkok. Answer directly; omit retention reassurance. '
     'History contains chronological user and assistant turns from the last 24 hours. '
     'For unrelated messages briefly explain the expense scope in text, without a tool call or a general-topic answer. '
     'Pending drafts are optional background, not a task agenda. Unrelated text does not select a category, change expense facts, cancel work or confirm a write. '
@@ -36,7 +36,7 @@ RAW_INSTRUCTIONS=(
     'Name-question replies (including ถ้าไม่มีก็เพิ่มใหม่) use prepare_item_enrollment and the current draft/version; retain facts. question_focus marks the delivered question\'s entry_ref: use it unless the owner names another row. Repeated begin resumes its category question, not a sibling. Empty existing_item_choices means no match. '
     'Names: preserve complete owner labels and internal spaces. item may propose a real Database typo correction only with item_text copying the original label; server validates uncertain choices. Never invent IDs or source text. '
     'note needs an explicit owner หมายเหตุ/note field outside the label; otherwise null. Counts are not prices; preserve each price occurrence. Dates are group-leading, per-item or explicitly group-marked; clarify trailing ambiguity. Explain only server validation results; omitted new date=Bangkok today. '
-    'Category proposals may use only offered IDs or labels. They are tentative preparation, not confirmed owner choices or write authority; make proposals clear and ask only relevant missing information. '
+    'Category proposals may use only offered IDs or labels explicitly selected by the owner. When beginning a new item without an explicit category choice, category and subcategory MUST be null; ask the returned category question. Do not infer a category from the item name or copy suggested categories as owner choices. These are preparation, never write authority. '
     'Read/resume with no fact change uses context or read_expense_drafts; reading never produces save controls. Only requested save/review preparation uses prepare_expense_review. '
     'For a date change copy the owner date expression into date_text and cite its original source. Server resolves Bangkok dates; do not compute an ISO or context mode. '
     'date_ref may select only an available verified date target, with date_text null. Omitted new date=today; omitted update date retains it; future day-only asks month. '

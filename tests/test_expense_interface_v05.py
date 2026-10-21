@@ -160,9 +160,10 @@ def test_read_after_history_summary_preserves_review_nonce_and_draft_version():
  h=harness();prepare(h,'กาแฟ 50 บาทวันนี้ หมายเหตุ ใบเสร็จทดสอบ')
  before=deepcopy(draft(h))
  for n in range(9):h.seed_pair(n,'วันที่ 13 ตุลาคม 2026 ทดสอบจัดแฟ้ม '+('แฟ้มและกระดาษทดสอบ '*20),'คุยเรื่องแฟ้มต่อ',ev.timedelta(minutes=60-n))
- # Ranking/join/inventory schemas need about37k after summary (49k before).
+ # Current schemas and explicit owner-category instructions need about38k
+ # after summary (49k before).
  # This still forces compaction; negative context probes stay unchanged.
- h.service.raw_context_tokens=37000
+ h.service.raw_context_tokens=38000
  h.port.values=[summary_output,response(name='read_expense_drafts',args={'draft_ref':before['draft_ref']})]
  _,result,out=h.run_turn('ขอดูร่างกาแฟ',2)
  assert result.status=='answer' and result.data['tool_result']['read_only']

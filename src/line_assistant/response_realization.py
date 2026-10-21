@@ -1,8 +1,9 @@
 """One optional, budgeted Luna realization of immutable server facts.
 
 The model composes speech and fact references, never tools or business values.
-Only neutral language is accepted outside facts. The complete required fact
-sequence, outcome and confirmation instruction survive exactly once.
+Ordinary replies use neutral language outside facts. Diagnosed enrollment
+failures permit a short explanatory sentence; status and the
+next question are still inserted by the server, never rewritten by the model.
 """
 from copy import deepcopy
 from contextvars import copy_context
@@ -52,7 +53,19 @@ INSTRUCTIONS=(
     'For an expense header, prefer period / เฉพาะ filter / ใช้ไป total / จาก count ครับ. For Calendar, period / มี count ครับ. '
     'End the result sentence with ครับ once. Avoid decorative intros and awkward connectors. '
     'locked_rows are shown automatically by the server after your header: never output their contents or references. '
-    'A reason fact is already a full honest error/question; place it directly without redundant framing.')
+    'A reason fact is already a full honest error/question; place it directly without redundant framing. '
+    'validation_feedback is the server diagnosis of a failed tool call. Explain its actual reason and ask only its supplied ask fact. '
+    'model_arguments means the assistant sent an invalid proposal; never blame the owner or ask them to repeat known names, amounts or dates. '
+    'unclassified means the cause is unknown: do not invent a missing field, permission failure or database problem. '
+    'A rejected proposal did not select a category or save anything. known_entries is context for avoiding questions about facts already supplied; do not recite those rows in a failure reply. '
+    'Do not add reassurance that data, a draft or the original message is still stored, or tell the owner not to repeat their message. State the cause and ask the needed question directly. '
+    'When validation_reply=true use its DIFFERENT schema: reason_codes and explanation only. '
+    'Copy the exact server reason_codes and explain that diagnosed failure in one short natural Thai sentence. '
+    'Paraphrase the reason using your own words, rather than repeating a canned error. '
+    'Explain what the assistant could not do and why; this is a rejected assistant proposal, not bad owner input. '
+    'Do not add a technical cause, a repair promise, a question, instructions or facts absent from validation_feedback. '
+    'You may refer to the supplied item label when useful, but never introduce a new name, number, date, amount, ID, database/access/network diagnosis or saved/selected claim. '
+    'The server inserts status and the exact next question after your explanation. Do not repeat them.')
 from . import calendar_inference as selection
 INSTRUCTIONS+=selection.INSTRUCTIONS
 
@@ -92,6 +105,29 @@ def schema(ids,outcome,query=False):
             {'type':'object','additionalProperties':False,'properties':{'kind':{'type':'string','enum':['fact']},'value':{'type':'string','enum':ids}},'required':['kind','value']},
             {'type':'object','additionalProperties':False,'properties':{'kind':{'type':'string','enum':['text']},'value':text},'required':['kind','value']}]}}},'required':['opening','parts']}
 
+
+def validation_schema(codes):
+    return {'type':'object','additionalProperties':False,'properties':{
+        'reason_codes':{'type':'array','minItems':len(codes),'maxItems':len(codes),'items':{'type':'string','enum':codes}},
+        'explanation':{'type':'string','minLength':1,'maxLength':320}},'required':['reason_codes','explanation']}
+
+
+def parse_validation(document,payload):
+    feedback=payload['validation_feedback'];facts=payload['facts']
+    if not isinstance(document,dict) or set(document)!={'reason_codes','explanation'} or document['reason_codes']!=feedback['codes']:raise ValueError('validation_codes')
+    text=document['explanation']
+    if not isinstance(text,str) or not text.strip() or len(text)>320:raise ValueError('validation_explanation')
+    # This is language generation, not a new diagnosis. Reject obvious invented
+    # facts/status/causes; the original precise server explanation is fallback.
+    forbidden=(r'[0-9๐-๙<>?？]|https?://|[\x00-\x1f]|'
+        r'สิทธิ์|permission|เชื่อมต่อ|เครือข่าย|อินเทอร์เน็ต|โควตา|หมดอายุ|ฐานข้อมูล|database|api|'
+        r'บันทึก.{0,12}(?:แล้ว|สำเร็จ|เรียบร้อย)|เพิ่ม.{0,12}(?:สำเร็จ|เรียบร้อย)|เลือกหมวด.{0,8}แล้ว|'
+        r'(?:ผม|ระบบ)(?:ได้)?เลือก(?:หมวด|หมวดย่อย)|'
+        r'คุณ.{0,24}(?:ผิด|ไม่ครบ|ไม่ถูก)|พิมพ์.{0,16}(?:ผิด|ใหม่|ซ้ำ)|ส่ง.{0,12}(?:ใหม่|ซ้ำ)|'
+        r'กรุณา|โปรด|ไหม|ยังอยู่|ไม่ต้องส่ง|draft_|entry_|source_')
+    if re.search(forbidden,text,re.I) or 'หมวด' not in text:raise ValueError('unsupported_validation_claim')
+    return '\n'.join([facts['status'],text.strip(),*[v for k,v in facts.items() if k not in {'status','reason'}]])
+
 def instant(value):
     if not value:return 'ยังไม่ระบุ'
     try:
@@ -105,6 +141,8 @@ def instant(value):
 
 def facts_for(host,result):
     data=result.data
+    feedback=(data.get('tool_result') or {}).get('validation_feedback')
+    if feedback:return deepcopy(feedback['facts'])
     if data.get('query_facts'):return {k:deepcopy(v) for k,v in data['query_facts'].items() if not k.startswith('row')}
     view=data.get('calendar_batch_view');facts={};asks=[];single=False
     if not view and data.get('calendar_view'):
@@ -195,9 +233,21 @@ def body_for(host,result):
     payload={'outcome':result.status,'query_reply':query,'locked_rows':[v for k,v in result.data.get('query_facts',{}).items() if k.startswith('row')],'fact_order':list(facts),'facts':facts,'current_owner_text':context_text(owner_text)[:240],
         'relevant_context':context,'allowed_speech_words':list(speech_words(result.status,query)),
         'questions_allowed':result.status in {'clarification','stale','expired'} or any(k.startswith('ask') or k=='instruction' for k in facts)}
+    feedback=(result.data.get('tool_result') or {}).get('validation_feedback')
+    if feedback:
+        payload['validation_feedback']={k:deepcopy(feedback[k]) for k in ('version','tool','codes','kind','invalid_fields','required_fields','next_action')}
+        payload['validation_feedback']['reason']=feedback['facts'].get('reason')
+        if feedback.get('known_entries'):
+            payload['validation_feedback']['known_entries']=deepcopy(feedback['known_entries'])
+        # Free explanatory prose is scoped to a known rejected enrollment
+        # proposal. Unknown causes and all write outcomes keep locked facts.
+        if feedback['kind']=='model_arguments' and feedback.get('target') and 'reason' in facts:
+            payload['validation_reply']=True
     body={'model':MODEL_ID,'instructions':INSTRUCTIONS,'input':[{'role':'user','content':encoded(payload).decode()}],
         'tools':[],'tool_choice':'none','parallel_tool_calls':False,'reasoning':{'effort':'none'},'max_output_tokens':MAX_OUTPUT,
         'store':False,'service_tier':'default','truncation':'disabled','text':{'format':{'type':'json_schema','name':'grounded_reply_parts','strict':True,'schema':schema(list(facts),result.status,query)}}}
+    if payload.get('validation_reply'):
+        body['text']['format'].update(name='grounded_validation_reply',schema=validation_schema(feedback['codes']))
     if len(encoded(body))>MAX_BODY_BYTES:return None
     return body
 
@@ -207,10 +257,19 @@ def validate_body(body):
     try:
         p=json.loads(body['input'][0]['content'])
         if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
+        if p.get('validation_reply'):
+            from .validation_explanations import ENROLLMENT_ERRORS
+            feedback=p['validation_feedback']
+            if (p['outcome']!='clarification' or feedback['kind']!='model_arguments'
+                or not feedback['codes'] or not set(feedback['codes'])<=ENROLLMENT_ERRORS
+                or feedback['next_action'] not in {'ask_category','ask_subcategory'}
+                or p['fact_order']!=['status','reason','ask']):return False
+        expected=({'type':'json_schema','name':'grounded_validation_reply','strict':True,'schema':validation_schema(p['validation_feedback']['codes'])}
+                  if p.get('validation_reply') else {'type':'json_schema','name':'grounded_reply_parts','strict':True,'schema':schema(p['fact_order'],p['outcome'],p.get('query_reply',False))})
         return (set(body)==keys and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
             and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'} and body['max_output_tokens']==MAX_OUTPUT
             and body['store'] is False and body['service_tier']=='default' and body['truncation']=='disabled'
-            and body['text']=={'format':{'type':'json_schema','name':'grounded_reply_parts','strict':True,'schema':schema(p['fact_order'],p['outcome'],p.get('query_reply',False))}}
+            and body['text']=={'format':expected}
             and p['fact_order']==list(p['facts']) and p['allowed_speech_words']==list(speech_words(p['outcome'],p.get('query_reply',False))) and len(encoded(body))<=MAX_BODY_BYTES)
     except (KeyError,ValueError,TypeError):return False
 
@@ -239,6 +298,7 @@ def parse(value,body):
         return dict(values)
     document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
     if payload.get('calendar_selection'):return selection.parse(document,payload)
+    if payload.get('validation_reply'):return parse_validation(document,payload)
     facts=payload['facts']
     if payload.get('query_reply'):
         if set(document)!={'opening','parts'} or document['opening']!='' or not isinstance(document['parts'],dict) or set(document['parts'])!=set(facts):raise ValueError('query_parts')

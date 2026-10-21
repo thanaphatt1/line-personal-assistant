@@ -203,7 +203,7 @@ class DraftPatchAssistant(ToolLoopAssistant):
     def _failed_proposal(self, code, taxonomy, *, preserve_pending=False):
         pending = self.state.pending
         if preserve_pending:
-            return {'ok':False,'error':{'code':code}},Result('clarification','ยังตอบคำขอนี้ไม่ได้ กรุณาระบุให้ชัดเจนขึ้น ร่างเดิมยังอยู่')
+            return {'ok':False,'error':{'code':code}},Result('clarification','ยังตอบคำขอนี้ไม่ได้ กรุณาระบุให้ชัดเจนขึ้น')
         if pending and pending.kind == 'conversation':
             pending.payload.update(ready=False,editing=True); pending.payload.pop('preview_digest',None)
             pending.source_timestamp=self._patch_stamp; pending.token=secrets.token_hex(4)

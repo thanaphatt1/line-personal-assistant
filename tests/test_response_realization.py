@@ -24,6 +24,11 @@ def offline(monkeypatch):
 
 def generated(body,parts=None):
     payload=json.loads(body['input'][0]['content'])
+    if payload.get('validation_reply'):
+        return {'model':'gpt-6-luna','status':'completed','usage':{'input_tokens':1000,'output_tokens':100},
+            'output':[{'type':'message','status':'completed','content':[{'type':'output_text','text':json.dumps({
+                'reason_codes':payload['validation_feedback']['codes'],
+                'explanation':'ผมส่งหมวดที่คุณยังไม่ได้เลือกไป จึงหยุดก่อนใช้หมวดนั้นครับ'},ensure_ascii=False)}]}]}
     if parts is None and payload.get('query_reply'):
         parts={key:{'before':voice.query_options(key,payload['fact_order'])[0][0],'after':voice.query_options(key,payload['fact_order'])[1][0]} for key in payload['fact_order']}
     if parts is None:

@@ -20,7 +20,8 @@ Each attempt can show:
   field names, entry count and name-resolution step. Actual names, amounts,
   dates, notes, table values and physical provider coordinates are excluded.
 - Tool outcome, machine error code, known invalid/missing field paths, next
-  required category field and bounded before/after draft/action summaries.
+  required category field, diagnosed failure kind/next action and bounded
+  before/after draft/action summaries.
 - Action checkpoints (`prepared`, `executing`, `effect_returned`,
   `action_completed`), a hashed action key, kind and status. A checkpoint does
   not independently prove an external effect; the existing action proof and
@@ -63,3 +64,37 @@ proposes beginning a sibling while the owner has not named another row, the
 server re-presents the pending category question without mutating either row.
 Categories are still chosen from supplied metadata and final writes still
 require the existing delivered review and fresh owner confirmation.
+
+## Actionable failure replies
+
+Failed expense preparation supplies structured `validation_feedback` to the
+reply model: actual server error codes, the failed step, invalid/required
+fields and a classified next action. A rejected inferred category is an
+assistant proposal error. It is not evidence that the owner mistyped a name,
+amount or date, or that access to Database failed.
+
+For a verified owned enrollment target, feedback includes retained draft rows
+and current category/subcategory choices. The reply asks only that target's
+missing choice, without selecting it or altering the draft. The delivered
+question retains its draft/version/row focus so a short answer can continue
+after a restart. Final review and fresh confirmation are still required.
+
+When reply realization is enabled, a known enrollment failure permits one
+short LLM paraphrase of the diagnosed cause. The model receives the actual
+failure and current question, rather than only a generic error template.
+Server status and next question are inserted unchanged. Known draft entries
+remain model context; failure replies do not recite them or add stock
+reassurance about keeping data or not resending the original message. The
+parser checks reason codes and rejects obvious invented values, success,
+owner blame and unrelated access/network diagnoses. These checks are not a
+general proof of free-text meaning. Invalid prose, timeout or quota failure
+uses the same actionable server explanation as fallback. Unknown failures
+keep an explicit unknown-cause explanation; the model cannot infer their
+cause from a missing diagnosis.
+
+Typed argument errors expose only field paths, without raw invalid values or
+exception prose. Detailed feedback remains in the existing conversation
+receipt; operational logs retain only codes, failure kind, next action and
+hashed refs, not the names, amounts or explanation text. This adds no log
+reader to the bot, collection, credential, state migration or production
+configuration change.

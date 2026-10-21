@@ -149,7 +149,7 @@ class ToolLoopAssistant(ConversationAssistant):
     def loop_fallback(self, status):
         pending = self.state.pending
         if pending and pending.kind == 'conversation':
-            text = 'ยังแปลคำสั่งรอบนี้ไม่ได้ ร่างเดิมยังอยู่ กรุณาระบุข้อมูลที่ต้องการแก้'
+            text = 'ยังแปลคำสั่งรอบนี้ไม่ได้ กรุณาระบุข้อมูลที่ต้องการแก้'
         elif pending and pending.kind == 'tool_source':
             text = 'ยังสร้างร่างไม่ได้ ไม่มีข้อมูลถูกบันทึก เก็บข้อความต้นทางไว้ชั่วคราว กรุณาระบุข้อมูลเพิ่ม หรือพิมพ์ ยกเลิก'
         else:

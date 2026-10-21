@@ -64,6 +64,10 @@ def outcome(value):
     for key in ['draft_ref','catalog_entry_ref']:
         if value.get(key) is not None:result[key]=ref(value[key])
     if type(value.get('draft_version')) is int:result['draft_version']=value['draft_version']
+    feedback=value.get('validation_feedback')
+    if isinstance(feedback,dict):
+        result['failure_kind']=code(feedback.get('kind'))
+        result['next_action']=code(feedback.get('next_action'))
     enrollment=value.get('item_enrollment',{})
     if isinstance(enrollment,dict) and enrollment.get('field') in {'category','subcategory'}:
         result['next_field']=enrollment['field'];result['entry_ref']=ref(enrollment.get('entry_ref'))

@@ -119,6 +119,10 @@ release-operation evidence are not part of this repository.
 Hosted turns emit redacted [action traces](docs/action-traces.md) for model/tool
 steps, validation codes and draft transitions. They use existing Cloud Run logs
 and preserve the current confirmation and replay rules.
+Failed expense preparation passes its actual validation diagnosis to reply
+generation. Known enrollment failures can be explained in natural Thai while
+retaining draft facts and asking only the missing category choice; an unknown
+cause is reported honestly instead of blamed on the owner's input.
 
 ## License
 

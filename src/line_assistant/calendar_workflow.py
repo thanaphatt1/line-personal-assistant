@@ -21,7 +21,7 @@ NAMES={'title':'ชื่อเรื่อง','date':'วันนัด','tim
        'calendar_date_unclear':'วันนัดที่ชัดเจน','calendar_date_invalid':'วันที่มีอยู่จริง','calendar_weekday_conflict':'วันในสัปดาห์กับวันที่ให้ตรงกัน',
        'calendar_time_unclear':'เวลาเริ่มหรือสิ้นสุดที่ชัดเจน','calendar_time_invalid':'เวลาที่ถูกต้อง',
        'calendar_duration_unclear':'ระยะเวลาเป็นนาทีหรือชั่วโมง','calendar_end_conflict':'เวลาสิ้นสุดและระยะเวลาให้ตรงกัน',
-       'calendar_end_order':'วันและเวลาสิ้นสุดที่อยู่หลังเวลาเริ่ม','calendar_access_unavailable':'การเชื่อมต่อปฏิทิน (ข้อมูลนัดเดิมยังอยู่)'}
+       'calendar_end_order':'วันและเวลาสิ้นสุดที่อยู่หลังเวลาเริ่ม','calendar_access_unavailable':'การเชื่อมต่อปฏิทิน'}
 NAMES.update(calendar_event_type_conflict='เลือกนัดทั้งวันหรือนัดระบุเวลาอย่างใดอย่างหนึ่ง',
     calendar_all_day_range_unsupported='เลือกวันเดียวต่อหนึ่งนัดทั้งวัน หรือแยกช่วงเป็นแต่ละนัด')
 
@@ -418,7 +418,7 @@ class CalendarWorkflow:
                 'calendar_no_fact_change':'รายละเอียดร่างยังไม่เปลี่ยน กรุณาระบุข้อมูลที่ต้องการแก้ หรือขอตรวจร่าง',
                 'calendar_owner_no_write':'ยังไม่สร้างนัดตามที่คุณระบุ',
                 'calendar_ambiguous_cancel_target':'มีทั้งร่างรายจ่ายและนัด กรุณาระบุร่างที่ต้องการยกเลิก'}
-            messages.update(calendar_event_capacity='รองรับสูงสุด 8 นัดต่อชุด ข้อความต้นฉบับทุกนัดยังอยู่ ยังไม่ยืนยันหรือสร้างบางส่วน',
+            messages.update(calendar_event_capacity='รองรับสูงสุด 8 นัดต่อชุด ยังไม่ยืนยันหรือสร้างบางส่วน',
                 calendar_event_fact_pairing='วันหรือเวลายังผูกกับนัดที่ระบุไม่ได้ กรุณาระบุชื่อนัดหรือหมายเลขที่ต้องการแก้',
                 calendar_ambiguous_event_target='มีหลายร่างนัด กรุณาระบุชื่อนัด หมายเลข หรือระบุว่าทั้งชุด',
                 calendar_shared_target_count='จำนวนวัน/นัดที่ระบุร่วมกันไม่ตรงกับชุด กรุณาระบุรายการที่ต้องการใช้เวลาเดียวกัน',
@@ -433,7 +433,7 @@ class CalendarWorkflow:
                 if len(selected)==1 and selected[0] in phrases:message='ตอนนี้ยัง'+phrases[selected[0]]+'ให้ไม่ได้ จึงยังไม่ได้สร้างนัดนี้ครับ'
                 elif selected and all(k in labels for k in selected):message='คำขอมี'+ ' / '.join(labels[k] for k in selected)+' ซึ่งยังรองรับไม่ได้ จึงยังไม่ได้สร้างนัดนี้ครับ'
                 return Result('clarification',message,data)
-            return Result('clarification','ยังไม่ได้สร้างนัด\n'+message+'\nข้อมูลต้นฉบับยังอยู่ ไม่ต้องส่งประโยคเดิมซ้ำ',data)
+            return Result('clarification','ยังไม่ได้สร้างนัด\n'+message,data)
         if output['status']=='cancelled':return Result('cancelled','ยกเลิกร่างนัดแล้ว ไม่มีการลบนัดที่สร้างไว้',data)
         if output['status']=='draft_read':
             values=output['drafts'];return Result('answer','ร่างนัดที่ยังไม่บันทึก:\n'+'\n'.join((v['facts']['title'] or 'ยังไม่มีชื่อ')+' '+(v['start'] or 'ยังไม่มีเวลา') for v in values) if values else 'ไม่มีร่างนัดที่ค้างอยู่',data)

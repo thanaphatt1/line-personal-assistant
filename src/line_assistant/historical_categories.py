@@ -317,7 +317,7 @@ class HistoricalCategories(ProvisionalCategories):
         if text in {'ยกเลิก','ยกเลิกจัดหมวดย้อนหลัง'} and self.has_pending():
             try:return self.result(self.cancel())
             except WriteBlocked:return self.h._uncertain(self.h._blocked_action())
-            except ValueError:return Result('stale','ข้อความยกเลิกมาก่อนร่างล่าสุดครับ ร่างปัจจุบันยังอยู่')
+            except ValueError:return Result('stale','ข้อความยกเลิกมาก่อนร่างล่าสุดครับ')
         if text in {'ยืนยัน','ยืนยันครับ','ยืนยันค่ะ','ใช่'}:return Result('clarification','ต้องการใช้ชั่วคราวเฉพาะหน้านี้ หรือบันทึกหมวดย้อนหลังถาวรครับ? ยังไม่ได้แก้ mapping')
         mode='query' if text in {'ใช้ข้อเสนอย้อนหลังครั้งนี้','รวมข้อเสนอครั้งนี้'} or text.startswith('ใช้ข้อเสนอย้อนหลังครั้งนี้ ') else 'permanent'
         try:
