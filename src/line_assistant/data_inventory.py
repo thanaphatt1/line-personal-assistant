@@ -28,26 +28,29 @@ INSTRUCTIONS=(
 
 class Inspect(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
-    source:Literal['capabilities','expense','calendar','all']
+    source:Literal['capabilities','expense','calendar','tables','all']
     continue_analysis:bool=False
     source_refs:list[str]=Field(min_length=1,max_length=16)
 
 def definitions():
     return [{'type':'function','name':NAME,'strict':True,
         'description':'Inspect actual available tools and configured-source scope. expense reads complete bounded data to return observed years/counts/first-last record dates, never rows or amounts; calendar discovers selected source count and known query windows, with global date extent explicitly UNKNOWN. No new access, providers, writes, SQL or model-invented metadata.',
-        'parameters':object_schema({'source':{'type':'string','enum':['capabilities','expense','calendar','all']},
+        'parameters':object_schema({'source':{'type':'string','enum':['capabilities','expense','calendar','tables','all']},
             'continue_analysis':{'type':'boolean','description':'True to plan further read-only queries after seeing metadata; false to answer this inventory question directly.'},
             'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})}]
 
 def context(host):
     observations=deepcopy(getattr(host,'_data_inventory',{}))
-    return {'data_sources':{
+    value={'data_sources':{
         'expense':{'scope':'configured expense dataset only','record_date_extent':'current_request_observation' if observations.get('expense',{}).get('status')=='verified' else 'unknown_until_inspected',
             'query_window_days':367,'income':False,'balance':False},
         'calendar':{'enabled':host.calendar_flow.enabled,'scope':'server-selected configured/shared calendars only',
             'event_read_permission':'verified_per_actual_read','global_date_extent':'unknown','query_window_days':31},
         'external_search':False,'write_policy':'explicit new owner confirmation of a reviewed proposal; tool calls do not grant consent'},
         'data_source_observations':observations}
+    flow=getattr(host,'table_flow',None)
+    if flow and flow.enabled:value['data_sources']['tables']={'scope':'configured logical tables only','tables':flow.registry.catalog(),'schemas':'describe_table','unknown_coverage':'query_table complete snapshot required'}
+    return value
 
 def windows(host):
     rows=[]
@@ -67,7 +70,7 @@ def execute(host,args):
     result.update(source=p.source,continue_analysis=p.continue_analysis,
         available_tools=[t['name'] for t in host.state.raw_tool_definitions],data_sources=context(host)['data_sources'])
     cache=host._data_inventory
-    for source in (['expense','calendar'] if p.source=='all' else [p.source] if p.source!='capabilities' else []):
+    for source in (['expense','calendar','tables'] if p.source=='all' else [p.source] if p.source!='capabilities' else []):
         if source not in cache:
             try:
                 if source=='expense':
@@ -79,6 +82,7 @@ def execute(host,args):
                         'record_count':len(days),'first_record_date':min(days) if days else None,
                         'last_record_date':max(days) if days else None,
                         'years':[{'year':year,'record_count':years[year]} for year in sorted(years)]}
+                elif source=='tables':value={'status':'configured','checked_at':host.clock().isoformat(),'tables':host.table_flow.registry.catalog()}
                 elif not host.calendar_flow.enabled:value={'status':'disabled','checked_at':host.clock().isoformat(),'global_date_extent':'unknown'}
                 else:
                     selected=host.calendar_flow.adapter.readable_calendars()
@@ -103,10 +107,14 @@ def render(output):
         if 'query_calendar' in tools and output['data_sources']['calendar']['enabled']:lines.append('ปฏิทิน: อ่านนัดในช่วงวันที่และตีความเงื่อนไขกิจกรรมได้')
         lines.append('อ่านรายจ่ายได้ครั้งละไม่เกิน 367 วัน และปฏิทินไม่เกิน 31 วัน ช่วงใหญ่กว่านี้แบ่งอ่านได้ภายในเวลาที่มี')
         lines.append('เข้าถึงเฉพาะฐานข้อมูลและปฏิทินที่เชื่อมให้ระบบ สิทธิ์อ่านนัดต้องตรวจเมื่ออ่านจริง ยังไม่ใช่ทุกปฏิทินในอีเมล')
-        lines.append('ยังไม่มีข้อมูลรายรับหรือยอดคงเหลือ')
+        lines.append('รายรับเพิ่มเติมขึ้นอยู่กับ table ที่เชื่อมไว้; รายจ่ายเดิมไม่มีข้อมูลยอดคงเหลือ' if output['data_sources'].get('tables') else 'ยังไม่มีข้อมูลรายรับหรือยอดคงเหลือ')
         lines.append('การสร้างหรือแก้ข้อมูลต้องผ่านการตรวจและยืนยันจากเจ้าของก่อน' if any(t.startswith('prepare_') for t in tools)
                      else 'รอบวิเคราะห์นี้ใช้ได้เฉพาะการอ่านข้อมูล ไม่มีเครื่องมือสร้างหรือแก้ข้อมูลให้ใช้')
     expense=output.get('expense')
+    tables=output.get('tables',output['data_sources'].get('tables',{})).get('tables',[])
+    if tables:
+        lines.append('ตารางที่เชื่อมไว้:')
+        lines.extend(row['label']+' — '+row['description'] for row in tables)
     if expense:
         if expense['status']!='verified':lines.append('รายจ่าย: ยังตรวจช่วงข้อมูลและปีที่มีรายการไม่ได้ครับ จึงยังไม่ยืนยันว่ามีหรือไม่มีข้อมูลในปีใด')
         elif not expense['record_count']:lines.append('รายจ่าย: ไม่พบรายการในฐานข้อมูลที่เชื่อมต่อจากการอ่านที่ตรวจครบแล้วครับ')

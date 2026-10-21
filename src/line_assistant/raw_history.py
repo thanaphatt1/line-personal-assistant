@@ -126,10 +126,16 @@ def request_instructions(definitions,*,calendar=False):
     if any(t['name']=='finish_query_analysis' for t in definitions):
         from .query_analysis import INSTRUCTIONS
         base+=INSTRUCTIONS
+    if any(t['name']=='resolve_activity_dates' for t in definitions):
+        from .query_followups import INSTRUCTIONS
+        base+=INSTRUCTIONS
     if any(t['name'] in {'find_saved_records','check_saved_record_change'} for t in definitions):
         base=base.replace('No income, calendar, recorded-expense edits or external search.','No income, Calendar creation or external search; saved-record proposals only through dedicated tools.').replace('No guests, recurring appointments, reminders or saved-event edit/delete.','No guests, recurring appointments, reminders or deletion.').replace('No income, recorded-expense edits or external search.','No income or external search.')+SAVED_EDIT_INSTRUCTIONS
     if any(t['name']=='propose_expense_categories' for t in definitions):base+=PROVISIONAL_CATEGORY_INSTRUCTIONS
     if any(t['name']=='scan_historical_categories' for t in definitions):base+=HISTORICAL_CATEGORY_INSTRUCTIONS
+    if any(t['name']=='query_table' for t in definitions):
+        from .table_workflow import INSTRUCTIONS
+        base=base.replace('No income,','No unconfigured income,').replace('No income or external search.','No unconfigured income or external search.')+INSTRUCTIONS
     if any('previous_price_ref' in t['parameters'].get('properties',{}).get('entries',{}).get('items',{}).get('properties',{}) for t in definitions):
         base+=(' For an expense with missing amount, prepare it with amount=null; the server may offer an actual past recorded amount. '
                'Never invent a subscription price or treat a past payment as a fixed/unit price. '

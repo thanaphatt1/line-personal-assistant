@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -42,6 +42,7 @@ class HistoryConfig:
     calendar_read_all_enabled: bool=False
     calendar_read_ids: tuple[str,...]=()
     calendar_connections_enabled: bool=False
+    table_registry_json: str=''
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -90,7 +91,16 @@ class HistoryConfig:
             raise ConfigError('Firestore expense backend requires the full explicit history composition')
         if concurrency=='firestore_transaction' and core.expense_backend!='firestore':
             raise ConfigError('Transactional concurrency requires Firestore expense backend')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true')
+        from .table_storage import parse_registry
+        table_json=values.get('PILOT_TABLE_REGISTRY_JSON','')
+        try:
+            registrations=parse_registry(table_json)
+            if registrations and (h!='true' or s!='true'):raise ValueError()
+            for registration in registrations:
+                binding=registration.storage
+                if binding.backend=='sheets' and binding.spreadsheet_id==core.spreadsheet_id and (binding.sheet_id in {core.expense_sheet_id,core.database_sheet_id} or binding.tab in {'All Expenses','Database'}):raise ValueError()
+        except ValueError:raise ConfigError('Explicit valid table registry and history/state required; existing expense tabs are reserved') from None
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json)
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
@@ -134,6 +144,8 @@ class HistoryHttp(PilotHttp):
             raise LiveDisabled('Invalid paginated history response')
         return super()._json(response)
     def allowed(self,service,method,path,body,params):
+        for table_store in getattr(self,'table_stores',()):
+            if service==table_store.binding.backend and table_store.authorize(method,path,body,params):return
         store=getattr(self,'expense_store',None)
         if service=='firestore' and store is not None and store.authorize(method,path,body,params):return
         if service=='sheets' and self.config.expense_backend!='sheets':raise LiveDisabled('Sheets is outside the selected expense backend')
@@ -202,6 +214,7 @@ class HistoryHttp(PilotHttp):
 
 def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None,clock=None,semantic_enabled=True,raw_history_enabled=True):
     values=values or {};config=HistoryConfig.from_mapping(values)
+    if config.table_registry_json and not raw_history_enabled:raise ConfigError('Tables require original-message history')
     if config.expense_backend=='firestore' and not raw_history_enabled:raise ConfigError('Firestore expenses require original-message history')
     if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled or config.provisional_categories_enabled or config.previous_prices_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits/proposals require raw history')
     if config.expense_backend=='sheets':
@@ -250,8 +263,13 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     else:
         expense_editor=SavedExpenseEditor(sheets,writes_enabled=config.saved_expense_enabled,single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer')
     calendar_editor=SavedCalendarEditor(PilotPort(http,'calendar'),config.calendar_id,writes_enabled=config.saved_calendar_enabled,effect_guard=state.before_effect) if config.calendar_enabled else None
+    from .table_storage import parse_registry,build_registry
+    table_registry=build_registry(parse_registry(config.table_registry_json),clients={name:PilotPort(http,name) for name in ('sheets','firestore')},owner_id=config.owner_id,project_id=config.project_id,state=state)
+    http.table_stores=tuple(table_registry.stores.values())
     assistant=ProductionHistoryAssistant(settings,sheets,port=PilotPort(http,'model'),state=state,clock=clock,history_first_enabled=True,item_enrollment_enabled=True,semantic_enabled=semantic_enabled,raw_history_enabled=raw_history_enabled,calendar_enabled=config.calendar_enabled,calendar_adapter=calendar,calendar_id=config.calendar_id,saved_expense_editor=expense_editor,saved_calendar_editor=calendar_editor,saved_expense_enabled=config.saved_expense_enabled,saved_calendar_enabled=config.saved_calendar_enabled,provisional_categories_enabled=config.provisional_categories_enabled,provisional_mapping_enabled=config.provisional_mapping_enabled,mapping_single_writer_reviewed=config.saved_expense_concurrency=='reviewed_single_writer',historical_categories_enabled=config.historical_categories_enabled,previous_prices_enabled=config.previous_prices_enabled,calendar_connections_enabled=config.calendar_connections_enabled,calendar_sharing_email=config.service_account)
     assistant.production=True;assistant.expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง';assistant.guard=guard
+    from .table_workflow import TableWorkflow
+    assistant.table_flow=TableWorkflow(assistant,table_registry)
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)
     replies=BoundedReplies(LineReplyApi(PilotPort(http,'line')),assistant)

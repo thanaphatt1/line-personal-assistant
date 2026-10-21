@@ -15,6 +15,12 @@ Read-only expense and Calendar queries support these two workflows. In this sour
 
 The planner sees its actual tools and configured data scope, and can inspect verified expense years/date bounds before answering. Calendar global coverage stays unknown until established; a query-window limit is not the age of stored data. See [capability and data metadata](docs/data-inventory.md).
 
+Optional [metadata-defined tables](docs/tables.md) add people, income, shopping
+and other structured records in Sheets/Firestore. Tables share schema-based
+queries and insert/update/delete proposals; Calendar keeps its time tools.
+New ordinary tables need metadata and a storage binding, without another
+table-specific function. The registry is empty by default.
+
 Development also includes [saved expense corrections and appointment rescheduling](docs/saved-record-edits.md), disabled by default. These select stable saved records, show before/after values and require a new owner confirmation. Calendar uses conditional ETag updates; expense edits additionally require a reviewed policy controlling other Sheets writers.
 
 Optional [provisional category suggestions](docs/provisional-categories.md) separately show confirmed, proposed and ambiguous labels. Query-only inclusion and permanent mapping require different confirmations; proposed amounts never silently enter confirmed totals. Both suggestion and mapping flags default OFF.

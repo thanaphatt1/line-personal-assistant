@@ -77,6 +77,15 @@ for backend in ('sheets','firestore'):
         }, secret_loader=lambda name: SecretStr('synthetic-' + name))
         assert result['status'] == 'passed' and result['provider_requests'] == 0
 
+for table_backend in ('sheets','firestore'):
+    binding = ({'backend':'sheets','spreadsheet_id':'synthetic-table-workbook-0001','tab':'People','sheet_id':701}
+               if table_backend=='sheets' else {'backend':'firestore','collection_path':'people'})
+    registry = [{'table':{'id':'people','label':'People','description':'Synthetic contacts',
+                 'columns':[{'name':'name','label':'Name','type':'text','required':True}]},'storage':binding}]
+    result=run_checks({**base,'PILOT_TABLE_REGISTRY_JSON':json.dumps(registry)},
+                      secret_loader=lambda name:SecretStr('synthetic-'+name))
+    assert result['status']=='passed' and result['provider_requests']==0
+
 assert not attempts
 import line_assistant
 assert Path(line_assistant.__file__).resolve().is_relative_to(runtime.resolve())

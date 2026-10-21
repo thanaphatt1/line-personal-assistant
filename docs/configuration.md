@@ -135,6 +135,7 @@ required versus generated fields, catalog relationships and Firestore storage.
 | `PILOT_PROVISIONAL_MAPPING_ENABLED` | `false` | Proposals and reviewed Database writer policy |
 | `PILOT_HISTORICAL_CATEGORIES_ENABLED` | `false` | Provisional categories/history; optional complete-grid historical review |
 | `PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED` | `false` | History/state; optional owner-selected amount from exact saved history |
+| `PILOT_TABLE_REGISTRY_JSON` | empty | History/state; JSON schemas and explicit existing storage bindings; see [tables](tables.md) |
 
 Historical permanent saves also require the separate mapping flag and
 `PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY=reviewed_single_writer`. The process lease

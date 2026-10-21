@@ -13,7 +13,7 @@ from .history_context import digest
 from .model_api import object_schema
 from .state import Claim,Result
 
-READ_TOOLS={'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis'}
+READ_TOOLS={'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','list_tables','describe_table','query_table','check_table_change'}
 
 def unverified_claim(text):
     # Output-claim check only, never an owner intent/date/keyword router.
@@ -54,7 +54,10 @@ def definitions():
 def remember(host,output,at,step):
     from .read_queries import result as render_query
     from . import calendar_inference,response_realization
-    result=render_query(output,at)
+    if output.get('table_query'):
+        from .table_workflow import render
+        result=render(output)
+    else:result=render_query(output,at)
     if calendar_inference.pending(result):
         key='analysis01_'+digest([host._active_event_id,step])[:40]
         parent=host.state.claims[host._active_event_id]
@@ -67,7 +70,10 @@ def remember(host,output,at,step):
     value.update(query_ref=ref,scope={k:deepcopy(v) for k,v in output['scope'].items() if k not in {'calendar','workbook','calendar_read_ids_hash'}})
     records=output.get('analysis_records')
     if records is not None:
-        value['events' if output['domain']=='calendar' else 'entries']=deepcopy(records)
+        if output['domain']=='table':
+            value['matched_record_count']=len(records)
+            value['join_source_fields']=output['scope']['query'].get('select') or [c.name for c in host.table_flow.registry.get(output['table_id'])[0].columns]
+        else:value['events' if output['domain']=='calendar' else 'entries']=deepcopy(records)
     return value
 
 def fail(code,message):
@@ -120,13 +126,16 @@ def finish(host,args):
         selected=[host._query_reads[ref] for ref in p.query_refs]
     except (ValueError,TypeError,KeyError):return fail('invalid_query_refs','ยังอ้างอิงผลค้นหาที่อ่านจริงไม่ครบครับ กรุณาระบุสิ่งที่ต้องการค้นอีกครั้ง')
     at=datetime.fromisoformat(host._current['at'])
-    reports=[render_query(row,at) for row in selected]
+    from .table_workflow import render as render_table
+    reports=[render_table(row) if row.get('table_query') else render_query(row,at) for row in selected]
     scopes=[{k:deepcopy(v) for k,v in row['scope'].items() if k not in {'workbook','calendar','calendar_read_ids_hash','continue_analysis'}} for row in selected]
     common={'query_analysis':True,'ok':True,'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
             'query_refs':p.query_refs,'scopes':scopes,'operation':p.operation,'complete':all(row['complete'] for row in selected)}
     expenses=[row for row in selected if row['domain']=='expense']
-    if len(expenses)==1:common['followup_scope']=deepcopy(expenses[0]['scope'])
-    elif len(selected)==1:common['followup_scope']=deepcopy(selected[0]['scope'])
+    reusable=[row for row in expenses if row['scope'].get('start') and row['scope'].get('end')]
+    if len(reusable)==1:common['followup_scope']=deepcopy(reusable[0]['scope'])
+    elif len(selected)==1 and selected[0]['scope'].get('start') and selected[0]['scope'].get('end'):
+        common['followup_scope']=deepcopy(selected[0]['scope'])
     if p.operation=='report':
         # Counts, units and incomplete-read qualifiers remain original facts.
         message='\n\n'.join(report.message for report in reports)
@@ -152,6 +161,8 @@ def finish(host,args):
         common['count']=len(occurrences)
         message=f"นัดที่ไม่ซ้ำกันจากผลค้นหาที่เลือกมี {len(occurrences)} ครั้งครับ"
     else:
+        if any(row['domain']=='table' for row in selected):
+            return fail('comparison_basis','กรุณาใช้การจัดกลุ่มและคำนวณผ่าน query_table เพื่อเปรียบเทียบคอลัมน์ที่ต้องการครับ')
         if len(selected)<2 or len({row['domain'] for row in selected})!=1:
             return fail('comparison_basis','ต้องเลือกผลค้นหาอย่างน้อยสองชุดจากแหล่งข้อมูลชนิดเดียวกันครับ')
         expenses=selected[0]['domain']=='expense';unit='บาท' if expenses else 'ครั้ง'

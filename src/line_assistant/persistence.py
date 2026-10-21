@@ -58,7 +58,7 @@ def result_from(value):
     if 'line_actions' in data:
         from .conversation_ui import render_actions
         data['line_message'] = render_actions(value['message'], data.pop('line_actions'))
-    if value["status"] == "recorded":
+    if value["status"] == "recorded" and 'refs' in data:
         data["refs"] = tuple(data["refs"])
     return Result(value["status"], value["message"], data)
 

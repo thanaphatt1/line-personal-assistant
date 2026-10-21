@@ -1,0 +1,41 @@
+[
+  {
+    "table": {
+      "id": "people", "label": "ผู้ติดต่อจำลอง", "description": "คนที่รู้จักและลูกค้า เก็บชื่อ เบอร์ และสถานะติดตาม", "display_field": "name",
+      "aliases": ["คน", "ลูกค้า", "ผู้ติดต่อ"], "operations": ["query", "insert", "update", "delete"],
+      "columns": [
+        {"name": "name", "label": "ชื่อ", "type": "text", "required": true},
+        {"name": "phone", "label": "เบอร์โทร", "type": "text"},
+        {"name": "status", "label": "สถานะ", "description": "pending คือยังไม่ได้โทรกลับ; called คือโทรกลับแล้ว", "type": "enum", "choices": ["pending", "called"], "default": "pending"}
+      ],
+      "examples": ["มีใครที่ยังไม่ได้โทรกลับบ้าง"]
+    },
+    "storage": {"backend": "sheets", "spreadsheet_id": "synthetic-people-workbook", "tab": "People", "sheet_id": 501, "writes_enabled": true, "single_writer_reviewed": true}
+  },
+  {
+    "table": {
+      "id": "family_income", "label": "รายรับงานที่บ้านจำลอง", "description": "รายรับจากการทำงานของที่บ้าน คำว่ารายได้และรายรับในบทสนทนานี้หมายถึงตารางนี้", "routing_group": "income", "default_for_group": true,
+      "aliases": ["รายได้", "รายรับ"], "operations": ["query", "insert", "update", "delete"],
+      "columns": [
+        {"name": "date", "label": "วันที่", "type": "date", "required": true, "default_today": true},
+        {"name": "amount", "label": "จำนวนเงิน", "type": "decimal", "required": true, "unit": "THB"},
+        {"name": "customer", "label": "ลูกค้า", "type": "reference", "references": "people"},
+        {"name": "note", "label": "หมายเหตุ", "type": "text"}
+      ]
+    },
+    "storage": {"backend": "firestore", "collection_path": "family_income", "writes_enabled": true}
+  },
+  {
+    "table": {
+      "id": "shopping", "label": "ของที่ต้องซื้อจำลอง", "description": "รายการซื้อของประจำสัปดาห์ พร้อมจำนวนและสถานะการซื้อ",
+      "aliases": ["ของที่ต้องซื้อ", "รายการซื้อของ"], "operations": ["query", "insert", "update", "delete"],
+      "columns": [
+        {"name": "item", "label": "ของ", "type": "text", "required": true},
+        {"name": "quantity", "label": "จำนวน", "type": "integer", "default": 1},
+        {"name": "purchased", "label": "ซื้อแล้ว", "type": "boolean", "default": false},
+        {"name": "week", "label": "สัปดาห์เริ่มวันที่", "type": "date"}
+      ]
+    },
+    "storage": {"backend": "firestore", "collection_path": "shopping", "writes_enabled": true}
+  }
+]

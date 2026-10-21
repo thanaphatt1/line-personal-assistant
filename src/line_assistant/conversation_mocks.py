@@ -16,6 +16,10 @@ class ConversationSheets(MockSheets):
     def taxonomy(self): return Taxonomy(self.rows)
     def catalog(self): return self.taxonomy().catalog
 
+    def classification_entries(self):
+        from datetime import date
+        return [{**row,'transaction_id':None} for row in self.saved_entries(date.min,date.max)]
+
     def enroll_and_add(self, payload, key):
         plan = Enrollment.model_validate(payload).checked()
         def apply():

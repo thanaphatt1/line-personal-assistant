@@ -183,7 +183,7 @@ def no_save_correction(text):
     return match[1] if match and intent_guard(match[1]) is None else None
 
 class HistoryFirstAssistant(Assistant):
-    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False,previous_prices_enabled=False,calendar_connections_enabled=False,calendar_sharing_email=None):
+    def __init__(self,settings,sheets,*,port,state=None,clock=None,history_first_enabled=False,max_body_bytes=6144,item_enrollment_enabled=False,semantic_enabled=False,raw_history_enabled=False,raw_context_tokens=None,calendar_enabled=False,calendar_adapter=None,calendar_id=None,calendar_label='LINE Assistant',response_realization_enabled=False,saved_expense_editor=None,saved_calendar_editor=None,saved_expense_enabled=False,saved_calendar_enabled=False,provisional_categories_enabled=False,provisional_mapping_enabled=False,mapping_single_writer_reviewed=False,historical_categories_enabled=False,previous_prices_enabled=False,calendar_connections_enabled=False,calendar_sharing_email=None,table_registry=None):
         if type(response_realization_enabled) is not bool:raise ValueError('Explicit response realization flag required')
         self.response_realization_enabled=response_realization_enabled
         if history_first_enabled is not True:raise ValueError('History-first prototype defaults off')
@@ -226,6 +226,9 @@ class HistoryFirstAssistant(Assistant):
         self.historical_categories=HistoricalCategories(self,enabled=historical_categories_enabled,mapping_enabled=historical_categories_enabled and provisional_mapping_enabled,single_writer_reviewed=mapping_single_writer_reviewed)
         from .previous_prices import PreviousPrices
         self.previous_prices=PreviousPrices(self,enabled=previous_prices_enabled)
+        from .table_workflow import TableWorkflow
+        if table_registry is not None and not raw_history_enabled:raise ValueError('Tables require original-message history')
+        self.table_flow=TableWorkflow(self,table_registry)
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
@@ -1114,12 +1117,17 @@ class HistoryFirstAssistant(Assistant):
     def tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            from .table_workflow import NAMES as TABLE_NAMES
+            if self.raw_history_enabled and self.table_flow.enabled and name in TABLE_NAMES:return self.table_flow.tool(name,args)
             if self.raw_history_enabled and name=='inspect_data_sources':
                 from .data_inventory import execute
                 return execute(self,args)
             if self.raw_history_enabled and name=='finish_query_analysis':
                 from .query_analysis import finish
                 return finish(self,args)
+            if self.raw_history_enabled and name=='resolve_activity_dates':
+                from .query_followups import execute
+                return execute(self,args)
             if self.raw_history_enabled and name=='connect_calendar':
                 from .calendar_connections import execute
                 return execute(self,args)
@@ -1194,6 +1202,15 @@ class HistoryFirstAssistant(Assistant):
         except Exception:return {'ok':False,'error':'tool_unavailable','clarification_required':True}
 
     def _result(self,tool_output,model_text=''):
+        if tool_output and tool_output.get('table_tool'):
+            from .table_workflow import render
+            if tool_output.get('ok') and tool_output.get('schema') and model_text.strip() and not success_claim(model_text):
+                from .table_workflow import safe_output
+                return Result('answer',model_text,{'domain':'table','tool_result':safe_output(tool_output)})
+            return Result(**tool_output['table_check_result']) if tool_output.get('table_check_result') else render(tool_output)
+        if tool_output and tool_output.get('query_followup_result'):
+            from .query_followups import render
+            return render(tool_output)
         if tool_output and tool_output.get('data_inventory'):
             from .data_inventory import render
             return render(tool_output)
@@ -1338,6 +1355,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _resume(self,key):
         action=self.state.actions[key]
+        if action.metadata.get('table_change'):return self.table_flow.resume(key)
         if action.metadata.get('previous_price_bases') and action.status!='completed':
             if action.status in {'executing','uncertain'}:
                 try:proof=self.sheets.reconcile_enrollment(key,action.payload) if action.kind=='catalog_expense' else self.sheets.reconcile(key,action.payload)
@@ -1419,6 +1437,9 @@ class HistoryFirstAssistant(Assistant):
 
     def _finish(self,event,at,result):
         result=self._finalize_result(event,result)
+        if self.raw_history_enabled:
+            from .query_followups import annotate
+            result=annotate(self,result)
         if self.raw_history_enabled and not result.data.get('validation_receipt') and result.data.get('domain')!='calendar':
             from .validation_explanations import codes,message
             output=result.data.get('tool_result',{})
@@ -1435,6 +1456,7 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
+        if result.data.get('domain')=='table':return result
         if result.data.get('query_analysis') or result.data.get('data_inventory'):return result
         if (result.data.get('tool_result') or {}).get('calendar_connection'):return result
         if not self.response_realization_enabled:return result
@@ -1453,6 +1475,8 @@ class HistoryFirstAssistant(Assistant):
         self._patch_stamp=stamp;self.trace=[];self.context_stats=[]
         self._request_views={};self._read_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set()
         self.saved_edits.request_candidates={}
+        self.table_flow.candidates={}
+        self.table_flow.selection_sets={}
         self.provisional_categories.current_basis=None
         shown_text='เลือกการทำงานกับร่างผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|')) else text
         if self.raw_history_enabled:
@@ -1461,6 +1485,8 @@ class HistoryFirstAssistant(Assistant):
             if original and original[0]==event and isinstance(original[1],str):shown_text=original[1]
         self._current={'role':'user','source_ref':source_ref(event),'text':shown_text,'at':at.isoformat()}
         self.state.append('user',event,at,text=shown_text)
+        table_control=self.table_flow.control(text)
+        if table_control is not None:return self._finish(event,at,table_control)
         historical_control=self.historical_categories.control(text)
         if historical_control is not None:return self._finish(event,at,historical_control)
         category_control=self.provisional_categories.control(text)
@@ -1550,6 +1576,8 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
                     from .query_analysis import definitions as analysis_definitions,READ_TOOLS
                     definitions_for_request+=analysis_definitions()
+                    from .query_followups import definitions as followup_definitions,context as followup_context
+                    definitions_for_request+=followup_definitions(self)
                     from .data_inventory import definitions as inventory_definitions,context as inventory_context
                     definitions_for_request+=inventory_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
@@ -1558,6 +1586,7 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request+=self.saved_edits.definitions()
                     definitions_for_request+=self.provisional_categories.definitions()
                     definitions_for_request+=self.historical_categories.definitions()
+                    definitions_for_request+=self.table_flow.definitions()
                     if self._query_analysis_active:definitions_for_request=[t for t in definitions_for_request if t['name'] in READ_TOOLS]
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
                     try:
@@ -1565,7 +1594,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context()})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context()})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงหยุดรอบนี้โดยเก็บต้นฉบับไว้ครบ'))
                         summary_attempted=True
@@ -1601,6 +1630,9 @@ class HistoryFirstAssistant(Assistant):
                 call=saved['call']
                 if call is None:
                     if self._query_analysis_active:
+                        if not self._query_reads:
+                            from .query_followups import current,clarification
+                            if current(self) is not None:return self._finish(event,at,clarification(self))
                         if not self._query_reads and self._last_inventory:
                             return self._finish(event,at,self._result(self._last_inventory))
                         from .query_analysis import finish
@@ -1610,7 +1642,7 @@ class HistoryFirstAssistant(Assistant):
                     return self._finish(event,at,self._result(last,saved['text']))
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
-                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar','inspect_data_sources'}:
+                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
                     signature=digest([call['name'],json.loads(call['arguments'])])
                     if signature in seen_reads:
                         return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
@@ -1619,6 +1651,20 @@ class HistoryFirstAssistant(Assistant):
                 else:last=self.tool(call)
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if last.get('table_tool'):
+                    if last.get('table_query') and last.get('continue_analysis'):
+                        from .query_analysis import remember
+                        last=remember(self,last,at,step);self._query_analysis_active=True
+                        previous=(call,last);continue
+                    if last.get('continue_model') and (last.get('ok') or last.get('schema_repair') or last.get('fact_repair') or last.get('planning_repair') or last.get('routing_repair')):
+                        previous=(call,last);continue
+                    return self._finish(event,at,self._result(last))
+                if last.get('query_followup_result'):return self._finish(event,at,self._result(last))
+                if self.raw_history_enabled:
+                    from .query_followups import repair
+                    corrected=repair(self,last)
+                    if corrected:
+                        last=corrected;self._query_analysis_active=True;previous=(call,last);continue
                 if last.get('data_inventory'):
                     self._last_inventory=last
                     if last.get('continue_analysis') and last['ok']:

@@ -49,6 +49,43 @@ For multi-part questions, `continue_analysis=true` retains the complete read as 
 
 `finish_query_analysis` accepts current-request references and an operation: `report`, `expense_sum`, `calendar_count`, or `compare`. Code performs the arithmetic. Expense addition rejects overlapping inclusive date intervals; Calendar union uses stable occurrence references across overlapping reads and calendars. Comparisons require complete reads of the same domain. Incomplete reads or uncertain Calendar membership cannot produce an aggregate total. A report preserves each original incomplete-result qualifier. Duplicate, invented or previous-turn references are rejected. Final replies disclose the actual source periods; combining a few windows does not establish coverage of a larger unqueried period. Plain model prose cannot replace these grounded facts.
 
+An uncertain activity read also attaches a bounded clarification to its existing
+receipt: the original question and period, activity, confirmed occurrences and
+up to five displayed candidates. `pending_query` exposes this context on later
+turns after verified delivery, within the same owner, expense dataset, selected
+Calendar configuration and 24-hour history window. No separate pending-write
+workflow, collection or migration is used. A completed new read or a business
+review replaces this read focus; plain chat and failed reads can preserve it.
+
+For a spending follow-up such as `มีวันที่ 14`, the planner selects candidate
+references with `resolve_activity_dates`, citing a literal selection from the
+current owner message. The model interprets the language; the server checks
+reference ownership and delivery, re-reads Calendar, rejects changed/deleted
+occurrences and calculates the expense subtotal on the confirmed Bangkok dates.
+The selected event must also agree with any unambiguous explicit date in that
+literal evidence. `decision=exclude` records a rejected candidate without
+confirming another candidate or creating an expense total. For example,
+`วันที่ 14 ไม่ใช่คุมสอบ` excludes day 14 and leaves day 29 unconfirmed; it
+cannot authorize a day-29 subtotal. Exclusions survive restart alongside the
+remaining candidates, and do not contribute to later confirmed-date sums.
+The original month supplies the month/year for the displayed candidate, even
+when the current clock is in another month. Known matches and subsequently
+confirmed candidates are unioned; two events on one date count expenses once.
+Unconfirmed appointments remain visible for later confirmation. The reply calls
+the amount a confirmed-date subtotal and discloses any unresolved candidates;
+it never presents those dates as complete coverage of the original activity or
+as proof of costs caused by the event.
+
+While such a clarification is pending, an unconditional expense read with
+`date_mode=previous` cannot silently broaden the selection to the entire month.
+That error, missing tool dates and stale request-local Calendar refs return
+the pending context to the ordinary read-only model loop for repair. Repeated
+calls/reads, deadlines and accounting gates still stop the loop. If the planner
+cannot resolve the selection, the fallback lists the actual candidates and asks
+which appointment, preserving the known period. An unrelated new question can
+use its own explicit period normally. Offline tests exercise these contracts
+with scripted choices; real model interpretation remains a separate evaluation.
+
 The loop ends on a final answer/tool result, failure, repeated identical read or invalid duplicate call ID. Removing the turn-call ceiling does not remove provider/context/output limits, the existing owner RPC/deadline scope, configured daily/monthly accounting gates or unknown-attempt/replay protections. Completed proposal caches for every step are cleared together with the production receipt; fingerprints, reservations, usage and unknown attempts remain. Account settings and production activation are separate from a source change.
 
 The optional reply phase composes natural Thai by selecting phrases around separate immutable period, filter, total and count slots. Verified row details are appended by the server; the model need not repeat or enumerate them. Partial-result qualifiers and resolution instructions are also required immutable facts, and unresolved names are appended as locked rows. Amounts/counts include their units, preventing unit swaps; required schema fields retain every header fact exactly once, and per-slot phrase enums cannot invent dates, quantities, names, success or change units. A model failure returns a natural server fallback. Distinct non-sensitive reason codes distinguish invalid arguments, unknown filters, incomplete mappings, schema errors, provider failures and unfinished reads. They do not establish the cause of any earlier live incident. A terse dated title such as `พรุ่งนี้ Workshop` asks whether to add an appointment or view saved events, and creates no draft. This also applies after a previous query.

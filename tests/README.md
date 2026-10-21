@@ -1,11 +1,33 @@
 # Test guide
 
+Metadata table suites use synthetic people, income and shopping schemas:
+[engine](test_tables.py), [dialogue](test_table_workflow.py),
+[REST adapters](test_table_storage.py), and [signed composition](test_table_factory.py).
+They cover nonfinancial records, complete-input calculations, generic CRUD
+reviews, restart/replay and positive-proof recovery. The
+[registration fixture](fixtures/table_registry.json) contains no real targets.
+
 The default pytest suite checks the assistant's code with synthetic data and
 scripted provider/model responses. It needs no LINE, Google or OpenAI credentials.
 Passing it shows that the tested contracts hold; it does not measure general
 language-model accuracy or prove a live owner workflow.
 Use the [database and field guide](../docs/database-schema.md) when constructing
 synthetic Sheet rows, persisted state or source/transaction references.
+
+The [activity-spending follow-up regression](test_activity_expense_followup.py)
+uses a [synthetic two-turn scenario](fixtures/activity_expense_followup.json): an
+uncertain exam-duty Calendar result followed by `มีวันที่ 14`. It checks both
+speakers and the verified month after a factory restart, reproduces the
+`date_required` repair, blocks an unconditional previous-month total, rejects
+stale Calendar refs and calculates the confirmed-date subtotal. Short selections
+use the delivered `pending_query` context and `resolve_activity_dates` tool;
+remaining candidates survive restart and can be confirmed later. Cases also
+cover changed/deleted events, access failures, expired/undelivered context,
+unrelated new queries, same-day deduplication and exclusive midnight ends. The
+former expected failures now pass. The malformed model calls are constructed
+reproductions, not captured production decisions; the scripted controls do not
+establish that the model understands the dialogue.
+Run with `pytest tests/test_activity_expense_followup.py -p no:cacheprovider`.
 
 ## Run from the repository root
 

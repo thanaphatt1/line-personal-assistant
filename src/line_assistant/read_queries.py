@@ -185,6 +185,9 @@ def execute(host, name, args):
     except (ValueError,TypeError,KeyError):return error(output,'invalid_arguments','clarification')
     if domain=='expense' and p.measure!='expense':return error(output,'income_unconfigured','income_unconfigured')
     if p.date_mode=='previous':
+        if domain=='expense' and not p.calendar_query_refs:
+            from .query_followups import current
+            if current(host) is not None:return error(output,'activity_selection_required','clarification')
         if domain=='expense' and p.calendar_query_refs:
             reads=getattr(host,'_query_reads',{})
             try:
@@ -237,7 +240,7 @@ def execute(host, name, args):
         start=datetime.combine(a,time.min,BANGKOK);end=datetime.combine(b+timedelta(days=1),time.min,BANGKOK)
         if p.upcoming:start=max(start,datetime.fromisoformat(host._current['at']).astimezone(BANGKOK))
         try:events=(host.calendar_flow.adapter.saved_events(start,end,include_details=bool(p.filter_text),include_refs=True) if p.continue_analysis
-                    else host.calendar_flow.adapter.saved_events(start,end,include_details=True) if p.filter_text
+                    else host.calendar_flow.adapter.saved_events(start,end,include_details=True,include_refs=True) if p.filter_text
                     else host.calendar_flow.adapter.saved_events(start,end)) if start<end else []
         except (ApiError,OutcomeUnknown):return error(output,'provider_failure')
         except NotReady:return error(output,'read_incomplete')
@@ -350,6 +353,7 @@ def period_label(scope, at):
 
 
 ERRORS = {
+ 'activity_selection_required':'ยังมีนัดที่รอยืนยันสำหรับคำถามรายจ่ายเดิมครับ โปรดเลือกนัดก่อนรวมรายจ่ายของวันนั้น',
  'invalid_arguments':'ข้อมูลที่ใช้ค้นหายังไม่ชัดเจนครับ ช่วยระบุช่วงวันหรือสิ่งที่ต้องการดูอีกครั้ง',
  'date_required':'ต้องการดูช่วงวันไหนครับ?',
  'date_bounds':'ช่วงวันที่ไม่ถูกต้องหรือยาวเกินขอบเขตครับ รายจ่ายดูได้ไม่เกิน 367 วัน และปฏิทินไม่เกิน 31 วัน',

@@ -11,7 +11,7 @@ EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
     'production_history','history_cloud_run','expense_evidence','draft_workflow','catalog_names',
     'expense_sources','validation_explanations','calendar_dates','calendar_provider','calendar_workflow',
     'calendar_transport','calendar_sources','calendar_batches','calendar_connections','calendar_inference','query_analysis','response_realization','calendar_event_types','read_queries',
-    'saved_edits','expense_edits','calendar_reschedule','saved_edit_transport','provisional_categories','historical_categories','previous_prices','data_inventory'))+('scripts/verify_history_signed_startup.py','deploy/history-production.Dockerfile')
+    'saved_edits','expense_edits','calendar_reschedule','saved_edit_transport','provisional_categories','historical_categories','previous_prices','data_inventory','query_followups','tables','table_storage','table_workflow'))+('scripts/verify_history_signed_startup.py','deploy/history-production.Dockerfile')
 INPUTS=base.BUILD_INPUTS+EXTRA
 
 def prepare(root,output):
