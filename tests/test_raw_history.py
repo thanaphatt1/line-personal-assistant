@@ -92,12 +92,13 @@ def summary_output(body):
     refs=[r['source_ref'] for r in payload['history'] if r['role']=='user'][:1]
     return response(name='roll_history_summary',args={'summary':'คุยเรื่องก่อนหน้าโดยไม่มีสิทธิ์บันทึก','source_refs':refs})
 
-def test_overflow_summary_keeps_raw_originals_and_recent_exchange_without_loop():
-    # The field-source schema increases the fixed tool header. This positive
-    # Ranking/join/inventory schemas need about35k after summary and43k
-    # before; this positive probe must compact. Negative14k probes below
-    # still verify safe stopping and original retention.
-    h=Harness(raw_context_tokens=35000);seed(h,9,300)
+def test_overflow_summary_keeps_raw_originals_and_recent_exchange_without_loop(monkeypatch):
+    # Intent/history provenance instructions increase the fixed header. This
+    # capacity still forces compaction and fits the resulting summary;
+    # negative14k probes below and production capacity remain unchanged.
+    h=Harness(raw_context_tokens=37000);seed(h,9,300)
+    from context_capacity import require_compaction
+    require_compaction(monkeypatch,h.service)
     count=len(h.state.history)
     r=h.send('คุยต่อ',summary_output,response(text='คุยต่อครับ'))
     assert r.status=='answer' and len(h.port.requests)==2

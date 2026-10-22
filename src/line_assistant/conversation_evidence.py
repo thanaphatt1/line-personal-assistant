@@ -49,7 +49,7 @@ def category_choice(text, taxonomy, *, allow_bare, item=''):
     command = command_text(text)
     if any(mark in command for mark in ('"', '“', '”', "'")):
         return [], False
-    command = re.sub(r'(?:ครับ|ค่ะ)\s*$', '', command).strip()
+    command = re.sub(r'(?:ครับ|ค่ะ|ไง)\s*$', '', command).strip()
     # A new-name decision and its category may be one owner answer. Retain a
     # full directed choice; arbitrary prose/quotes/negation never becomes one.
     command = re.sub(r'^(?:เป็น\s*)?รายการใหม่\s*[,;:]?\s*(?=(?:เพิ่ม|ใส่|จัด|add)\s*(?:ใน|in\b|into\b))','',command,flags=re.I)
@@ -61,6 +61,13 @@ def category_choice(text, taxonomy, *, allow_bare, item=''):
         r')?\s*(?:ใน|เป็น|to|as)?\s*)?(?:หมวด(?:หมู่)?(?!ย่อย)|category)\s*[:=]?\s*(.+)', command, re.I)
     if not directed:
         directed = re.fullmatch(r'(?:(?:ช่วย|ขอ|กรุณา)\s*)?(?:เพิ่ม|ใส่|จัด|add)\s*(?:ใน|into\b|in\b)\s*(?:(?:หมวด(?:หมู่)?(?!ย่อย)|category)\s*)?(.+)',command,re.I)
+    if not directed:
+        # The target can precede the action, and Thai speakers commonly put
+        # "ใหม่" after เพิ่ม. Match the complete declaration, never a keyword
+        # buried inside unrelated prose or an item name.
+        action = r'(?:เพิ่ม|ใส่|จัด)(?:ใหม่|เป็นรายการใหม่)?'
+        directed = re.fullmatch(r'(?:(?:ช่วย|ขอ|กรุณา)\s*)?(?:' + target + r'\s*)?' + action +
+            r'\s*(?:' + target + r'\s*)?(?:ไป)?\s*(?:ใน|เป็น)\s*(?:(?:หมวด(?:หมู่)?(?!ย่อย)|category)\s*)?(.+)',command,re.I)
     value = directed[1].strip() if directed else command if allow_bare else ''
     value = re.split(r'\s*(?:หมวดย่อย|subcategory)\s*[:=]?', value, maxsplit=1, flags=re.I)[0].strip()
     ids = taxonomy.category_matches(value) if value else []

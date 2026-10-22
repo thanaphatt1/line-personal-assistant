@@ -64,12 +64,13 @@ def confirmed_date(h):
 
 def date_targets(h):
     value=confirmed_date(h)
-    if not value:return []
-    if getattr(h,'production',False):
+    if value and getattr(h,'production',False):
         event=value['confirmed_event'];reply=h.state.replies.get(event);receipt=h.state.receipts.get(event)
         if (h.state.event_workbooks.get(event)!=storage_scope(h.sheets) or not reply or reply.status!='sent'
-            or not receipt or reply.content_hash!=message_hash(rendered_message(receipt.result))):return []
-    return [{'date_ref':'date_'+digest([h.settings.owner_id,getattr(getattr(h.sheets,'target',None),'spreadsheet_id',None),value])[:20],**value}]
+            or not receipt or reply.content_hash!=message_hash(rendered_message(receipt.result))):value=None
+    result=[{'date_ref':'date_'+digest([h.settings.owner_id,getattr(getattr(h.sheets,'target',None),'spreadsheet_id',None),value])[:20],**value}] if value else []
+    result += [{'date_ref':ref,'date':proof['values']['date'],'temporal':True} for ref,proof in getattr(h,'_temporal_values',{}).items() if proof['values']['date']]
+    return result
 
 def inspect_drafts(h,ref=None):
     drafts=[h._draft(k) for k,d in h.state.drafts.items() if d['status']!='recorded' and (ref is None or k==ref)]

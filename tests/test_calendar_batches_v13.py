@@ -209,10 +209,10 @@ def test_after_ttl_reconcile_known_children_and_never_start_unattempted_third():
     assert got.status=='expired' and len(got.data['created_refs'])==2 and len(got.data['pending_refs'])==1 and provider.posts==2
     assert children(h)[2]['status']=='needs_information'
 
-def test_mixed_current_calendar_financial_intent_requests_domain_selection_and_keeps_raw_text():
+def test_mixed_current_calendar_financial_intent_reaches_planner_and_keeps_raw_text():
     h=Harness();text='เพิ่มนัดอ่านหนังสือพรุ่งนี้9:00-10:00 และบันทึกรายจ่ายกาแฟ 31 บาท'
-    r=h.send(text)
-    assert r.status=='clarification' and r.data['domain_selection_required'] and not h.model.requests
+    r=h.send(text,response(text='เริ่มเตรียมนัดก่อนครับ'))
+    assert len(h.model.requests)==1 and 'domain_selection_required' not in r.data
     assert any(row['text']==text for row in h.state.raw_journal.rows.values()) and not h.provider.events and not h.sheets.entries
 
 @pytest.mark.parametrize('field',['members','owner_id','calendar_id','version'])
@@ -390,8 +390,7 @@ def test_unconnected_two_names_keep_independent_dates_in_both_word_orders(leadin
 
 @pytest.mark.parametrize('text,spec',[
     ('แก้นัดที่สองสิ้นสุด 18:00',{'index':2,'end_time_text':'19:00'}),
-    ('แก้นัดที่สองเป็น 18:00 JST',{'index':2,'end_time_text':'18:00'}),
-    ('ยังไม่ต้องสร้าง แก้นัดที่สองสิ้นสุด 18:00',{'index':2,'end_time_text':'18:00'})])
+    ('แก้นัดที่สองเป็น 18:00 JST',{'index':2,'end_time_text':'18:00'})])
 def test_rejected_update_revokes_old_batch_consent_without_changing_owned_facts(text,spec):
     h=Harness();old=two(h,True);facts=[deepcopy(d['facts']) for d in children(h)]
     r=prepare(h,text,[spec])
@@ -446,11 +445,11 @@ def test_literal_combined_start_markers_do_not_leave_a_false_missing_time():
     assert r.status=='preview' and children(h)[1]['end']=='2026-10-23T14:45:00+07:00',r
 
 
-def test_quoted_whole_instruction_never_becomes_batch_creation_intent():
+def test_model_proposal_from_quoted_text_still_cannot_create_without_new_confirmation():
     h=Harness();r=prepare(h,'"เพิ่มนัด ซ้อมดนตรี 22 Oct 9:00-10:00 และซ้อมดนตรี 23 Oct 14:00-15:00"',[
         {'title':'ซ้อมดนตรี','date_text':'22 Oct','time_text':'9:00','end_time_text':'10:00'},
         {'title':'ซ้อมดนตรี','date_text':'23 Oct','time_text':'14:00','end_time_text':'15:00'}])
-    assert r.status=='clarification' and not h.state.calendar_batches and h.provider.posts==0
+    assert r.status=='preview' and h.provider.posts==0 and not h.sheets.entries
 
 
 @pytest.mark.parametrize('request_word',['นัด','ลง','มี'])

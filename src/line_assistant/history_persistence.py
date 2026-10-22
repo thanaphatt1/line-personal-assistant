@@ -80,6 +80,11 @@ def restore_history(state,value,owner):
                 or entry['kind']!='expense' or not isinstance(entry['source_refs'],list) or any(not isinstance(r,str) for r in entry['source_refs'])):
                 raise ValueError('Invalid persisted partial draft values')
             facts=entry.get('fact_sources',{})
+            if entry['date_basis'].get('temporal'):
+                from .temporal import validate_proof
+                proof=entry['date_basis']['temporal'];validate_proof(proof)
+                if proof['owner']!=owner or proof['values']['date']!=entry['date'] or proof['source_ref'] not in facts.get('date',[]):
+                    raise ValueError('Invalid persisted temporal expense date')
             names=entry.get('name_candidates',[])
             if (not isinstance(names,list) or len(names)>1000 or any(not isinstance(n,str) or not 1<=len(n)<=200 for n in names)
                 or len(names)!=len(set(names))):raise ValueError('Invalid persisted catalog name candidates')

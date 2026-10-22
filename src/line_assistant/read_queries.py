@@ -107,7 +107,8 @@ def context(host):
             'query_capabilities':{'expense_group_by':['item','date','category','subcategory'],
                 'expense_order_by':['date','amount','count','label'],'top_rows':20,'sort_before_limit':True,
                 'calendar_date_join':'complete current-request Calendar query refs; unions Bangkok dates; all spending on those dates, not causal event costs',
-                'unavailable':['income','balance','arbitrary_SQL','causal_expense_attribution']},
+                'relational_analysis':'query_relations executes read-only SQL over complete observed snapshots; no provider SQL or writes',
+                'unavailable':['unconfigured_income','unconfigured_balance','provider_SQL','causal_expense_attribution']},
             'query_catalog':catalog}
 
 def calendar_read_ids_hash(host):

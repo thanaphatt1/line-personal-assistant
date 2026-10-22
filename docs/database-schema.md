@@ -1,9 +1,15 @@
 # Database and field guide
 
-The assistant uses Google Sheets for expenses and item/category mappings, Google
-Calendar for events, and Firestore for workflow state and original messages.
-There is no separate relational database in the production composition. SQLite
-is used by local mock/restart harnesses.
+Business records can live in Google Sheets or Firestore through metadata-defined
+tables. The established expense/catalog workflow has its own configured storage
+adapter, and Google Calendar holds events. Separate Firestore records hold
+workflow state and original messages.
+
+The main SQL analysis layer uses temporary in-memory SQLite connections over
+complete observed records; it is not a persistent business database or a SQL
+endpoint for Sheets/Firestore. Other SQLite stores support local mock/restart
+harnesses. See [table schemas](tables.md), [SQL analysis](relational-queries.md)
+and [expense backends](storage-backends.md).
 
 The setup-facing Sheet contract below comes from the
 [configured target](../src/line_assistant/pilot_config.py) and
@@ -16,11 +22,17 @@ console. All example names and values here are synthetic.
 
 ```mermaid
 flowchart LR
-    Owner[Owner message] --> App[Validate, review and confirm]
+    Owner[Owner message] --> App[Plan reads or reviewed changes]
+    App <--> Tables[Metadata-defined Sheets/Firestore business tables]
+    Tables --> Rows[Complete observed rows]
+    App --> Query[Proposed read-only SQL]
+    Rows --> SQL[Temporary in-memory SQLite]
+    Query --> SQL --> Answer[Computed query result]
     App --> Expenses[Sheets: All Expenses A:E]
     App --> Catalog[Sheets: Database A:C]
     Expenses -. List matches Item identity .-> Catalog
     App --> Calendar[Google Calendar events]
+    Calendar --> Rows
     App <--> State[Firestore: owner state snapshot]
     App --> Raw[Firestore: immutable speaker journal]
     State -. event and source references .-> Raw
@@ -216,7 +228,7 @@ or Calendar creation ID; an entry/source reference cannot authorize an effect.
 
 `history24.current` and retained workspace parts use `local-history-state-v1`.
 The name is a persisted format identifier also used by the production composition;
-it does not mean production uses local SQLite.
+it does not mean state persistence uses a local SQLite database.
 
 | History-part fields | Required/conditional and purpose |
 | --- | --- |
@@ -320,7 +332,8 @@ See [Calendar provider](../src/line_assistant/calendar_provider.py) and
 the owner must create on existing events.
 
 Local SQLite snapshot/provider/journal tables exist only for mock and recovery
-harnesses; they are not a production database to deploy. Cloud Storage holds
+harnesses. They are separate from the request-local SQLite SQL analysis engine;
+neither requires a persistent SQLite business database to deploy. Cloud Storage holds
 reviewed build source archives, Artifact Registry holds images, and Cloud Logging
 holds operational logs. They are separate from the application's expense,
 Calendar and workflow-state schemas.

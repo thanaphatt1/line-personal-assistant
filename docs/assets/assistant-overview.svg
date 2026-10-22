@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="700" viewBox="0 0 760 700" role="img" aria-labelledby="title desc">
-  <title id="title">A personal assistant, with tools when needed</title>
-  <desc id="desc">A query flows into a friendly robot representing the assistant framework, then to an output. A separate tools group contains an expense sheet, category lookup and Calendar. Arrows show tool requests flowing from the framework and results returning. Writes require owner confirmation.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="760" viewBox="0 0 760 760" role="img" aria-labelledby="title desc">
+  <title id="title">A personal assistant for structured data and Calendar</title>
+  <desc id="desc">A query enters the assistant, which uses an LLM, metadata and read-only SQL to analyze observed records. Source adapters return rows and schemas from Google Sheets, Firestore and Calendar. Structured tables can contain people, income, expenses or shopping records. Writes require owner confirmation.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 1 1 L 9 5 L 1 9 Z" fill="#526C8D"/>
@@ -9,7 +9,7 @@
       <path d="M 1 1 L 9 5 L 1 9 Z" fill="#147D72"/>
     </marker>
   </defs>
-  <rect x="1" y="1" width="758" height="698" rx="32" fill="#F7FAFD" stroke="#DCE5F0" stroke-width="2"/>
+  <rect x="1" y="1" width="758" height="758" rx="32" fill="#F7FAFD" stroke="#DCE5F0" stroke-width="2"/>
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif" text-anchor="middle" fill="#19334D">
     <text x="380" y="49" font-size="25" font-weight="500" fill="#526C8D">A little help, when you need it</text>
 
@@ -22,7 +22,7 @@
     <path d="M195 232 H234" fill="none" stroke="#526C8D" stroke-width="3" marker-end="url(#arrow)"/>
     <rect x="242" y="87" width="276" height="270" rx="30" fill="#E9EDFF" stroke="#B9C4EA" stroke-width="2"/>
     <text x="380" y="128" font-size="34" font-weight="700">Assistant</text>
-    <text x="380" y="160" font-size="27" fill="#52618A">framework</text>
+    <text x="380" y="160" font-size="27" fill="#52618A">LLM + metadata</text>
 
     <!-- Original, code-native robot illustration. -->
     <path d="M380 195 V181" stroke="#5967A8" stroke-width="4" stroke-linecap="round"/>
@@ -36,7 +36,7 @@
     <path d="M369 246 Q380 255 391 246" fill="none" stroke="#147D72" stroke-width="3" stroke-linecap="round"/>
     <path d="M350 283 Q380 272 410 283 L417 310 Q380 324 343 310Z" fill="#FFFFFF" stroke="#5967A8" stroke-width="3" stroke-linejoin="round"/>
     <circle cx="380" cy="298" r="7" fill="#32A99B"/>
-    <text x="380" y="341" font-size="24" font-weight="550" fill="#52618A">LLM + code</text>
+    <text x="380" y="341" font-size="24" font-weight="550" fill="#52618A">Read-only SQL</text>
 
     <path d="M526 232 H565" fill="none" stroke="#526C8D" stroke-width="3" marker-end="url(#arrow)"/>
     <rect x="572" y="158" width="156" height="148" rx="24" fill="#FFFFFF" stroke="#D4DFEC" stroke-width="2"/>
@@ -48,30 +48,27 @@
     <rect x="214" y="387" width="332" height="43" rx="21.5" fill="#FFFFFF" stroke="#D4DFEC" stroke-width="1.5"/>
     <text x="380" y="416" font-size="25" font-weight="600">Confirm before writes</text>
     <path d="M242 305 H195 V489" fill="none" stroke="#526C8D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/>
-    <text x="110" y="411" font-size="25" font-weight="600" fill="#526C8D">Tool</text>
+    <text x="110" y="411" font-size="25" font-weight="600" fill="#526C8D">Source</text>
     <text x="110" y="441" font-size="25" fill="#526C8D">request</text>
     <path d="M565 489 V305 H526" fill="none" stroke="#147D72" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#teal-arrow)"/>
-    <text x="650" y="411" font-size="25" font-weight="600" fill="#147D72">Tool</text>
-    <text x="650" y="441" font-size="25" fill="#147D72">result</text>
+    <text x="650" y="411" font-size="25" font-weight="600" fill="#147D72">Source</text>
+    <text x="650" y="441" font-size="25" fill="#147D72">rows</text>
 
-    <rect x="32" y="501" width="696" height="166" rx="28" fill="#EDF3F8" stroke="#D4DFEC" stroke-width="2"/>
-    <text x="380" y="538" font-size="30" font-weight="650">Tools</text>
-    <rect x="55" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
-    <rect x="276" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
-    <rect x="497" y="555" width="208" height="86" rx="18" fill="#FFFFFF"/>
-
-    <rect x="73" y="580" width="29" height="37" rx="5" fill="#E8F7F2" stroke="#147D72" stroke-width="2"/>
-    <path d="M78 589 H97 M78 598 H97 M78 607 H97 M86 589 V612" stroke="#147D72" stroke-width="1.5" fill="none"/>
-    <text x="178" y="591" font-size="27" font-weight="600">Expense</text>
-    <text x="178" y="623" font-size="27">sheet</text>
-
-    <circle cx="308" cy="594" r="13" fill="#EFF0FC" stroke="#6874B6" stroke-width="2.5"/>
-    <path d="M318 604 L328 615" stroke="#6874B6" stroke-width="3" stroke-linecap="round"/>
-    <text x="405" y="591" font-size="27" font-weight="600">Category</text>
-    <text x="405" y="623" font-size="27">lookup</text>
-
-    <rect x="514" y="582" width="31" height="32" rx="5" fill="#EFF0FC" stroke="#6874B6" stroke-width="2"/>
-    <path d="M515 591 H544 M522 578 V586 M537 578 V586 M522 598 H527 M532 598 H537 M522 605 H527" fill="none" stroke="#6874B6" stroke-width="2" stroke-linecap="round"/>
-    <text x="629" y="607" font-size="27" font-weight="600">Calendar</text>
+    <!-- Structured records use Sheets/Firestore; Calendar retains event semantics. -->
+    <rect x="32" y="501" width="696" height="226" rx="28" fill="#EDF3F8" stroke="#D4DFEC" stroke-width="2"/>
+    <text x="380" y="538" font-size="30" font-weight="650">Data sources</text>
+    <text x="265" y="572" font-size="24" font-weight="550" fill="#526C8D">Structured tables</text>
+    <text x="601" y="572" font-size="24" font-weight="550" fill="#526C8D">Events</text>
+    <rect x="55" y="585" width="208" height="103" rx="18" fill="#FFFFFF"/>
+    <rect x="276" y="585" width="208" height="103" rx="18" fill="#FFFFFF"/>
+    <rect x="497" y="585" width="208" height="103" rx="18" fill="#FFFFFF"/>
+    <image x="73" y="612" width="48" height="48" aria-hidden="true" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAAWlBMVEUAAABAv0A0p1I0qFMzqFM0qFMXgTc1qlU0qFMYgDg0qFM0p1M0qFP///+Z06k0qFM0qFM0p1M1p1Q1qFQwr1A0qVM1qFMzplM0qFM0qFM0p1I0qFMzqVJAn2C6RdwUAAAAHnRSTlMABGO73/9vGM//v2vv///X26ODWxDjsyjTe8PzcwhvOvRjAAAAv0lEQVR4Ae3TQQIBQQxE0YYUBQAA978my9lNpAWof4G3+uUTU51ur2+OUGINhuaLQWFkzhgTxuaNMaHnB2LCxA/EBHsMILIBIhsgsgEiGyCyASIbILIBIhsgsgEiGyCyASIbILIBIhsg0gC/YJUJECBAwLOBqTMB3w5Yo9n03swaCRBQD2g0AfrgUwEBOllAOAECBAgQIECAv3krsLCqlq3AyqpatwKbrVW0K+3thxbuMCiOOsfT2SIdLtfygakbsF6H8/pufmQAAAAASUVORK5CYII="/>
+    <text x="185" y="626" font-size="26" font-weight="600">Google</text>
+    <text x="185" y="657" font-size="26">Sheets</text>
+    <svg x="287" y="610" width="52" height="52" viewBox="0 0 24 24" aria-hidden="true"><defs><style>.firestore-cls-1{fill:#669df6;}.firestore-cls-2{fill:#aecbfa;}.firestore-cls-3{fill:#4285f4;}</style></defs><title>Icon_24px_Firestore_Color</title><g data-name="Product Icons"><g data-name="colored-32/firestore"><g ><path class="firestore-cls-1" d="M21,13,12,9v4l9,4Zm0-7L12,2V6l9,4Z"/><polygon id="firestore-Rectangle-7" class="firestore-cls-2" points="3 6 12 2 12 6 3 10 3 6"/><polygon id="firestore-Rectangle-7-2" data-name="Rectangle-7" class="firestore-cls-2" points="3 13 12 9 12 13 3 17 3 13"/><polygon id="firestore-Rectangle-7-3" data-name="Rectangle-7" class="firestore-cls-3" points="12 18 15.37 16.5 19.88 18.5 12 22 12 18"/></g></g></g></svg>
+    <text x="410" y="645" font-size="26" font-weight="600">Firestore</text>
+    <image x="510" y="612" width="48" height="48" aria-hidden="true" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABGlBMVEUAAABAgP9DhvVBhvRChfRChfQZZ9IZZ9EZaNMYZtNAivRDhfQaZ9IVatVBhvQZaNJDhfMZaNEaZ9FChfQZZ9L////7vATx9v6myfaCs/Jin+9XmO57rvK41Pj7/f/i7fzG3PmYwPUofOkac+gwgOq00fifxPUhd+l0qvGRu/Tt9P2UvvQleulFjew3heu81vjD2vkzguvp8v34+/7f6/xMku1QlO2GtfMedegsfupTlu5JkO2tzfd/sPKJt/O/2PmNufTX5/s6h+uqy/abwvXJ3vpwqPH0+P4+ieyxz/dtpvBbm+5ene/U5ftlofDN4PoYgDg0qFPqQzXqRDUYgDgXgDgggEAYgDgagDkXgDcAgEAZgTgYgDgYgDg1l7sXAAAAXnRSTlMABGO73///z5tLGM+fDL+7a1Oz79///////////////////////////////////////////////////////////////////////////////////4/bgxDjKM8Ee8PzvzhR0gAAAcJJREFUeAHt1oWu20AQheEppMzthPmEmXOZqQxbhvd/ja59mS1rRhDtbxTtJ1qgWcvlct24eet2JER3TnT33n26rAcPI0eFBmyPHtPFPYlIALandGHPIjKA7Tld1C054AVd1Es54BVdVEQKsMkBDnCAAxzAAYueywEOmEEgFk8kU+lMlk+Wy+djMkC2UIRfqczHVapAXgao4ag6H9RIAlJAE7ZWuwOvLvv1+hADBlUAiSHzaAxgwrbsdA6CwHQeC+wVmwdgpcYibHNCgG24lGO/JADvdwHA8ooccNQEQMx+c635VV6TB9arwAZ7dQesAGQ6AJb4IGFgdaHdgm2ZlYBN+G2xMtAvawHbOzuTImxbSoDXsDkHzI3UAFsBwI4msDsH7MkDw9dNPqgEzIkDayVUY+w3ALAhDrwB8DbLXu8AJMWB93MAxquNRncMW08c4BWc6APLA5zGUaldDYC7e/DrV9TWoo+F5cRWzx0dHTD7wKdzfQ7Yl7MZZcCQLmBIFzCkCxjSBQzpAoZ0AUO6gCFdwJAuYEgXMKQLGLqur+GBQOPTt/BAoPHp+4/wgKEg/fwVFjAUrN9//v4LAxhyuVyz3X/dV4hAn5ff5AAAAABJRU5ErkJggg=="/>
+    <text x="632" y="645" font-size="26" font-weight="600">Calendar</text>
+    <text x="380" y="714" font-size="22" fill="#526C8D">People · income · expenses · shopping</text>
   </g>
 </svg>

@@ -154,7 +154,7 @@ def test_missing_tool_dates_are_repaired_with_pending_selection_and_replay_is_id
         assert feedback['pending_query']['activity'] == 'คุมสอบ'
         assert not {'workbook', 'calendar', 'calendar_read_ids_hash'} & feedback['scope'].keys()
         assert {t['name'] for t in body['tools']} <= {
-            'query_expenses', 'query_calendar', 'inspect_data_sources', 'finish_query_analysis', 'resolve_activity_dates'}
+            'query_expenses', 'query_calendar', 'inspect_data_sources', 'finish_query_analysis', 'resolve_activity_dates','resolve_temporal','query_relations'}
         return resolve(body)
     result, original = turn(api, 'มีวันที่ 14', choose, repair)
     assert_selected_day(result)

@@ -14,6 +14,7 @@ from .history_context import digest
 from .language import BANGKOK, DIGITS
 from .state import Action, Result
 from .transport import NotReady, WriteBlocked
+from .tool_errors import recovery
 
 READ_NAMES = {'list_tables', 'describe_table', 'query_table', 'check_table_change'}
 NAMES = READ_NAMES | {'prepare_table_change'}
@@ -53,6 +54,7 @@ class FieldValue(Strict):
     field: str
     value: str | int | bool | None
     source_text: str = Field(min_length=1, max_length=2000)
+    temporal_ref: str|None=None
 
 
 class Change(Describe):
@@ -232,6 +234,7 @@ class TableWorkflow:
             if name == 'prepare_table_change': return {**base, **self.prepare(table, store, p, sources)}
             raise TableError('unknown_tool')
         except TableError as error:
+            base['recovery']=recovery(error,tools=[name,'describe_table','resolve_temporal'])
             if str(error) in {'aggregate_select_conflict','empty_membership_requires_source'}:
                 return {**base,'error_code':str(error),'continue_model':True,'planning_repair':True,
                         'repair_instruction':('For aggregate output set select=[]; output fields are group_by and aggregate aliases. Preserve the actual intended filter. '
@@ -245,8 +248,8 @@ class TableWorkflow:
                 if table_id in self.registry.tables:
                     return {**base,'error_code':str(error),'schema':self.registry.tables[table_id].model_dump(exclude_none=True),'continue_model':True,'schema_repair':True}
             return {**base, 'error_code': str(error)}
-        except (ValueError, TypeError, KeyError): return {**base, 'error_code': 'invalid_arguments'}
-        except Exception: return {**base, 'error_code': 'unavailable'}
+        except (ValueError, TypeError, KeyError): return {**base, 'error_code': 'invalid_arguments','recovery':recovery(kind='assistant_arguments')}
+        except Exception: return {**base, 'error_code': 'unavailable','recovery':recovery()}
 
     def read(self, p):
         table,_=self.registry.get(p.table_id)
@@ -272,7 +275,7 @@ class TableWorkflow:
 
     def prepare(self, table, store, p, sources):
         p=p.model_copy(update={'values':[v.model_copy(update={'field':table.column(v.field).name}) for v in p.values]})
-        if p.operation not in table.operations: raise TableError('operation_disabled')
+        if p.operation not in table.operations: raise TableError('operation_disabled',kind='unsupported')
         if p.operation=='insert':
             peers=[t for t in self.registry.tables.values() if routing_key(t)==routing_key(table) and 'insert' in t.operations]
             if len(peers)>1:
@@ -330,6 +333,11 @@ class TableWorkflow:
             matches = [r for r in sources if chosen.source_text in r['text']]
             if not matches: raise TableError('owner_evidence_required')
             value = normalize(column, chosen.value)
+            if chosen.temporal_ref:
+                from .temporal import get
+                if column.type!='date':raise TableError('temporal_unknown_field')
+                actual,proof=get(self.h,chosen.temporal_ref,'date',source_text=chosen.source_text)
+                if value!=actual or proof['source_ref'] not in p.source_refs:raise TableError('temporal_value_mismatch')
             if value is not None and column.type == 'text' and value not in chosen.source_text:
                 raise TableError('literal_value_required:' + column.name)
             if value is not None and column.type=='reference' and value not in chosen.source_text:
@@ -347,7 +355,7 @@ class TableWorkflow:
                 tokens = re.findall(r'(?<![\d.])-?\d[\d,]*(?:\.\d+)?(?![\d.])', chosen.source_text.translate(DIGITS))
                 if not any(Decimal(token.replace(',', '')) == Decimal(value) for token in tokens):
                     raise TableError('numeric_evidence_required:' + column.name)
-            if value is not None and column.type == 'date':
+            if value is not None and column.type == 'date' and not chosen.temporal_ref:
                 from .calendar_dates import event_date
                 if not any(event_date(chosen.source_text, datetime.fromisoformat(r['at'])).isoformat() == value for r in matches):
                     raise TableError('date_evidence_required:' + column.name)
@@ -376,7 +384,7 @@ class TableWorkflow:
         if not draft: return Result('stale', 'ไม่พบร่างตารางล่าสุดที่ยืนยันได้ครับ') if exact else None
         _, shown = self.h._presented_result()
         if shown.status != 'preview' or exact and exact.groups() != (draft['ref'], draft['nonce']):
-            return Result('stale', 'กรุณาตรวจข้อมูลตารางให้ครบก่อนยืนยันครับ')
+            return Result('stale', 'กรุณาตรวจข้อมูลตารางให้ครบก่อนยืนยันครับ',{'domain':'table','table_draft':deepcopy(draft)})
         blocked = self.h._blocked_action()
         if blocked: return self.h._resume(blocked)
         table, store = self.registry.get(draft['table_id'])

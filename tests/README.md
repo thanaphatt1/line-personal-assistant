@@ -1,5 +1,16 @@
 # Test guide
 
+The [SQL executor](test_relational_sql.py) and
+[relational workflow](test_relational_queries.py) suites cover joins, CTEs,
+CASE/window calculations, exact decimal helpers, complete inputs beyond display
+limits, schema-based repair and read isolation. They include people/income and
+unrelated nonfinancial schemas, not only expense records. These are scripted
+offline contracts, separate from any fresh model evaluation.
+
+Shared [pending patches](test_pending_records.py),
+[temporal plans](test_temporal_plans.py) and [adaptive recovery](test_tool_recovery.py)
+check current schema/evidence, retained values, restart and no-progress behavior.
+
 Metadata table suites use synthetic people, income and shopping schemas:
 [engine](test_tables.py), [dialogue](test_table_workflow.py),
 [REST adapters](test_table_storage.py), and [signed composition](test_table_factory.py).

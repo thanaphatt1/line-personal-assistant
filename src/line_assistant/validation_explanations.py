@@ -64,6 +64,9 @@ def enrich(h,call,output):
            'required_fields':deepcopy(output.get('missing_fields',[])),
            'next_action':'investigate' if kind=='unclassified' else 'none','facts':facts}
  result={**output,'validation_feedback':feedback}
+ from .tool_errors import recovery
+ result['recovery']=(output.get('recovery') if output.get('recovery',{}).get('kind')!='unavailable' else None) or recovery(kind='assistant_arguments' if kind=='model_arguments' else 'owner_input' if kind=='validation' else 'unavailable',
+     fields=output.get('invalid_fields',[]),required=output.get('missing_fields',[]),tools=[call['name'],'patch_pending_records','resolve_temporal'])
  if values[0] not in ENROLLMENT_ERRORS and all(v in REASONS for v in values):
   # Existing count/date/source diagnostics contain checked rows and questions.
   # Keep those complete; the new metadata must not erase their evidence.

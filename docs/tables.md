@@ -67,11 +67,18 @@ default; conflicting explicit table names require clarification.
 
 ## Shared operations
 
+Read-only SQL is the main composition layer after retrieval. `query_table`
+loads complete matched rows and offers typed direct reads; `query_relations`
+then combines observed results using their actual schema. JOIN, CASE, CTE,
+subquery and window calculations need no new per-table query function. See
+[SQL semantics and isolation](relational-queries.md).
+
 | Tool | Behavior |
 | --- | --- |
 | `list_tables` | Discover configured purposes and allowed operations |
 | `describe_table` | Load schema, types, defaults, relationships and examples |
 | `query_table` | Filter, project, group, aggregate, order and display records |
+| `query_relations` | Execute read-only SQL across complete current-request source/derived relations |
 | `prepare_table_change` | Prepare insert/update/delete, retain partial facts and show a review |
 | `check_table_change` | Read proof of an uncertain mutation without a write retry |
 
@@ -142,10 +149,11 @@ for recovery after lost acknowledgement. Internal state/history/expense
 namespaces cannot be registered. Full scans need no special query index.
 
 References are validated against current records. Cross-provider transactions,
-foreign-key/cascade enforcement, arbitrary SQL/code, nested document/array
+foreign-key/cascade enforcement, provider-side SQL, arbitrary code, nested document/array
 fields, automatic schema creation and arbitrary business workflows are not
-implemented. A new backend/operator needs engine/adapter work once; another
-ordinary schema does not.
+implemented. SQL analysis runs on temporary observed snapshots. A new storage
+backend needs adapter work; another ordinary schema or supported SQL composition
+does not.
 
 The current executor scans complete datasets: configured 1–10,000 records and
 400,000 encoded bytes per snapshot, plus existing context/deadline constraints.

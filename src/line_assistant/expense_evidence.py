@@ -48,17 +48,17 @@ def literal_items(text,tax):return {name for _,_,name in item_mentions(text,tax)
 
 def connector(text):
     text=COUNT.sub(' ',text.translate(DIGITS))
-    text=re.sub(r'[—–!?！？]|ให้ที|ลงแยก(?=\s|$)|มี(?=\s|[,;:]|$)|ช่วย(?=\s*บันทึก)',' ',text)
+    text=re.sub(r'[—–!?！？"“”]|ให้ที|ลงแยก(?=\s|$)|มี(?=\s|[,;:]|$)|ช่วย(?=\s*บันทึก)',' ',text)
     text=re.sub(r'อีก|เพิ่ม',' ',PER_UNIT.sub(' ',text))
     return bool(re.fullmatch(FILLER,text))
 
-def occurrences(row,item,bound=False,*,catalog=None,items=()):
+def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
     """Return independently selectable monetary occurrences and masked views.
 
     Views mask other amounts/counts at original coordinates; persisted evidence
     always refers to the immutable original source, span and explicit ordinal.
     """
-    if not item or intent_guard(row['text']):return []
+    if not item or not interpreted and intent_guard(row['text']):return []
     result=[];offset=0;at=datetime.fromisoformat(row['at'])
     originals=[];line_offset=0
     from .catalog_names import spans as catalog_spans
@@ -124,7 +124,7 @@ def occurrences(row,item,bound=False,*,catalog=None,items=()):
                 result.append({**proof,'view':''.join(masked),'line_offset':offset,'target_index':target,'declared_count':count})
     return result
 
-def expand_counted_entries(entries,source_lists,*,catalog):
+def expand_counted_entries(entries,source_lists,*,catalog,interpreted=False):
     """Complete a model's single item proposal only from a complete owned group.
 
     One explicit count must match the independently verified original prices
@@ -140,7 +140,7 @@ def expand_counted_entries(entries,source_lists,*,catalog):
     for index,(entry,rows) in enumerate(zip(entries,source_lists)):
         proofs=[]
         if entry.item and groups[identity(entry.item,catalog)]==1:
-            proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries])]
+            proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
         complete=(len(proofs)>1 and len({v['source_ref'] for v in proofs})==1
                   and all(v['declared_count']==len(proofs) for v in proofs))
         consistent=(entry.amount is None or any(Decimal(v['amount'])==Decimal(str(entry.amount)) for v in proofs)
@@ -151,7 +151,7 @@ def expand_counted_entries(entries,source_lists,*,catalog):
     if len(result)>5:raise ValueError('unsupported_expense_count')
     return result
 
-def assign(entries,source_lists,targets=None,*,catalog=None):
+def assign(entries,source_lists,targets=None,*,catalog=None,interpreted=False):
     """One amount occurrence per row, scoped to that row's cited originals."""
     from .catalog_names import identity
     key=lambda item:identity(item,catalog) if catalog is not None else item
@@ -162,7 +162,7 @@ def assign(entries,source_lists,targets=None,*,catalog=None):
         # by multirow allocation, rather than trusting proposed row count.
         for entry,rows in zip(entries,source_lists):
             if entry.item and groups[key(entry.item)]==1:
-                proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries])]
+                proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
                 if len(proofs)>1:raise ValueError('count_amount_mismatch' if any(v['declared_count'] for v in proofs) else 'expense_batch_incomplete')
     chosen={};used=set()
     for index,(entry,sources) in enumerate(zip(entries,source_lists)):
@@ -173,7 +173,7 @@ def assign(entries,source_lists,targets=None,*,catalog=None):
             wanted=str(Decimal(wanted).normalize())
         except Exception:raise ValueError('amount_source')
         label=key(entry.item) if catalog is not None and catalog.resolve(entry.item or '').canonical else entry.item
-        candidates=[v for r in sources for v in occurrences(r,label,bound=targets is not None,catalog=catalog,items=[e.item for e in entries]) if str(Decimal(v['amount']).normalize())==wanted]
+        candidates=[v for r in sources for v in occurrences(r,label,bound=targets is not None,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted) if str(Decimal(v['amount']).normalize())==wanted]
         candidate=next((v for v in candidates if v['occurrence_ref'] not in used and (targets is None or v['target_index']==targets[index])),None)
         if candidate is None:raise ValueError('amount_occurrence_missing_or_reused')
         used.add(candidate['occurrence_ref']);chosen[index]=candidate

@@ -12,9 +12,10 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .history_context import digest
 from .language import BANGKOK
+from .tool_errors import PlanningError
 
 
-class TableError(ValueError):
+class TableError(PlanningError):
     """Fixed, model-visible error code, without provider details."""
 
 

@@ -2,13 +2,35 @@
 
 All examples below are synthetic. Amounts are THB and dates/times use Asia/Bangkok.
 
+## Structured data and SQL
+
+The assistant works with metadata-defined tables in Google Sheets/Firestore
+and Calendar events. Expense logging is one workflow, rather than the only
+meaning of a table. For example:
+
+- `เดือน ก.ย. ขอรายจ่ายรวมรายวันพร้อมยอดสะสม` reads the period and calculates grouped/window results with SQL.
+- `รายรับของคนที่โทรแล้วเป็นเท่าไร` can join configured income/person tables using their relationship and status metadata.
+- `หนังสือเล่มไหนหนากว่าค่าเฉลี่ย` can query a configured books table with title/pages columns; no date or money is required.
+- `วันนี้รายได้ 1000` prepares an insertion into a uniquely selected configured income table, followed by review and confirmation.
+
+The planner sees actual schemas and source scope, retrieves complete matched
+records, then proposes read-only SQL through `query_relations`. Simple typed
+reads remain available. Derived results can be queried again within the turn.
+Incomplete reads cannot prove a complete total; an unresolved SQL error cannot
+be replaced by a different earlier summary. See [SQL details](relational-queries.md)
+and [table setup](tables.md).
+
 ## Expenses
 
 `กาแฟ 35 บาท และรถเมล์ 20 บาท เมื่อวาน` prepares two entries. The assistant resolves existing Database names, asks for missing or ambiguous facts and presents the full date and amounts before saving. New names require an explicit existing/new choice and owner-supplied category/subcategory; the model cannot infer a category from the name.
 
 `สรุปเมื่อวาน` is a read request. It does not create a save button. A reply such as a changed amount updates only the selected pending entry. Topic changes do not cancel a draft.
 
-Income, transfers and edit/delete of already recorded expenses are outside the current history workflow. Invalid or ambiguous requests clarify without writing.
+The established expense ledger does not handle income/transfers. Those require
+an appropriate configured table. Saved expense corrections use the separate
+optional [saved-record workflow](saved-record-edits.md); generic table
+insert/update/delete proposals follow their declared operations. Invalid or
+ambiguous requests clarify without writing.
 
 ## Calendar
 
@@ -22,7 +44,11 @@ A new request may contain up to eight events, including a mixture of timed and a
 
 Only confirmation of the delivered, unchanged review creates events. Edits, mode switches, expiry, cancellation or failed delivery invalidate prior consent. Cancellation removes pending drafts and does not delete already-created events. Duplicate webhook delivery must not duplicate an event.
 
-The production path supports creation only in one configured secondary calendar. It has no guests, recurrence, saved-event edit/delete or reminders. Multi-day all-day wording requires a single date or explicitly separated events. Conflict warnings cover that calendar only, not the owner's primary calendar or every account calendar.
+Creation targets one configured calendar and does not include guests, recurrence
+or reminders. Saved-event rescheduling uses a separate optional reviewed flow;
+saved-event deletion is not supported. Multi-day all-day creation requires a
+single date or separated events. Conflict warnings cover the write calendar;
+reads can combine calendars accessible through the configured account.
 
 `เดือน พ.ย. มีนัด TA กี่ครั้ง` reads the entire named month across the
 configured/readable calendars. A second model request uses titles, descriptions,
@@ -52,4 +78,10 @@ applies. Day headings and rows stay fixed during optional reply realization.
 
 The optional response phase composes short connective wording around immutable names, dates, amounts, outcomes and confirmation instructions. It does not freely rewrite facts. Its foreground deadline is four seconds for ordinary replies and eight seconds for Calendar semantic selection, within the overall request deadline. Failure returns the deterministic server reply without another model attempt; a semantic-selection failure leaves the requested count unavailable.
 
-The raw-history workflow has no fixed number of model requests per owner turn. A query can set `continue_analysis=true`, inspect its result reference, read another period or domain, and finish with `finish_query_analysis`. Subsequent tools are read-only. Code adds complete non-overlapping expense totals, deduplicates Calendar occurrences or computes comparison differences; a model cannot supply the final number. Identical reads and duplicate tool-call identifiers stop without another request. External requests retain bounded RPC scopes, overall request deadlines, per-request HTTP timeouts of at most twelve seconds and model-context/output limits. Configured daily/monthly accounting gates still apply; removing the per-turn ceiling does not alter those settings. Observational mode requires explicit single-owner history configuration and still records reservations and usage; it is not a billing-account spending cap.
+The raw-history workflow has no fixed model-request count per owner turn. Reads
+with `continue_analysis=true` can feed `query_relations`, further source reads or
+legacy `finish_query_analysis` combinations. Subsequent tools remain read-only.
+Python calculates the proposed query; plain model prose cannot replace its
+results. Repeated reads/plans and duplicate call IDs stop. Provider deadlines,
+context/output bounds and configured accounting gates remain. Observational
+mode still records usage and is not a billing-account spending cap.

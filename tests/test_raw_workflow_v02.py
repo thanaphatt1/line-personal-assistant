@@ -147,13 +147,14 @@ def summary_harness():
     h.seed_pair(100,'อยากคุยเรื่องต้นไม้ต่อ','อยากทราบเรื่องรดน้ำหรือแสงครับ',timedelta(minutes=1))
     return h
 
-def test_synthetic_nine_citation_summary_now_fits_without_resending_original_text():
+def test_synthetic_nine_citation_summary_now_fits_without_resending_original_text(monkeypatch):
     h=summary_harness();original=deepcopy(h.state.raw_journal.rows)
-    # Current instructions/schema preserve full multiword names and constrain
-    # notes to explicit owner fields. This positive current-schema fit probe
-    # needs about36k after summary (40k before); negative14k probes and
-    # production's1,050,000 remain unchanged.
-    h.service.raw_context_tokens=37000
+    # Current intent/history provenance instructions add a fixed header.
+    # This positive fit probe still requires compaction; negative14k probes
+    # and production's1,050,000 remain unchanged.
+    h.service.raw_context_tokens=39000
+    from context_capacity import require_compaction
+    require_compaction(monkeypatch,h.service)
     result=turn(h,ev.TURNS[h.case][0][0],scripted(h,'history_summary'),response(text='คุยเรื่องต้นไม้ต่อครับ'))
     assert result.status=='answer' and len(h.port.records)==2
     summary=h.state.rolling_summary;assert summary['source_refs']==proposal_arguments(h,'history_summary')['source_refs']

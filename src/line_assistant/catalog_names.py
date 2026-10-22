@@ -8,6 +8,22 @@ import re
 from datetime import datetime
 
 
+def delivered_question(h):
+    """Bind one delivered question to a current, verified owned draft row."""
+    _,shown=h._presented_result()
+    if shown is None:return None
+    output=shown.data.get('tool_result',{})
+    try:d=h._draft(output.get('draft_ref'))
+    except (ValueError,KeyError,TypeError):return None
+    if output.get('draft_version')!=d['version']:return None
+    question=output.get('item_enrollment',{})
+    target=question.get('entry_ref') or output.get('catalog_entry_ref')
+    rows=[e for e in d['entries'] if e['entry_ref']==target]
+    if len(rows)!=1:return None
+    field=question.get('field') or ('item' if output.get('catalog_entry_ref') else None)
+    return (d,rows[0],field,output) if field in {'item','category','subcategory'} else None
+
+
 def spans(text,item,catalog):
     match=catalog.match(item or '')
     if match.status!='exact':return finditer(text,item)

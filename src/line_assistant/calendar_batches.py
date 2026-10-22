@@ -8,6 +8,7 @@ from .calendar_workflow import Arguments,Edit,FIELDS,calculate,payload,payload_h
 from .calendar_dates import bangkok_zone,event_date
 from .calendar_event_types import interval,date_label,clarification_fields,timing_question
 from . import calendar_sources as sources
+from .tool_errors import PlanningError,recovery
 from .history_context import digest
 from .model_api import object_schema
 from .state import Action,Result
@@ -31,33 +32,33 @@ def members_hash(host,batch):
         [[ref,host.state.calendar_drafts[ref]['version'],payload_hash(host.state.calendar_drafts[ref])]
             for ref in batch['members'] if host.state.calendar_drafts[ref]['status'] not in {'cancelled','recorded'}]])
 def restore_batches(state,value):
-    if not isinstance(value,dict) or set(value)!={'format','batches','proofs'} or value['format']!='calendar-batches-v1':raise ValueError('Invalid Calendar batches envelope')
+    if not isinstance(value,dict) or set(value)!={'format','batches','proofs'} or value['format']!='calendar-batches-v1':raise PlanningError('Invalid Calendar batches envelope')
     batches=value['batches'];proofs=value['proofs']
-    if not isinstance(batches,dict) or not isinstance(proofs,dict) or set(batches)!=set(proofs) or len(batches)>32:raise ValueError('Invalid Calendar batch records')
+    if not isinstance(batches,dict) or not isinstance(proofs,dict) or set(batches)!=set(proofs) or len(batches)>32:raise PlanningError('Invalid Calendar batch records')
     claimed=set()
     for ref,b in batches.items():
         if (not re.fullmatch(r'calset_[a-f0-9]{20}',ref) or b.get('batch_ref')!=ref or b.get('owner_id')!=state.owner_id
             or type(b.get('version')) is not int or b['version']<1 or b.get('status') not in {'needs_information','review','committing','partial','recorded','cancelled'}
-            or proofs[ref]!=batch_fingerprint(b) or not isinstance(b.get('members'),list) or not 1<=len(b['members'])<=8 or len(set(b['members']))!=len(b['members'])):raise ValueError('Invalid Calendar batch binding')
+            or proofs[ref]!=batch_fingerprint(b) or not isinstance(b.get('members'),list) or not 1<=len(b['members'])<=8 or len(set(b['members']))!=len(b['members'])):raise PlanningError('Invalid Calendar batch binding')
         for field in ['created_at','updated_at','expires_at']:
-            if datetime.fromisoformat(b[field]).utcoffset() is None:raise ValueError('Invalid Calendar batch clock')
+            if datetime.fromisoformat(b[field]).utcoffset() is None:raise PlanningError('Invalid Calendar batch clock')
         for index,child in enumerate(b['members']):
             d=state.calendar_drafts.get(child)
-            if (child in claimed or not d or d.get('batch_ref')!=ref or d.get('ordinal')!=index+1 or d['calendar_id']!=b['calendar_id']):raise ValueError('Invalid Calendar batch membership')
+            if (child in claimed or not d or d.get('batch_ref')!=ref or d.get('ordinal')!=index+1 or d['calendar_id']!=b['calendar_id']):raise PlanningError('Invalid Calendar batch membership')
             unit=d.get('source_unit')
             if (not isinstance(unit,dict) or set(unit)!={'source_ref','start','end','text','at','slot_key','occurrence'}
                 or type(unit['start']) is not int or type(unit['end']) is not int or not 0<=unit['start']<unit['end']<=2000
                 or type(unit['occurrence']) is not int or not 0<=unit['occurrence']<8
-                or len(unit['text'])!=unit['end']-unit['start'] or unit['slot_key']!=digest([unit['source_ref'],unit['start'],unit['end'],unit['occurrence']])[:20]):raise ValueError('Invalid Calendar source slot')
+                or len(unit['text'])!=unit['end']-unit['start'] or unit['slot_key']!=digest([unit['source_ref'],unit['start'],unit['end'],unit['occurrence']])[:20]):raise PlanningError('Invalid Calendar source slot')
             claimed.add(child)
         if b['review']:
             r=b['review']
-            if b['status'] not in {'review','committing'} or not re.fullmatch(r'[a-f0-9]{16}',r['nonce']) or r['version']!=b['version']:raise ValueError('Invalid Calendar batch review')
+            if b['status'] not in {'review','committing'} or not re.fullmatch(r'[a-f0-9]{16}',r['nonce']) or r['version']!=b['version']:raise PlanningError('Invalid Calendar batch review')
         key=b.get('action_key')
         if key:
             action=state.actions.get(key)
             if (not action or not action.metadata.get('calendar_batch') or action.metadata.get('batch_ref')!=ref or action.metadata.get('calendar_id')!=b['calendar_id']
-                or action.metadata.get('payload_hash')!=digest([state.owner_id,b['calendar_id'],action.payload])):raise ValueError('Invalid Calendar batch action')
+                or action.metadata.get('payload_hash')!=digest([state.owner_id,b['calendar_id'],action.payload])):raise PlanningError('Invalid Calendar batch action')
     state.calendar_batches=deepcopy(batches);state.calendar_batch_proofs=deepcopy(proofs)
 
 class CalendarBatches:
@@ -69,11 +70,11 @@ class CalendarBatches:
         if (not b or b['owner_id']!=self.h.settings.owner_id or b['calendar_id']!=self.f.calendar_id
             or self.h.state.calendar_batch_proofs.get(ref)!=batch_fingerprint(b)
             or active and b['status'] in {'recorded','cancelled'}
-            or datetime.fromisoformat(b['expires_at'])<=self.h.clock() and b['status']!='committing'):raise ValueError('calendar_batch_stale')
+            or datetime.fromisoformat(b['expires_at'])<=self.h.clock() and b['status']!='committing'):raise PlanningError('calendar_batch_stale')
         return b
     def child(self,ref):
         d=self.h.state.calendar_drafts[ref]
-        if self.h.state.calendar_proofs.get(ref)!={'owner_id':d['owner_id'],'version':d['version'],'fingerprint':fingerprint(d)}:raise ValueError('calendar_draft_stale_or_unavailable')
+        if self.h.state.calendar_proofs.get(ref)!={'owner_id':d['owner_id'],'version':d['version'],'fingerprint':fingerprint(d)}:raise PlanningError('calendar_draft_stale_or_unavailable')
         return d
     def view(self,b,children=None):
         child=self.child if children is None else children.__getitem__
@@ -112,9 +113,9 @@ class CalendarBatches:
                 'parameters':object_schema({'batch_ref':{'type':'string'},'batch_version':{'type':'integer'},'operation':{'type':'string','enum':['review','remove','cancel']},'event_refs':{'type':'array','items':{'type':'string'},'maxItems':8}})}]
     def bound(self,ref,version):
         b=self.get(ref)
-        if b['version']!=version or self.request_views.get(ref)!=batch_fingerprint(b):raise ValueError('calendar_batch_stale')
-        if datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(b['updated_at']):raise ValueError('calendar_older_update')
-        if b['status']=='committing' or self.h._blocked_action():raise ValueError('calendar_action_pending')
+        if b['version']!=version or self.request_views.get(ref)!=batch_fingerprint(b):raise PlanningError('calendar_batch_stale')
+        if datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(b['updated_at']):raise PlanningError('calendar_older_update')
+        if b['status']=='committing' or self.h._blocked_action():raise PlanningError('calendar_action_pending')
         return b
     def selected(self,b,text):
         selected=set();words={'แรก':1,'หนึ่ง':1,'สอง':2,'สาม':3,'สี่':4,'ห้า':5,'หก':6,'เจ็ด':7,'แปด':8}
@@ -132,7 +133,7 @@ class CalendarBatches:
             'created_at':at,'updated_at':at,'expires_at':b['expires_at'],'start':None,'end':None,'missing_fields':['title','date','time','end'],'issues':[],
             'review':None,'batch_ref':b['batch_ref'],'ordinal':len(b['members'])+1,'source_unit':deepcopy(unit)}
         b['members'].append(ref);return d
-    def prepare(self,args):
+    def prepare(self,args,*,interpreted_patch=False,field_evidence=None):
         p=BatchEdit.model_validate(args);current=self.h._current
         focused=self.focused_edit_ref()
         if focused and p.batch_ref!=focused:
@@ -140,7 +141,7 @@ class CalendarBatches:
             if latest['review']:
                 latest.update(version=latest['version']+1,updated_at=current['at'],status='needs_information',review=None)
                 self.h.state.calendar_batches[focused]=latest;self.seal(latest);self.h.state.checkpoint()
-            raise ValueError('calendar_ambiguous_event_target')
+            raise PlanningError('calendar_ambiguous_event_target')
         old=deepcopy(self.bound(p.batch_ref,p.batch_version)) if p.batch_ref else None
         if old and old['review']:
             # Revoke delivered consent before validating the proposed changes.
@@ -149,10 +150,10 @@ class CalendarBatches:
             self.h.state.calendar_batches[old['batch_ref']]=revoked;self.seal(revoked);self.h.state.checkpoint()
         guard=current['text']
         for title in [e.title for e in p.events if e.title]:guard=literal_guard_text(guard,title)
-        if intent_guard(guard) or re.search(r'(?:อย่า|ไม่ต้อง|ยังไม่ต้อง|ห้าม)(?:\s|เพิ่ง)*(?:สร้าง|นัด|จอง|เพิ่ม)',guard):raise ValueError('calendar_owner_no_write')
+        if not self.h.raw_history_enabled and (intent_guard(guard) or re.search(r'(?:อย่า|ไม่ต้อง|ยังไม่ต้อง|ห้าม)(?:\s|เพิ่ง)*(?:สร้าง|นัด|จอง|เพิ่ม)',guard)):raise PlanningError('calendar_owner_no_write')
         bangkok_zone(current['text'])
-        if not old and p.batch_version is not None:raise ValueError('calendar_unbound_version')
-        if not old and len([b for b in self.h.state.calendar_batches.values() if b['status'] not in {'recorded','cancelled'}])>=8:raise ValueError('calendar_too_many_drafts')
+        if not old and p.batch_version is not None:raise PlanningError('calendar_unbound_version')
+        if not old and len([b for b in self.h.state.calendar_batches.values() if b['status'] not in {'recorded','cancelled'}])>=8:raise PlanningError('calendar_too_many_drafts')
         at=current['at'];b=deepcopy(old) if old else {'batch_ref':'calset_'+digest([self.h.settings.owner_id,self.f.calendar_id,self.h._active_event_id])[:20],
             'owner_id':self.h.settings.owner_id,'calendar_id':self.f.calendar_id,'version':0,'members':[],'created_at':at,
             'updated_at':at,'expires_at':(self.h.clock()+timedelta(seconds=self.h.settings.pending_ttl_seconds)).isoformat(),'status':'needs_information','review':None,'action_key':None}
@@ -164,7 +165,7 @@ class CalendarBatches:
                 d=deepcopy(self.f.bound(e))
                 origin=self.h._owner_sources(d['source_refs']);title=d['facts']['title']
                 candidates=[u for row in origin for u in sources.units(row,[title] if title else []) if not title or title in u['text']]
-                if len(candidates)!=1:raise ValueError('calendar_event_selection')
+                if len(candidates)!=1:raise PlanningError('calendar_event_selection')
                 d.update(batch_ref=b['batch_ref'],ordinal=len(b['members'])+1,source_unit=candidates[0]);b['members'].append(d['draft_ref']);children[d['draft_ref']]=d
         refs=list(dict.fromkeys(r for e in p.events for r in e.source_refs));rows=self.h._owner_sources(refs)
         p=p.model_copy(update={'events':sources.repeated_names(p.events,rows)})
@@ -190,12 +191,12 @@ class CalendarBatches:
                     edit=next(e for e in p.events if e.draft_ref==ref)
                     candidates=[u for u in unit_map.values() if d['facts']['title'] and d['facts']['title'] in u['text']
                         and all(literal_fact(getattr(e,f) or d['facts'][f],u['text'],f) is not None for e in p.events if e.draft_ref==ref for f in ['date_text'] if getattr(e,f) or d['facts'][f])]
-                    if len(candidates)!=1:raise ValueError('calendar_event_selection')
+                    if len(candidates)!=1:raise PlanningError('calendar_event_selection')
                     d['source_unit']=deepcopy(candidates[0])
                     value=d['facts']['date_text'];anchor=d['anchors'].get('date_text')
                     if value and anchor and (edit.date_text is None or edit.date_text==value):
                         if event_date(value,datetime.fromisoformat(anchor['at']))!=event_date(value,datetime.fromisoformat(current['at'])):
-                            if edit.date_text is None:raise ValueError('calendar_ambiguous_source')
+                            if edit.date_text is None:raise PlanningError('calendar_ambiguous_source')
                             # "Tomorrow" can have the same spelling but a new
                             # date after midnight. Certify the fresh literal.
                             d['facts']['date_text']=None;d['fact_sources'].pop('date_text');d['anchors'].pop('date_text')
@@ -210,7 +211,7 @@ class CalendarBatches:
                 if unit['source_ref']!=current['source_ref'] or unit['slot_key'] in existing_keys:continue
                 if any(e.draft_ref is None and e.title and e.title in unit['text'] for e in p.events):
                     d=self.placeholder(b,unit);children[d['draft_ref']]=d
-        if not b['members'] or len(b['members'])>8:raise ValueError('calendar_event_capacity')
+        if not b['members'] or len(b['members'])>8:raise PlanningError('calendar_event_capacity')
         if old and restated and old['status']=='needs_information' and not old.get('action_key'):
             # Reconcile proven empty duplicates before interpreting "both";
             # the old malformed member count must not block its own repair.
@@ -238,19 +239,19 @@ class CalendarBatches:
                     if e.all_day is not True and not any([e.time_text,e.end_time_text,e.duration_text]) else e for e in edits]
         for e in edits:
             if e.draft_ref:
-                if e.draft_ref not in live or e.draft_ref in used:raise ValueError('calendar_event_selection')
+                if e.draft_ref not in live or e.draft_ref in used:raise PlanningError('calendar_event_selection')
                 d=children[e.draft_ref]
-                if e.draft_version!=d['version']:raise ValueError('calendar_stale_draft_version')
+                if e.draft_version!=d['version']:raise PlanningError('calendar_stale_draft_version')
                 changes=[f for f in FIELDS if getattr(e,f) is not None and getattr(e,f)!=d['facts'][f]]
                 if e.all_day is not None and e.all_day!=d.get('all_day',False):changes.append('all_day')
-                if old and changes and not shared and len(live)>1 and selected!={e.draft_ref}:
+                if not interpreted_patch and old and changes and not shared and len(live)>1 and selected!={e.draft_ref}:
                     missing=[ref for ref in live if any(f in children[ref]['missing_fields'] for f in ['time','end','date'])]
-                    if selected or missing!=[e.draft_ref]:raise ValueError('calendar_ambiguous_event_target')
+                    if selected or missing!=[e.draft_ref]:raise PlanningError('calendar_ambiguous_event_target')
             else:
                 candidates=[d for d in children.values() if d['draft_ref'] not in used and d['status']=='needs_information' and not d['facts']['title'] and (not e.title or e.title in d['source_unit']['text'] or any(sources.shared_title(row,d['source_unit'],e.title,titles) for row in rows if row['source_ref']==d['source_unit']['source_ref']))]
                 matching=[d for d in candidates if all(literal_fact(getattr(e,f),d['source_unit']['text'],f) is not None for f in ['date_text','time_text','end_time_text'] if getattr(e,f) is not None)]
                 d=(matching or candidates)[0] if matching or candidates else None
-                if not d:raise ValueError('calendar_event_selection')
+                if not d:raise PlanningError('calendar_event_selection')
             ref=d['draft_ref'];used.add(ref);unit=d['source_unit']
             def scope(row,field,value,title):
                 if row['source_ref']==unit['source_ref']:
@@ -262,7 +263,8 @@ class CalendarBatches:
             arguments=e.model_dump();arguments.update(draft_ref=ref,draft_version=d['version'])
             # A new placeholder is not yet published. Existing validation runs
             # against staged copies with no checkpoint or provider effect.
-            staged=self.f.prepare(arguments,new_draft=d,commit=False,scope=scope,allow_batch=True,guard_titles=titles)
+            staged=self.f.prepare(arguments,new_draft=d,commit=False,scope=scope,allow_batch=True,guard_titles=titles,
+                field_evidence=field_evidence.get(ref) if field_evidence is not None else None)
             if staged['facts']['title'] and (not d['facts']['title'] or 'calendar_unrepresented_event_text' in d['issues']) and sources.substantive(unit['text'],[staged['facts']['title']],facts=staged['facts']):
                 staged['issues']=list(dict.fromkeys([*staged['issues'],'calendar_unrepresented_event_text']))
             children[ref]=staged
@@ -313,25 +315,25 @@ class CalendarBatches:
         b['review']={'nonce':secrets.token_hex(8),'at':self.h._current['at'],'event':self.h._active_event_id,'version':b['version'],'payload_hash':members_hash(self.h,b)} if b['status']=='review' else None
         self.h.state.calendar_batches[b['batch_ref']]=b;self.seal(b);self.h.state.checkpoint()
         return {'domain':'calendar','ok':True,'status':'review' if b['status']=='review' else 'needs_information','batch_ref':b['batch_ref'],'batch_version':b['version'],'calendar_batch_view':self.view(b)}
-    def tool(self,name,args):
-        if not self.f.enabled:raise ValueError('calendar_disabled')
-        if name=='prepare_calendar_events':return self.prepare(args)
+    def tool(self,name,args,*,interpreted_patch=False,field_evidence=None):
+        if not self.f.enabled:raise PlanningError('calendar_disabled')
+        if name=='prepare_calendar_events':return self.prepare(args,interpreted_patch=interpreted_patch,field_evidence=field_evidence)
         p=BatchControl.model_validate(args);b=deepcopy(self.bound(p.batch_ref,p.batch_version))
         if p.operation=='review':
-            if not re.search(r'ตรวจ|ดูร่าง|ทบทวน|บันทึก|สร้าง|review|save',self.h._current['text'],re.I):raise ValueError('calendar_review_not_requested')
+            if not re.search(r'ตรวจ|ดูร่าง|ทบทวน|บันทึก|สร้าง|review|save',self.h._current['text'],re.I):raise PlanningError('calendar_review_not_requested')
             b.update(version=b['version']+1,updated_at=self.h._current['at'],review=None);return self.review(b)
         text=self.h._current['text']
         removal=self.f.cancel_intent(text) or bool(re.search(r'ลบ(?:ร่าง)?(?:นัด|รายการ|อัน|คอร์ส)',text)) and not re.search(r'ไม่ต้องลบ|อย่าลบ|ห้ามลบ',text)
-        if p.operation not in {'remove','cancel'} or not removal:raise ValueError('calendar_cancel_not_requested')
+        if p.operation not in {'remove','cancel'} or not removal:raise PlanningError('calendar_cancel_not_requested')
         selected=set(p.event_refs)
         if p.operation=='cancel' and not selected:
-            if len(b['members'])>1 and not re.search(r'ทั้งชุด|ทั้งหมด|ทุกนัด',self.h._current['text']):raise ValueError('calendar_ambiguous_event_target')
+            if len(b['members'])>1 and not re.search(r'ทั้งชุด|ทั้งหมด|ทุกนัด',self.h._current['text']):raise PlanningError('calendar_ambiguous_event_target')
             selected={ref for ref in b['members'] if self.child(ref)['status'] not in {'recorded','cancelled'}}
-        elif selected!=self.selected(b,self.h._current['text']):raise ValueError('calendar_ambiguous_event_target')
-        if not selected or not selected<=set(b['members']):raise ValueError('calendar_event_selection')
+        elif selected!=self.selected(b,self.h._current['text']):raise PlanningError('calendar_ambiguous_event_target')
+        if not selected or not selected<=set(b['members']):raise PlanningError('calendar_event_selection')
         for ref in selected:
             d=deepcopy(self.child(ref))
-            if d['status'] in {'recorded','committing'}:raise ValueError('calendar_action_pending')
+            if d['status'] in {'recorded','committing'}:raise PlanningError('calendar_action_pending')
             d.update(status='cancelled',review=None,version=d['version']+1,updated_at=self.h._current['at']);self.h.state.calendar_drafts[ref]=d;self.f.seal(d)
         b.update(version=b['version']+1,updated_at=self.h._current['at'],review=None);return self.review(b)
     def render(self,output):
@@ -494,7 +496,7 @@ class CalendarBatches:
     def stop(self,a,b,status):
         for item in a.payload['members']:
             action=self.h.state.actions.get(item['key']);d=self.child(item['ref'])
-            if action and action.status in {'executing','uncertain'}:raise ValueError('calendar_action_pending')
+            if action and action.status in {'executing','uncertain'}:raise PlanningError('calendar_action_pending')
             if d['status']=='recorded':continue
             d.update(status='needs_information',review=None)
             if action and action.result and action.result.status in {'setup_required','expired'}:d['version']+=1

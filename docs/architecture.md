@@ -1,52 +1,113 @@
 # Architecture
 
-See the [runtime diagrams and input/output map](system-flow.md) for the shared ingress/history/reply path and separate expense-write, Calendar-write and stored-data query routes, with LLM/code/external-service boundaries.
+The assistant has two business-data abstractions: metadata-defined **tables**
+and **Calendar events**. Tables can represent people, income, expenses, tasks
+or shopping records in Google Sheets/Firestore. Calendar retains its own
+interval, recurrence-read and event-version semantics.
 
-The default-off [saved-record change flow](saved-record-edits.md) adds stable-ID selection, before/after review, conditional Calendar rescheduling and guarded expense cell updates. Its mutation and recovery gates are separate from creation tools.
+The main analysis layer is read-only SQL over observed records. The LLM chooses
+sources and query meaning; Python validates access, materializes complete
+matched snapshots and executes the query. Simple typed reads remain available.
+See the [runtime diagrams](system-flow.md), [SQL contract](relational-queries.md)
+and [table registration](tables.md).
 
-The separate default-off [category proposal flow](provisional-categories.md) keeps inferred labels outside confirmed totals and distinguishes query-only inclusion from permanent Database mapping consent.
+## Query path
 
-## Simplified write path
+```mermaid
+flowchart TD
+    LINE[Signed owner request] --> Context[History, tools and schema metadata]
+    Context --> Plan[LLM selects sources and read scope]
+    Plan --> Read[Typed source reads]
+    Sheets[Google Sheets tables] --> Read
+    Firestore[Firestore business collections] --> Read
+    Calendar[Readable Google Calendar events] --> Read
+    Read --> Snapshot[Complete matched rows and current-request refs]
+    Snapshot --> SQL[LLM proposes read-only SQL]
+    SQL --> Execute[Python: isolated in-memory SQLite]
+    Execute --> Result[Computed rows with source scope]
+    Result --> Reply[Grounded LINE reply]
+    Result -->|Further analysis| SQL
+    Snapshot -->|Simple direct read| Reply
+```
 
-Verified direct controls can skip the model proposal below. Stored-data queries use model-selected typed tools; the linked runtime diagrams show their separate validation and grounded reply path.
+`relations_catalog` describes actual columns, types, units, row counts and scope.
+It is built from observed query results, not guessed from provider names. SQL
+can compose joins, CASE, CTEs, subqueries and window functions without adding a
+handler for each table/question. Decimal helpers support exact sums and explicit
+rounding. Source reads can still be split into bounded windows. Display limits
+do not restrict calculations; incomplete reads cannot prove complete totals.
+
+SQLite is temporary computation, not a new persistent SQL database or a SQL
+endpoint for Sheets/Firestore. Each call gets a new in-memory connection with
+extensions disabled and a read/function authorizer. SQL cannot access provider
+targets, files, internal state or write tools. Derived query references expire
+with the owner turn. The model remains responsible for selecting the intended
+filter/join/coverage semantics; see [SQL limits](relational-queries.md).
+
+## Write path
 
 ```mermaid
 flowchart LR
-    LINE[LINE webhook] --> Signature[Signature and owner checks]
-    Signature --> State[Owner lease, receipt and durable state]
-    State --> Context[Recent history and verified sources]
-    Context --> Model[Typed model proposal]
-    Model --> Validate[Server validation and draft review]
-    Validate --> Reply[Bound factual reply]
-    Reply --> Owner[Owner confirmation]
-    Owner --> Effect[Idempotent Calendar or Sheets effect]
-    Effect --> State
+    Request[Signed owner request] --> Metadata[Configured schema and allowed operations]
+    Metadata --> Model[LLM proposes typed field changes]
+    Model --> Validate[Python validates sources, types and versions]
+    Validate --> Review[Delivered before/after or creation review]
+    Review --> Owner[New owner confirmation]
+    Owner --> Effect[Durable action and configured provider effect]
+    Effect --> Receipt[Receipt or positive-proof recovery]
 ```
 
-`main.py` validates the HMAC signature before parsing JSON or performing provider work. The production factory in `history_cloud_run.py` binds a single configured owner, attached service account, spreadsheet, optional secondary calendar and mounted secrets. Configuration cannot supply an arbitrary provider URL.
+Generic table tools prepare insert/update/delete proposals. Expenses keep their
+specialized name/category/evidence workflow; Calendar keeps event/time tools.
+`patch_pending_records` updates owned pending fields across domains. Temporal
+plans calculate dates/times from original owner evidence and verified bases.
+Unchanged fields retain their proofs. Tool-declared argument errors return the
+actual schema to the planner; repeated diagnostics stop. Preparation and SQL
+cannot grant consent or prove that an external write succeeded.
 
-`history_first.py`, `raw_history.py` and the domain workflow modules interpret literal owner sources. Tool output is a proposal. The server certifies field sources, validates dates and amounts, and retains unchanged facts. A model response cannot confer consent or assert an external write succeeded.
+`main.py` checks the HMAC signature before parsing JSON/provider work.
+`history_cloud_run.py` binds the owner, service account, private source targets,
+feature flags and mounted secrets. Metadata can add ordinary schemas on existing
+supported adapters; it cannot supply an arbitrary provider URL, create a
+resource or grant access. The generic registry is empty by default.
 
 ## Module map
 
 | Area | Modules |
 | --- | --- |
-| Ingress and composition | `main`, `cloud_run`, `history_cloud_run` |
-| Target configuration and bounded HTTP | `pilot_config`, `pilot_http`, `calendar_transport` |
-| Expense drafts and evidence | `draft_workflow`, `expense_sources`, `expense_evidence`, `catalog_names` |
-| Calendar drafts and groups | `calendar_workflow`, `calendar_batches`, `calendar_event_types`, `calendar_sources` |
-| Persistence and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |
-| Typed stored-data queries | `read_queries` |
-| Provider adapters | `sheets_api`, `calendar_provider`, `line_api`, `model_api` |
-| Thai interpretation and factual replies | `language`, `history_dates`, `calendar_dates`, `response_realization` |
-| Mock adapters and legacy compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
+| Ingress/composition and HTTP scope | `main`, `history_cloud_run`, `pilot_config`, `pilot_http`, `calendar_transport` |
+| Dialogue, planning and offered tools | `history_first`, `raw_history`, `data_inventory` |
+| SQL schemas and isolated execution | `relational`, `relational_sql` |
+| Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
+| Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |
+| Pending patches, temporal calculations and repair | `pending_records`, `temporal`, `tool_errors`, `tool_repair` |
+| Expense drafts/catalog and storage | `draft_workflow`, `expense_sources`, `expense_evidence`, `catalog_names`, `sheets_api`, `firestore_expenses` |
+| Calendar drafts, batches and provider | `calendar_workflow`, `calendar_batches`, `calendar_provider` |
+| Saved-record changes | `saved_edits`, `expense_edits`, `calendar_reschedule` |
+| State, journal and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |
+| Grounded replies and LINE | `response_realization`, `line_api` |
+| Local mocks and compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
 
-The older entry points and serializers remain for compatibility and focused offline tests. The history-enabled factory is the current application composition. Protocol and state identifiers such as versioned postbacks and `calendar-history-v2` are persisted contracts; they are not documentation release labels and must not be renamed casually.
+Older entry points and serializers remain for compatibility and offline tests.
+The history-enabled factory is the current composition. Persisted protocol names
+such as `calendar-history-v2` are contracts, not release labels to rename.
+Optional [saved-record changes](saved-record-edits.md) and [category proposals](provisional-categories.md)
+retain their separate feature flags, review and recovery gates.
 
 ## State and recovery
 
-The owner lease fences concurrent effects. State records receipts, delivered review versions/nonces, action fingerprints, model reservations and uncertain outcomes. External actions are recorded before HTTP. Missing acknowledgements remain uncertain until positive reconciliation proves the outcome. Automatic blind retries are unsafe.
+Firestore business collections and internal workflow records serve different
+roles. Internal records hold owner leases, receipts, delivered review bindings,
+action fingerprints, model accounting and uncertain outcomes. External actions
+are recorded before HTTP; a missing acknowledgement stays uncertain until
+positive reconciliation proves the result. Blind write retries are not used.
 
-Raw message records are stored separately from the compact core snapshot. Recent model context uses a rolling 24-hour window and verified summaries; context expiry does not imply deletion of stored originals. Snapshot size limits stop the workflow rather than erase records. Optional legacy workbook bindings allow explicitly configured old state to be retained during migration.
+Original messages live in a separate journal. Recent context uses a rolling
+24-hour window and verified summaries; expiry of model context does not delete
+originals. Query working sets are request-local. Snapshot limits stop rather
+than discard required state. See [database/storage roles](database-schema.md).
 
-An OFF bridge must run an image that understands every state schema the candidate can create. It retains history and pending actions while disabling Calendar execution. Traffic rollback preserves newer data and cannot undo an event already created in Google Calendar.
+An OFF bridge must understand every state format the candidate can create.
+It preserves history/pending actions while disabling the relevant effects.
+Traffic rollback cannot undo a provider write. Source publication and a
+production release remain separate operations.

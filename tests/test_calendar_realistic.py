@@ -215,9 +215,9 @@ def test_free_and_cancelled_existing_events_are_not_busy_conflicts():
     assert adapter.conflicts(a.start,a.end)==[]
 
 @pytest.mark.parametrize('prefix',['อย่าสร้างนัด','ไม่ต้องนัด','ยังไม่ต้องสร้างนัด','สมมติ นัด','ถ้ามีนัด'])
-def test_negated_and_hypothetical_requests_cannot_become_drafts(prefix):
-    h=Harness();r=h.prepare(prefix+'ตรวจฟันพรุ่งนี้14:00 30นาที',title='ตรวจฟัน',date_text='พรุ่งนี้',time_text='14:00',duration_text='30นาที')
-    assert r.status=='clarification' and not h.state.calendar_drafts and h.provider.posts==0
+def test_planner_can_answer_negated_and_hypothetical_requests_without_preparation(prefix):
+    h=Harness();h.send(prefix+'ตรวจฟันพรุ่งนี้14:00 30นาที',response(text='ยังไม่เตรียมนัดครับ'))
+    assert len(h.model.requests)==1 and not h.state.calendar_drafts and h.provider.posts==0
 
 @pytest.mark.parametrize('word',['ประมาณ','ราวๆ','อาจจะ','ยังไม่แน่ใจ'])
 def test_model_cannot_drop_owner_uncertainty_and_create_an_exact_time(word):

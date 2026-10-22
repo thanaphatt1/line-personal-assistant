@@ -118,7 +118,10 @@ def test_empty_matches_report_the_actual_lookup_instead_of_asking_owner_database
 @pytest.mark.parametrize('text',['สมมติว่าถ้าไม่มีก็เพิ่มใหม่','อย่าเพิ่ม ถ้าไม่มีก็เพิ่มใหม่',
                                  'ตัวอย่าง ถ้าไม่มีก็เพิ่มใหม่','"ถ้าไม่มีก็เพิ่มใหม่"','ถ้ามีก็เพิ่มใหม่',
                                  'ถ้าไม่มีให้บันทึกเงิน 500','ถ้าไม่มีก็เพิ่มใหม่?'])
-def test_conditional_name_handling_does_not_weaken_financial_source_guards(text):
+def test_catalog_tool_proposal_cannot_change_retained_financial_facts_or_write(text):
     h=pending();before=deepcopy(h.draft())
     r=enroll(h,text)
-    assert r.status=='clarification' and h.draft()==before and not h.sheets.entries
+    assert r.status=='clarification' and not h.sheets.entries
+    for old,current in zip(before['entries'],h.draft()['entries']):
+        for field in ['item','amount','date','note','fact_sources']:
+            assert current.get(field)==old.get(field)

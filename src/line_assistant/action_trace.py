@@ -40,6 +40,11 @@ def arguments(call):
     if isinstance(value.get('entries'),list):
         result['entry_count']=len(value['entries'])
         result['entries']=[fields(v) for v in value['entries'][:5] if isinstance(v,dict)]
+    if isinstance(value.get('records'),list):
+        result['record_count']=len(value['records'])
+        result['records']=[{'entry_ref':ref(v.get('record_ref')),'field_count':len(v.get('changes',[])),
+            'source_refs':[ref(c.get('source_ref')) for c in v.get('changes',[])[:40] if isinstance(c,dict)]}
+            for v in value['records'][:8] if isinstance(v,dict) and isinstance(v.get('changes',[]),list)]
     return result
 
 
@@ -65,6 +70,8 @@ def outcome(value):
         if value.get(key) is not None:result[key]=ref(value[key])
     if type(value.get('draft_version')) is int:result['draft_version']=value['draft_version']
     feedback=value.get('validation_feedback')
+    if isinstance(value.get('recovery'),dict):result['recovery_kind']=code(value['recovery'].get('kind'))
+    if value.get('temporal_ref'):result['temporal_ref']=ref(value['temporal_ref'])
     if isinstance(feedback,dict):
         result['failure_kind']=code(feedback.get('kind'))
         result['next_action']=code(feedback.get('next_action'))

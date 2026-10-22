@@ -83,7 +83,7 @@ class PreviousPrices:
         return values
 
     def eligible_request(self,entry):
-        if intent_guard(self.h._current['text']) or FOREIGN.search(self.h._current['text']):return False
+        if (not self.h.raw_history_enabled and intent_guard(self.h._current['text'])) or FOREIGN.search(self.h._current['text']):return False
         return not any(facts['money'] or facts['counts'] for text,facts in self.scoped_facts(entry))
 
     def explicit_amount(self,entry,amount):

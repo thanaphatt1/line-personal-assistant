@@ -1,10 +1,24 @@
-# Read saved expenses and appointments
+# Query data with SQL and source read tools
+
+The primary composable analysis layer is [read-only SQL](relational-queries.md)
+over observed table, expense and Calendar records. The planner selects sources
+from metadata, reads complete matched rows, then uses `query_relations` for
+joins, conditional/nested calculations and window functions. Google Sheets and
+Firestore remain the business stores; SQLite is a temporary analysis engine.
+Simple typed reads and legacy combination tools remain available.
+
+Examples include daily expense totals with cumulative spending,
+income joined to people, or shopping records filtered through another table.
+These use registered schemas rather than a function for each table/question.
+See [metadata-defined tables](tables.md) for setup and operations.
+
+## Expense and Calendar source reads
 
 The planner also receives its actual available tool names and configured source scope. It can inspect verified expense years/counts/date bounds or Calendar discovery/queried-window metadata before planning. Unknown Calendar global extent is never inferred from a bounded window. See [capability and data-scope awareness](data-inventory.md).
 
 The signed, owner-only history application can answer stored-data questions using the existing configured workbook and readable calendars selected by the server. These queries use the current read permissions; no new scopes or credentials are needed. They do not append expenses, create events, change a draft or create a confirmation nonce. Conversation receipts and the existing usage ledger continue normally.
 
-This source revision replaces the semantic keyword pre-router with model-selected `query_expenses` and `query_calendar` tools. The model sees raw recent dialogue, the authoritative Bangkok timestamp, exact catalog labels and the latest verified delivered query scope. It interprets language, aliases, typos, follow-ups and new intent; code validates typed arguments and performs fixed-resource reads and arithmetic. A source push does not deploy this change.
+The model selects `query_expenses`, `query_calendar` or `query_table` as needed, without a semantic keyword pre-router. It sees recent dialogue, the authoritative Bangkok timestamp, actual schemas and the latest verified delivered query scope. Code validates arguments and performs configured-source reads. With `continue_analysis=true`, complete raw results become SQL relations; expense SQL inputs use `view=list`. A source push does not deploy this change.
 
 Examples:
 
@@ -29,7 +43,7 @@ The structured result includes at most20 unresolved names; the reply shows at mo
 
 Dates use Asia/Bangkok. Weeks run Monday–Sunday; relative dates are anchored to the current owner message timestamp. The model interprets Thai month names and abbreviations, Buddhist years, ISO dates and day/month/year dates into typed calendar frames or explicit inclusive dates. Relative week/month/year offsets are selected by the model and expanded using calendar arithmetic on the authoritative Bangkok date. New periods carry a literal owner `period_text` citation; the current clock alone cannot fill an omitted period. For filter/view-only follow-ups, `date_mode=previous` explicitly selects dates from the latest verified query receipt; it cannot invent a default when that receipt is absent. An unqualified month uses its first through last day; an explicit “จนถึงวันนี้” clips the end to today. Missing or conflicting periods require clarification. Expense queries retain the existing limit of 367 inclusive dates. Calendar queries cover at most31 inclusive dates, including a whole named month. The model-selected `upcoming` mode for “นัดถัดไป” still covers the current time through the next six dates and includes events still in progress.
 
-Expense totals use Decimal arithmetic over a complete bounded input read. Sheets identity, headers and configured grid bounds must pass. Malformed values, incomplete mappings, access failures or an oversized grid yield an unavailable response rather than a zero balance. Income has no verified storage mapping: it is unsupported, not zero, and a remaining balance cannot be computed.
+Expense totals use Decimal arithmetic over a complete bounded input read. Sheets identity, headers and configured grid bounds must pass. Malformed values, incomplete mappings, access failures or an oversized grid yield an unavailable response rather than a zero balance. The legacy expense ledger has no income mapping. Income/balance questions require explicitly configured income data and the necessary sources; an absent source is not a known zero.
 
 `query_expenses` composes exact filters with `group_by` (`none`, `item`, `date`, `category`, `subcategory`), `order_by` (`date`, `amount`, `count`, `label`), `descending` and a displayed `limit` of1–20. Group amounts use Decimal sums and group counts include every matching payment; sorting happens before display truncation. Ranking requires `view=list`. `count` requires groups; date ordering requires individual rows or date groups. Invalid combinations fail explicitly. Category/subcategory grouping uses verified current catalog mappings; unresolved/blank mappings make the ranking unavailable without a guessed zero or silently omitted group. This grouping failure does not create a provisional category proposal. Item/date grouping does not require catalog mappings. The result discloses grouping/order and full-input totals separately from displayed top rows. Grounded row facts cannot be reordered by the wording model.
 

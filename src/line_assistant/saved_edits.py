@@ -54,6 +54,7 @@ class Calendar(Args):
     end_date_text:str|None=Field(max_length=120)
     end_time_text:str|None=Field(max_length=120)
     source_refs:list[str]=Field(min_length=1,max_length=16)
+    temporal_refs:list[dict[str,str]]=Field(default_factory=list,max_length=4)
 
 def visible_record(record,domain):
     keys=['item','amount','date'] if domain=='expense' else ['title','start','end','all_day']
@@ -121,7 +122,8 @@ class SavedEdits:
                 'parameters':object_schema({'candidate_ref':{'type':'string'},**{k:nullable for k in ['item','amount','date','item_text','amount_text','date_text']},'source_refs':refs})})
         if self.flags['calendar']:
             result.append({'type':'function','name':'prepare_calendar_reschedule','strict':True,'description':'Propose a SAVED appointment before/after review, NEVER writes. Use owned candidate_ref; multiple matches first require owner choice. date/end_date are owner-interpreted YYYY-MM-DD, time/end_time local Bangkok HH:MM; cite each changed field with literal owner *_text. Null retains start components. When moving only the start or keeping duration, end_date/end_time/end_date_text/end_time_text MUST ALL BE NULL: server calculates the end. Only an explicitly stated new end date/clock permits an end field, never a duration-preserving phrase. All-day end_date is the last inclusive date; never give clock fields for all-day events. Preserve mode/title/reminders and other data. No guests, recurrence, delete/cancel or title changes. No model confirmation.',
-                'parameters':object_schema({'candidate_ref':{'type':'string'},**{k:nullable for k in ['date','time','end_date','end_time','date_text','time_text','end_date_text','end_time_text']},'source_refs':refs})})
+                'parameters':object_schema({'candidate_ref':{'type':'string'},**{k:nullable for k in ['date','time','end_date','end_time','date_text','time_text','end_date_text','end_time_text']},
+                    'temporal_refs':{'type':'array','maxItems':4,'items':object_schema({'field':{'type':'string','enum':['date','time','end_date','end_time']},'temporal_ref':{'type':'string'}})},'source_refs':refs})})
         result.extend([{'type':'function','name':name,'strict':True,'description':description,'parameters':object_schema({})} for name,description in [
             ('review_saved_record_change','Show/refresh the current saved-record selection or before/after review. Read only and not confirmation; a refreshed review revokes previous confirmation.'),
             ('check_saved_record_change','Read-only status/positive reconciliation of an already confirmed saved-record change. Never issues or retries a write.')]])
@@ -198,12 +200,21 @@ class SavedEdits:
         refs=args.source_refs;allowed=set(selection.payload['source_refs'])|{self.h._current['source_ref']}
         if not set(refs)<=allowed or self.h._current['source_ref'] not in refs:raise ValueError('saved_edit_unrelated_owner_source')
         sources=self.h._owner_sources(refs);changes={}
+        temporal={}
+        for binding in getattr(args,'temporal_refs',[]):
+            if set(binding)!={'field','temporal_ref'} or binding['field'] not in fields or binding['field'] in temporal:raise ValueError('temporal_invalid_field')
+            temporal[binding['field']]=binding['temporal_ref']
         for field in fields:
             value=getattr(args,field);text=getattr(args,field+'_text')
             if value is None:
                 if text is not None:raise ValueError('saved_edit_unbound_field_source')
                 continue
             if not text or not any(text in r['text'] for r in sources):raise ValueError('saved_edit_literal_field_source_required')
+            if field in temporal:
+                from .temporal import get,projection
+                actual,proof=get(self.h,temporal[field],projection(field),source_text=text)
+                if value!=actual or proof['source_ref'] not in refs:raise ValueError('temporal_value_mismatch')
+                changes[field]=value;continue
             if field in {'date','end_date'}:
                 from .history_dates import cues
                 proposed=date.fromisoformat(value);proof=False
@@ -273,6 +284,13 @@ class SavedEdits:
         else:
             if p.kind==PREFIX+'review' and v.get('before',{}).get('id')==before['id']:changes={**v['changes'],**changes}
             after=rescheduled_times(before,changes);catalog_hash=None
+        if domain=='calendar':
+            from .temporal import get,projection
+            for binding in parsed.temporal_refs:
+                if binding['field'] not in {'time','end_time'} or getattr(parsed,binding['field']) is None:continue
+                _,proof=get(self.h,binding['temporal_ref'],projection(binding['field']))
+                if proof['values'].get('datetime') and datetime.fromisoformat(after['start' if binding['field']=='time' else 'end'])!=datetime.fromisoformat(proof['values']['datetime']):
+                    raise ValueError('calendar_temporal_date_pair_required')
         current=self.editor(domain).get(before['id'])
         if current['version']!=before['version']:raise Conflict('Selected saved record changed; find and review it again')
         v.update(before=current,after=after,changes=changes,catalog_hash=catalog_hash,source_refs=list(dict.fromkeys(v['source_refs']+parsed.source_refs)))

@@ -10,6 +10,7 @@ from pydantic import BaseModel,ConfigDict,Field
 from .calendar_dates import event_date,event_time,duration,bangkok_zone
 from .contracts import CreateEvent
 from .calendar_event_types import AllDayEvent,ALL_DAY,interval,parse_payload,date_label,range_requested,clarification_fields,timing_question
+from .tool_errors import PlanningError,recovery
 from .history_context import digest,WINDOW
 from .history_dates import MONTH
 from .language import BANGKOK,intent_guard,DIGITS
@@ -26,6 +27,9 @@ NAMES.update(calendar_event_type_conflict='เลือกนัดทั้ง�
     calendar_all_day_range_unsupported='เลือกวันเดียวต่อหนึ่งนัดทั้งวัน หรือแยกช่วงเป็นแต่ละนัด')
 
 class Arguments(BaseModel):model_config=ConfigDict(extra='forbid',strict=True)
+class TemporalBinding(Arguments):
+    field: str
+    temporal_ref: str
 class Edit(Arguments):
     draft_ref:str|None=None
     draft_version:int|None=Field(default=None,ge=1)
@@ -37,6 +41,7 @@ class Edit(Arguments):
     duration_text:str|None=Field(default=None,min_length=1,max_length=100)
     all_day:bool|None=None
     source_refs:list[str]=Field(min_length=1,max_length=16)
+    temporal_refs:list[TemporalBinding]=Field(default_factory=list,max_length=5)
 class Control(Arguments):
     draft_ref:str
     draft_version:int=Field(ge=1)
@@ -99,6 +104,10 @@ def calculate(d):
         if not facts[field]:
             if missing_name:missing.append(missing_name)
             return None
+        if d['anchors'][field].get('temporal'):
+            from .temporal import validate_proof,projection
+            proof=d['anchors'][field]['temporal'];validate_proof(proof)
+            if proof['owner']!=d['owner_id'] or proof['values'].get(projection(field))!=facts[field]:raise PlanningError('calendar_temporal_proof_invalid')
         try:return fn(facts[field])
         except ValueError as error:issues.append(str(error));return None
     day=parse('date_text',lambda text:event_date(text,at('date_text')),'date')
@@ -125,45 +134,49 @@ def calculate(d):
             if end and end!=explicit:issues.append('calendar_end_conflict')
             end=explicit
         if end and (end<=start or end-start>timedelta(days=7)):issues.append('calendar_end_order')
+        for field,actual in [('time_text',start),('end_time_text',end)]:
+            proof=d['anchors'].get(field,{}).get('temporal')
+            if proof and proof['values'].get('datetime') and actual and actual!=datetime.fromisoformat(proof['values']['datetime']):
+                issues.append('calendar_temporal_date_pair_required')
     return start.isoformat() if start else None,end.isoformat() if end else None,list(dict.fromkeys(missing)),list(dict.fromkeys(issues))
 
 def restore_calendar(state,value):
-    if set(value)!={'format','drafts','proofs'} or value['format'] not in {'calendar-history-v1','calendar-history-v2'}:raise ValueError('Invalid Calendar history envelope')
+    if set(value)!={'format','drafts','proofs'} or value['format'] not in {'calendar-history-v1','calendar-history-v2'}:raise PlanningError('Invalid Calendar history envelope')
     drafts=value['drafts'];proofs=value['proofs']
-    if not isinstance(drafts,dict) or not isinstance(proofs,dict) or set(drafts)!=set(proofs) or len(drafts)>64:raise ValueError('Invalid Calendar history records')
-    if value['format']=='calendar-history-v1' and any('all_day' in d for d in drafts.values()):raise ValueError('Date-mode state requires Calendar history v2')
+    if not isinstance(drafts,dict) or not isinstance(proofs,dict) or set(drafts)!=set(proofs) or len(drafts)>64:raise PlanningError('Invalid Calendar history records')
+    if value['format']=='calendar-history-v1' and any('all_day' in d for d in drafts.values()):raise PlanningError('Date-mode state requires Calendar history v2')
     for ref,d in drafts.items():
         if (not isinstance(d,dict) or not re.fullmatch(r'cal_[a-f0-9]{20}',ref) or d.get('draft_ref')!=ref or d.get('owner_id')!=state.owner_id
             or type(d.get('version')) is not int or d['version']<1 or d.get('status') not in {'needs_information','review','committing','recorded','cancelled'}
             or not isinstance(d.get('calendar_id'),str) or not 1<=len(d['calendar_id'])<=512 or d['calendar_id']=='primary'
             or not isinstance(d.get('calendar_label'),str) or not 1<=len(d['calendar_label'])<=100
-            or proofs[ref]!={'owner_id':state.owner_id,'version':d['version'],'fingerprint':fingerprint(d)}):raise ValueError('Invalid Calendar draft proof/binding')
+            or proofs[ref]!={'owner_id':state.owner_id,'version':d['version'],'fingerprint':fingerprint(d)}):raise PlanningError('Invalid Calendar draft proof/binding')
         for field in ['created_at','updated_at','expires_at']:
-            if datetime.fromisoformat(d[field]).utcoffset() is None:raise ValueError('Calendar clock must be aware')
-        if type(d.get('all_day',False)) is not bool:raise ValueError('Invalid Calendar date mode')
+            if datetime.fromisoformat(d[field]).utcoffset() is None:raise PlanningError('Calendar clock must be aware')
+        if type(d.get('all_day',False)) is not bool:raise PlanningError('Invalid Calendar date mode')
         if 'all_day' in d:
             anchor=d.get('all_day_anchor',{})
             if (anchor.get('value') is not d['all_day'] or anchor.get('source_ref') not in d['source_refs']
                 or not isinstance(anchor.get('literal'),str) or not 1<=len(anchor['literal'])<=100
-                or datetime.fromisoformat(anchor['at']).utcoffset() is None):raise ValueError('Invalid Calendar date-mode proof')
+                or datetime.fromisoformat(anchor['at']).utcoffset() is None):raise PlanningError('Invalid Calendar date-mode proof')
         for key in ['all_day_range_source','all_day_clock_source']:
             if key in d:
                 anchor=d[key]
-                if not d.get('all_day') or anchor['source_ref'] not in d['source_refs'] or datetime.fromisoformat(anchor['at']).utcoffset() is None:raise ValueError('Invalid all-day temporal source')
+                if not d.get('all_day') or anchor['source_ref'] not in d['source_refs'] or datetime.fromisoformat(anchor['at']).utcoffset() is None:raise PlanningError('Invalid all-day temporal source')
         if (set(d['facts'])!=set(FIELDS) or not isinstance(d['source_refs'],list) or len(d['source_refs'])>32
-            or any(not isinstance(v,str) for v in d['source_refs'])):raise ValueError('Invalid Calendar facts')
+            or any(not isinstance(v,str) for v in d['source_refs'])):raise PlanningError('Invalid Calendar facts')
         for field,text in d['facts'].items():
             if text is None:continue
-            if not isinstance(text,str) or not 1<=len(text)<=200:raise ValueError('Invalid Calendar literal fact')
+            if not isinstance(text,str) or not 1<=len(text)<=200:raise PlanningError('Invalid Calendar literal fact')
             a=d['anchors'].get(field,{})
             if (a.get('source_ref') not in d['source_refs'] or d['fact_sources'].get(field)!=[a['source_ref']]
-                or datetime.fromisoformat(a['at']).utcoffset() is None or type(a.get('bare')) is not bool):raise ValueError('Invalid Calendar fact provenance')
+                or datetime.fromisoformat(a['at']).utcoffset() is None or type(a.get('bare')) is not bool):raise PlanningError('Invalid Calendar fact provenance')
         computed=calculate(d)
-        if (d['start'],d['end'],d['missing_fields'])!=computed[:3] or any(v not in d['issues'] for v in computed[3]):raise ValueError('Invalid Calendar normalized values')
+        if (d['start'],d['end'],d['missing_fields'])!=computed[:3] or any(v not in d['issues'] for v in computed[3]):raise PlanningError('Invalid Calendar normalized values')
         if d['review']:
             r=d['review']
             if (d['status'] not in {'review','committing'} or d['missing_fields'] or d['issues'] or r['payload_hash']!=payload_hash(d)
-                or not re.fullmatch(r'[a-f0-9]{16}',r['nonce']) or datetime.fromisoformat(r['at']).utcoffset() is None):raise ValueError('Invalid Calendar review')
+                or not re.fullmatch(r'[a-f0-9]{16}',r['nonce']) or datetime.fromisoformat(r['at']).utcoffset() is None):raise PlanningError('Invalid Calendar review')
     state.calendar_drafts=deepcopy(drafts);state.calendar_proofs=deepcopy(proofs)
 
 class CalendarWorkflow:
@@ -173,18 +186,18 @@ class CalendarWorkflow:
         from .calendar_batches import CalendarBatches
         self.batches=CalendarBatches(self);self.tool_names=self.tool_names|self.batches.names
         if enabled:
-            if not host.raw_history_enabled or not host.semantic_enabled:raise ValueError('Calendar requires explicit raw history/semantic mode')
-            if not adapter or not calendar_id or calendar_id=='primary' or getattr(adapter,'calendar_id',None)!=calendar_id:raise ValueError('Explicit bound Calendar adapter required')
+            if not host.raw_history_enabled or not host.semantic_enabled:raise PlanningError('Calendar requires explicit raw history/semantic mode')
+            if not adapter or not calendar_id or calendar_id=='primary' or getattr(adapter,'calendar_id',None)!=calendar_id:raise PlanningError('Explicit bound Calendar adapter required')
             if not getattr(host,'production',False) and not getattr(adapter,'mocked',False):
                 # Production factory supplies the existing fenced production binding.
                 from .production_history_state import ProductionHistoryState
-                if type(host.state) is not ProductionHistoryState:raise ValueError('Local Calendar requires a fake provider')
-            if not isinstance(label,str) or not 1<=len(label)<=100:raise ValueError('Bounded Calendar label required')
+                if type(host.state) is not ProductionHistoryState:raise PlanningError('Local Calendar requires a fake provider')
+            if not isinstance(label,str) or not 1<=len(label)<=100:raise PlanningError('Bounded Calendar label required')
     def seal(self,d):self.h.state.calendar_proofs[d['draft_ref']]={'owner_id':self.h.settings.owner_id,'version':d['version'],'fingerprint':fingerprint(d)}
     def draft(self,ref,*,active=True):
         d=self.h.state.calendar_drafts.get(ref);proof=self.h.state.calendar_proofs.get(ref)
         if (not d or d['owner_id']!=self.h.settings.owner_id or d['calendar_id']!=self.calendar_id or getattr(self.adapter,'calendar_id',None)!=self.calendar_id or proof!={'owner_id':d['owner_id'],'version':d['version'],'fingerprint':fingerprint(d)}
-            or datetime.fromisoformat(d['expires_at'])<=self.h.clock() or active and d['status'] in {'recorded','cancelled'}):raise ValueError('calendar_draft_stale_or_unavailable')
+            or datetime.fromisoformat(d['expires_at'])<=self.h.clock() or active and d['status'] in {'recorded','cancelled'}):raise PlanningError('calendar_draft_stale_or_unavailable')
         return d
     def definitions(self):return self.single_definitions()+self.batches.definitions()
     def views(self):
@@ -201,22 +214,31 @@ class CalendarWorkflow:
         nullable={'type':['string','null']}
         fields={name:{**nullable,'description':'Literal full owner event name, excluding leading request verbs unless explicitly quoted/named as title' if name=='title' else 'Literal owner date/time/duration wording; null retains the certified value'} for name in FIELDS}
         fields['date_text']['description']='Copy only the literal date span, excluding clock/duration/all-day mode words even when adjacent. วันที่20ตุลาทั้งวัน -> วันที่20ตุลา; all_day=true separately.'
+        temporal_refs={'type':'array','maxItems':5,'items':object_schema({'field':{'type':'string','enum':[f for f in FIELDS if f!='title']},'temporal_ref':{'type':'string'}})}
         return [{'type':'function','name':'prepare_calendar_event','strict':True,
             'description':'Prepare one appointment, never writes. all_day=true only for explicit owner all-day wording; requires a date, never times. Timed appointments need start and end/duration. Null retains existing mode/facts. One all-day date per event; clarify or split multi-day ranges. Use owned source refs/current version. No guests, recurrence or reminders.',
-            'parameters':object_schema({'draft_ref':nullable,'draft_version':{'type':['integer','null']},**fields,'all_day':{'type':['boolean','null']},'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})},
+            'parameters':object_schema({'draft_ref':nullable,'draft_version':{'type':['integer','null']},**fields,'all_day':{'type':['boolean','null']},'temporal_refs':temporal_refs,'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})},
             {'type':'function','name':'read_calendar_drafts','strict':True,'description':'Read owned pending Calendar facts without creating a review or consent.','parameters':object_schema({'draft_ref':nullable})},
             {'type':'function','name':'control_calendar_draft','strict':True,'description':'Only explicitly requested review or pending-draft cancellation. Never confirms a write or deletes an event.','parameters':object_schema({'draft_ref':{'type':'string'},'draft_version':{'type':'integer'},'operation':{'type':'string','enum':['review','cancel']}})}]
     def bound(self,p,*,allow_batch=False):
         d=self.draft(p.draft_ref)
-        if d.get('batch_ref') and not allow_batch:raise ValueError('calendar_batch_required')
-        if p.draft_version!=d['version'] or self.request_views.get(p.draft_ref)!=fingerprint(d):raise ValueError('calendar_stale_draft_version')
-        if datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(d['updated_at']):raise ValueError('calendar_older_update')
+        if d.get('batch_ref') and not allow_batch:raise PlanningError('calendar_batch_required')
+        if p.draft_version!=d['version'] or self.request_views.get(p.draft_ref)!=fingerprint(d):raise PlanningError('calendar_stale_draft_version')
+        if datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(d['updated_at']):raise PlanningError('calendar_older_update')
         return d
     def _answer(self,d,field,value):
         _,shown=self.h._presented_result();view=shown.data.get('calendar_view',{}) if shown else {}
         return bool(view.get('draft_ref')==d['draft_ref'] and view.get('version')==d['version'] and field in view.get('missing_fields',[]) and self.h._current['text'].strip()==value.strip())
-    def prepare(self,args,*,new_draft=None,commit=True,scope=None,allow_batch=False,guard_titles=()):
+    def prepare(self,args,*,new_draft=None,commit=True,scope=None,allow_batch=False,guard_titles=(),field_evidence=None):
         p=Edit.model_validate(args)
+        if p.temporal_refs:
+            from .temporal import calendar_evidence
+            if len({v.field for v in p.temporal_refs})!=len(p.temporal_refs):raise PlanningError('temporal_duplicate_field')
+            resolved=calendar_evidence(self.h,{v.field:v.temporal_ref for v in p.temporal_refs},p.source_refs)
+            for field,row in resolved.items():
+                if getattr(p,field) not in {None,row['value'],row['text']}:raise PlanningError('temporal_value_mismatch',fields=[field])
+            p=p.model_copy(update={k:v['value'] for k,v in resolved.items()})
+            field_evidence={**(field_evidence or {}),**resolved}
         # Models occasionally put an explicit end clock or clock range in
         # the duration slot. Retain the literal end-role prefix so ordinary
         # owner-span checks cannot accept a model-invented "ถึง" role.
@@ -240,17 +262,22 @@ class CalendarWorkflow:
         title=p.title or (new_draft or self.h.state.calendar_drafts.get(p.draft_ref,{}) or {}).get('facts',{}).get('title')
         guard=literal_guard_text(self.h._current['text'],title)
         for other in guard_titles:guard=literal_guard_text(guard,other)
-        if intent_guard(guard) or re.search(r'(?:อย่า|ไม่ต้อง|ยังไม่(?:ต้อง)?|ห้าม|ไม่ให้)(?:\s|เพิ่ง)*(?:สร้าง|นัด|จอง|เพิ่ม)',guard):raise ValueError('calendar_owner_no_write')
+        if not self.h.raw_history_enabled and (intent_guard(guard) or re.search(r'(?:อย่า|ไม่ต้อง|ยังไม่(?:ต้อง)?|ห้าม|ไม่ให้)(?:\s|เพิ่ง)*(?:สร้าง|นัด|จอง|เพิ่ม)',guard)):raise PlanningError('calendar_owner_no_write')
         old=deepcopy(new_draft) if new_draft is not None else deepcopy(self.bound(p,allow_batch=allow_batch)) if p.draft_ref else None
-        if not p.draft_ref and p.draft_version is not None:raise ValueError('calendar_unbound_version')
-        if old and old['status']=='committing':raise ValueError('calendar_action_pending')
+        if not p.draft_ref and p.draft_version is not None:raise PlanningError('calendar_unbound_version')
+        if old and old['status']=='committing':raise PlanningError('calendar_action_pending')
         now=self.h._current['at']
         if old and old['review'] and commit:
             revoked=deepcopy(old);revoked.update(version=old['version']+1,updated_at=now,status='needs_information',review=None)
             self.h.state.calendar_drafts[old['draft_ref']]=revoked;self.seal(revoked);self.h.state.checkpoint()
         rows=self.h._owner_sources(p.source_refs)
+        if field_evidence is not None:
+            # A shared patch already checked each original owner span. Keep
+            # its own timestamp and field binding through domain validation.
+            original_scope=scope
+            scope=lambda row,field,value,title:field_evidence[field] if field in field_evidence else original_scope(row,field,value,title) if original_scope else row
         if not old:
-            if sum(d['status'] not in {'recorded','cancelled'} for d in self.h.state.calendar_drafts.values())>=8:raise ValueError('calendar_too_many_drafts')
+            if sum(d['status'] not in {'recorded','cancelled'} for d in self.h.state.calendar_drafts.values())>=8:raise PlanningError('calendar_too_many_drafts')
             ref='cal_'+digest([self.h.settings.owner_id,self.calendar_id,self.h._active_event_id])[:20]
             d={'draft_ref':ref,'owner_id':self.h.settings.owner_id,'calendar_id':self.calendar_id,'calendar_label':self.label,'version':1,
                'status':'needs_information','facts':dict.fromkeys(FIELDS),'fact_sources':{},'anchors':{},'source_refs':[],
@@ -261,7 +288,8 @@ class CalendarWorkflow:
         # omits the optional mode field. Scope it to this source unit first.
         explicit_day=False;explicit_clock_source=None
         for row in rows:
-            if old and old['facts']['title'] and row['source_ref']!=self.h._current['source_ref']:continue
+            if field_evidence is not None and 'all_day' not in field_evidence:continue
+            if field_evidence is None and old and old['facts']['title'] and row['source_ref']!=self.h._current['source_ref']:continue
             clean=outside_title(row['text'],p.title or d['facts']['title'])
             for match in ALL_DAY.finditer(clean):
                 if re.search(r'(?:ไม่|อย่า|ยกเลิก).{0,12}$',clean[:match.start()]):continue
@@ -272,13 +300,13 @@ class CalendarWorkflow:
                     from .calendar_sources import CLOCK
                     if CLOCK.search(outside_title(scoped['text'],p.title or d['facts']['title'])):explicit_clock_source={'source_ref':row['source_ref'],'at':row['at']}
         if explicit_day:
-            if p.all_day is False:raise ValueError('calendar_event_type_conflict')
+            if p.all_day is False:raise PlanningError('calendar_event_type_conflict')
             p=p.model_copy(update={'all_day':True})
         changed=False
         if p.all_day is not None and (p.all_day!=d.get('all_day',False) or p.all_day and explicit_day and (d.get('all_day_clock_source') or any(d['facts'][k] for k in ['time_text','end_time_text','duration_text']))):
             mode_sources=[]
             for row in rows:
-                if old and old['facts']['title'] and row['source_ref']!=self.h._current['source_ref']:continue
+                if field_evidence is None and old and old['facts']['title'] and row['source_ref']!=self.h._current['source_ref']:continue
                 clean=outside_title(row['text'],p.title or d['facts']['title'])
                 if p.all_day:
                     matches=[m[0] for m in ALL_DAY.finditer(clean) if not re.search(r'(?:ไม่|อย่า|ยกเลิก).{0,12}$',clean[:m.start()])]
@@ -289,7 +317,7 @@ class CalendarWorkflow:
                     try:scoped=scope(row,'all_day',literal,p.title or d['facts']['title']) if scope else row
                     except ValueError:continue
                     if literal in outside_title(scoped['text'],p.title or d['facts']['title']):mode_sources.append((row,literal))
-            if not mode_sources:raise ValueError('calendar_all_day_source')
+            if not mode_sources:raise PlanningError('calendar_all_day_source')
             row,literal=mode_sources[-1];d['all_day']=p.all_day
             d['all_day_anchor']={'value':p.all_day,'source_ref':row['source_ref'],'at':row['at'],'literal':literal}
             # A new event type cannot inherit incompatible old clock/range
@@ -320,21 +348,23 @@ class CalendarWorkflow:
             if value is None:continue
             if old and value==d['facts'][field]:
                 reanchor=False
-                if field in {'date_text','end_date_text'} and self.h._current['source_ref'] in p.source_refs and literal_fact(value,outside_title(self.h._current['text'],p.title or d['facts']['title']),field):
-                    try:reanchor=event_date(value,datetime.fromisoformat(d['anchors'][field]['at']))!=event_date(value,datetime.fromisoformat(self.h._current['at']))
+                anchor=field_evidence.get(field) if field_evidence is not None else self.h._current
+                if field in {'date_text','end_date_text'} and anchor and literal_fact(value,outside_title(anchor['text'],p.title or d['facts']['title']),field):
+                    try:reanchor=event_date(value,datetime.fromisoformat(d['anchors'][field]['at']))!=event_date(value,datetime.fromisoformat(anchor['at']))
                     except ValueError:pass
                 if not reanchor:continue
-            eligible=[r for r in rows if not old or r['source_ref']==self.h._current['source_ref'] or allow_batch and old['facts'][field] is None]
+            eligible=[field_evidence[field]] if field_evidence is not None and field in field_evidence else [r for r in rows if not old or r['source_ref']==self.h._current['source_ref'] or allow_batch and old['facts'][field] is None]
             scoped=[scope(r,field,value,p.title or d['facts']['title']) if scope else r for r in eligible]
-            matches=[(r,literal_fact(value,r['text'] if field=='title' else outside_title(r['text'],p.title or d['facts']['title']),field)) for r in scoped]
+            matches=[(r,r['value'] if r.get('temporal') and r['value']==value else literal_fact(value,r['text'] if field=='title' else outside_title(r['text'],p.title or d['facts']['title']),field)) for r in scoped]
             matches=[(r,literal) for r,literal in matches if literal is not None]
-            if not matches:raise ValueError('calendar_'+field+'_source')
+            if not matches:raise PlanningError('calendar_'+field+'_source')
             row,literal=matches[-1];bare=bool(old and self._answer(old,'time' if field=='time_text' else 'end',literal))
             d['facts'][field]=literal;d['fact_sources'][field]=[row['source_ref']]
-            d['anchors'][field]={'source_ref':row['source_ref'],'at':row['at'],'bare':bare};changed=True
+            d['anchors'][field]={'source_ref':row['source_ref'],'at':row['at'],'bare':bare,
+                **({'temporal':deepcopy(row['temporal'])} if row.get('temporal') else {})};changed=True
         if old and not changed:
             if not commit and allow_batch:return deepcopy(old)
-            raise ValueError('calendar_no_fact_change')
+            raise PlanningError('calendar_no_fact_change')
         if p.duration_text is not None and p.end_time_text is None:
             for f in ['end_date_text','end_time_text']:d['facts'][f]=None;d['fact_sources'].pop(f,None);d['anchors'].pop(f,None)
         if p.end_time_text is not None and p.duration_text is None:
@@ -345,12 +375,14 @@ class CalendarWorkflow:
             clean=literal_guard_text(row['text'],d['facts']['title'])
             for other in guard_titles:clean=literal_guard_text(clean,other)
             bangkok_zone(clean)
-            if re.search(r'หรือ|ประมาณ|ราว\s*ๆ?|คร่าว\s*ๆ|ยังไม่แน่ใจ|อาจจะ',clean):raise ValueError('calendar_ambiguous_source')
+            if re.search(r'หรือ|ประมาณ|ราว\s*ๆ?|คร่าว\s*ๆ|ยังไม่แน่ใจ|อาจจะ',clean):raise PlanningError('calendar_ambiguous_source')
             if re.search(r'ทุก(?:วัน|สัปดาห์|เดือน|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์)|\b(?:weekly|daily|recurr|invite|attendee|every\s+(?:day|week|month))|ส่งคำเชิญ|เชิญ|ผู้เข้าร่วม|แจ้งเตือน|เตือน(?:ก่อน|ล่วงหน้า|ด้วย|\s*\d)',clean,re.I):
-                error=ValueError('calendar_timed_single_creation_only');error.unsupported_features=unsupported_features(clean);raise error
+                error=PlanningError('calendar_timed_single_creation_only',kind='unsupported');error.unsupported_features=unsupported_features(clean);raise error
         d['source_refs']=list(dict.fromkeys([*(old['source_refs'] if old else []),*p.source_refs,*(r for refs in d['fact_sources'].values() for r in refs),*([d['all_day_anchor']['source_ref']] if 'all_day_anchor' in d else [])]))
-        if len(d['source_refs'])>32:raise ValueError('calendar_source_limit')
+        if len(d['source_refs'])>32:raise PlanningError('calendar_source_limit')
         d['start'],d['end'],d['missing_fields'],d['issues']=calculate(d)
+        if 'calendar_temporal_date_pair_required' in d['issues']:
+            raise PlanningError('calendar_temporal_date_pair_required',fields=['date_text','end_date_text'],required=['date projection paired with the offset time'])
         return self.save_review(d) if commit else d
     def review_draft(self,d):
         d['review']=None;d['status']='needs_information'
@@ -369,10 +401,10 @@ class CalendarWorkflow:
         return {'domain':'calendar','ok':True,'status':'review' if d['status']=='review' else 'needs_information','draft_ref':d['draft_ref'],
             'draft_version':d['version'],'missing_fields':deepcopy(d['missing_fields']),'issues':deepcopy(d['issues']),
             'calendar_view':{**{k:deepcopy(d[k]) for k in ['draft_ref','version','facts','start','end','missing_fields','issues']},'all_day':d.get('all_day',False)}}
-    def tool(self,name,args):
+    def tool(self,name,args,*,interpreted_patch=False,field_evidence=None):
         try:
-            if not self.enabled:raise ValueError('calendar_disabled')
-            if name in self.batches.names:return self.batches.tool(name,args)
+            if not self.enabled:raise PlanningError('calendar_disabled')
+            if name in self.batches.names:return self.batches.tool(name,args,interpreted_patch=interpreted_patch,field_evidence=field_evidence)
             if name=='prepare_calendar_event':
                 from .calendar_sources import units
                 p=Edit.model_validate(args);d=self.h.state.calendar_drafts.get(p.draft_ref,{})
@@ -381,29 +413,33 @@ class CalendarWorkflow:
                     return self.batches.prepare({'batch_ref':None,'batch_version':None,'events':[args]})
                 if d.get('batch_ref'):
                     b=self.batches.get(d['batch_ref'])
-                    return self.batches.prepare({'batch_ref':b['batch_ref'],'batch_version':b['version'],'events':[args]})
+                    return self.batches.prepare({'batch_ref':b['batch_ref'],'batch_version':b['version'],'events':[args]},interpreted_patch=interpreted_patch,field_evidence=field_evidence)
                 if not p.draft_ref and len(units(self.h._current,[p.title] if p.title else []))>1:
                     return self.batches.prepare({'batch_ref':None,'batch_version':None,'events':[args]})
-            if name=='prepare_calendar_event':return self.prepare(args)
+            if name=='prepare_calendar_event':return self.prepare(args,field_evidence=field_evidence.get(args['draft_ref']) if field_evidence is not None else None)
             if name=='read_calendar_drafts':
                 p=Read.model_validate(args);views=self.views()
                 if p.draft_ref:views=[v for v in views if v['draft_ref']==p.draft_ref]
                 return {'domain':'calendar','ok':True,'status':'draft_read','drafts':views}
             p=Control.model_validate(args);d=deepcopy(self.bound(p))
             if p.operation=='cancel':
-                if not self.cancel_intent(self.h._current['text']):raise ValueError('calendar_cancel_not_requested')
-                if (self.h.state.pending or any(v['status']!='recorded' for v in self.h.state.drafts.values())) and not re.search(r'นัด|ปฏิทิน|'+re.escape(d['draft_ref']),self.h._current['text']):raise ValueError('calendar_ambiguous_cancel_target')
+                if not self.cancel_intent(self.h._current['text']):raise PlanningError('calendar_cancel_not_requested')
+                if (self.h.state.pending or any(v['status']!='recorded' for v in self.h.state.drafts.values())) and not re.search(r'นัด|ปฏิทิน|'+re.escape(d['draft_ref']),self.h._current['text']):raise PlanningError('calendar_ambiguous_cancel_target')
                 blocked=self.h._blocked_action()
-                if blocked:raise ValueError('calendar_action_pending')
+                if blocked:raise PlanningError('calendar_action_pending')
                 d.update(status='cancelled',review=None,version=d['version']+1,updated_at=self.h._current['at'])
                 self.h.state.calendar_drafts[d['draft_ref']]=d;self.seal(d);self.h.state.checkpoint()
                 return {'domain':'calendar','ok':True,'status':'cancelled','draft_ref':d['draft_ref']}
-            if p.operation!='review' or not re.search(r'ตรวจ|ทบทวน|ดูร่าง|บันทึก|สร้าง|review|save',self.h._current['text'],re.I):raise ValueError('calendar_review_not_requested')
+            if p.operation!='review' or not re.search(r'ตรวจ|ทบทวน|ดูร่าง|บันทึก|สร้าง|review|save',self.h._current['text'],re.I):raise PlanningError('calendar_review_not_requested')
             d.update(version=d['version']+1,updated_at=self.h._current['at']);d['start'],d['end'],d['missing_fields'],d['issues']=calculate(d)
             return self.save_review(d)
         except (ValueError,KeyError,TypeError) as error:
-            code=str(error) if type(error) is ValueError and re.fullmatch(r'calendar_[a-z_]+',str(error)) else 'calendar_invalid_arguments'
+            code=str(error) if isinstance(error,PlanningError) else str(error) if type(error) is ValueError and re.fullmatch(r'calendar_[a-z_]+',str(error)) else 'calendar_invalid_arguments'
+            metadata=recovery(error,kind=None if isinstance(error,PlanningError) else 'assistant_arguments',tools=[name,'patch_pending_records','resolve_temporal','read_calendar_drafts'])
+            if code in {'calendar_batch_stale','calendar_draft_stale_or_unavailable','calendar_stale_draft_version'} and self.batches.refresh_requested(self.h._current['text']):
+                metadata['handled_by']='calendar_review_refresh'
             return {'domain':'calendar','ok':False,'status':'invalid_request','error':code,
+                'recovery':metadata,
                 **({'unsupported_features':error.unsupported_features} if hasattr(error,'unsupported_features') else {})}
     def render(self,output):
         if output.get('ok') and 'calendar_batch_view' in output:return self.batches.render(output)
