@@ -95,6 +95,7 @@ release-operation evidence are not part of this repository.
 | --- | --- |
 | [Architecture](docs/architecture.md) | Request flow, module boundaries and persisted contracts |
 | [Behavior](docs/behavior.md) | User examples and supported limits |
+| [Read answers](docs/answer-composition.md) | Model-selected prose/layout, linked facts and compact fallbacks |
 | [SQL analysis](docs/relational-queries.md) | Primary query layer, derived results, precision and read isolation |
 | [Tables](docs/tables.md) | Sheets/Firestore metadata, relationships and reviewed changes |
 | [Configuration](docs/configuration.md) | Explicit targets, feature flags and secret mounts |

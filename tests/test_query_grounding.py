@@ -22,12 +22,12 @@ def test_model_arguments_cannot_expand_read_surface(field,value):
 def test_query_wording_cannot_invent_facts_units_or_success(mutation):
     api=VoiceHosted()
     def bad(body):
-        p=json.loads(body['input'][0]['content']);parts=[{'kind':'fact','value':key} for key in p['fact_order']]
-        if mutation=='drop':parts.pop()
-        elif mutation=='duplicate':parts.append(parts[0])
-        elif mutation=='unknown':parts[0]['value']='invented'
-        else:parts.insert(0,{'kind':'text','value':{'money':'900 บาท','date':'พรุ่งนี้','name':'ชื่อใหม่','saved':'บันทึกสำเร็จแล้ว','swapped_units':'บาท รายการ'}[mutation]})
-        return generated(body,parts)
+        p=json.loads(body['input'][0]['content']);blocks=[{'kind':'text','template':'{{'+key+'}}'} for key in p['answer_facts']['facts']]
+        if mutation=='drop':blocks.pop()
+        elif mutation=='duplicate':blocks.append({'kind':'rows','record_refs':['r1','r1'],'heading':'','template':'{{c1}}'})
+        elif mutation=='unknown':blocks[0]['template']='{{invented}}'
+        else:blocks.insert(0,{'kind':'text','template':{'money':'900 บาท','date':'พรุ่งนี้ 2028','name':'{{new_name}}','saved':'บันทึกสำเร็จแล้ว','swapped_units':'{{total_as_items}}'}[mutation]})
+        return generated(body,{'blocks':blocks})
     api.voice=bad;r,_=turn(api,'ยอดวันนี้',plan())
     assert r.data['response_realization']=={**r.data['response_realization'],'status':'fallback','reason':'invalid_output'}
     assert '0.00 บาท' in r.message and not api.google.sheet_writes
@@ -36,8 +36,8 @@ def test_query_wording_cannot_invent_facts_units_or_success(mutation):
 def test_query_fact_slots_compose_inline_natural_thai():
     api=VoiceHosted()
     def natural(body):
-        p=json.loads(body['input'][0]['content']);assert p['query_reply'] and p['facts']['total']=='0.00 บาท'
-        return generated(body,{'period':{'before':'','after':' '},'total':{'before':'รายจ่ายรวม ','after':' '},'count':{'before':'จาก ','after':'ครับ'}})
+        p=json.loads(body['input'][0]['content']);assert p['answer_document'] and p['answer_facts']['facts']['f2']=='0.00 บาท'
+        return generated(body,{'blocks':[{'kind':'text','template':'{{f1}} รายจ่ายรวม {{f2}} จาก {{f3}}ครับ'}]})
     api.voice=natural;r,_=turn(api,'วันนี้รวม',plan())
     assert r.data['response_realization']['status']=='llm' and r.message=='วันนี้ (16 ต.ค. 2026) รายจ่ายรวม 0.00 บาท จาก 0 รายการครับ'
 
@@ -82,13 +82,14 @@ def test_calendar_filter_must_come_from_cited_owner_wording():
     assert not r.data['tool_result']['complete'] and not api.calendar_requests
 
 
-def test_locked_rows_do_not_require_model_repetition_and_cannot_disappear():
+def test_referenced_records_preserve_every_appointment_without_copying_its_values():
     from test_read_queries import event
     api=VoiceHosted();api.calendar.events={'one':event('one','2026-10-17','2026-10-18',all_day=True)}
     def header(body):
         p=json.loads(body['input'][0]['content'])
-        assert p['locked_rows'] and not any(k.startswith('row') for k in p['fact_order'])
-        return generated(body,{'period':{'before':'','after':' '},'count':{'before':'มี ','after':'ครับ'}})
+        assert p['answer_document'] and 'locked_rows' not in p
+        return generated(body,{'blocks':[{'kind':'text','template':'{{f1}} มี {{f2}}ครับ'},
+            {'kind':'rows','record_refs':['r1'],'heading':'','template':'{{c2}} — {{c3}}'}]})
     api.voice=header;r,_=turn(api,'ดูนัด',plan('calendar','2026-10-17'))
     assert r.data['response_realization']['status']=='llm' and r.message.count('นัดจำลอง one')==1
 

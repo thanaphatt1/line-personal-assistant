@@ -1569,8 +1569,12 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
-        if result.data.get('domain')=='table':return result
-        if result.data.get('query_analysis') or result.data.get('data_inventory'):return result
+        if result.data.get('domain')=='table' or result.data.get('query_analysis'):
+            # Completed reads share the optional answer composer. Table
+            # mutations and incomplete analysis retain their full core reply.
+            from .answer_composition import for_result
+            if for_result(self,result) is None:return result
+        if result.data.get('data_inventory'):return result
         if (result.data.get('tool_result') or {}).get('calendar_connection'):return result
         if not self.response_realization_enabled:return result
         from .response_realization import realize

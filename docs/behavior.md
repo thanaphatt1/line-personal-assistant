@@ -74,9 +74,21 @@ by start time. An appointment spanning multiple days is shown once with its
 date range or end date. If it began before the requested period, it appears
 under the first requested day with its original start date retained. Counts
 still refer to appointments, and the existing 20-appointment display limit
-applies. Day headings and rows stay fixed during optional reply realization.
+applies. This is also the fallback layout. Completed ordinary reads can use
+model-selected headings and lists while preserving event/date/time bindings.
 
-The optional response phase composes short connective wording around immutable names, dates, amounts, outcomes and confirmation instructions. It does not freely rewrite facts. Its foreground deadline is four seconds for ordinary replies and eight seconds for Calendar semantic selection, within the overall request deadline. Failure returns the deterministic server reply without another model attempt; a semantic-selection failure leaves the requested count unavailable.
+The optional response phase lets the model choose prose and layout for completed
+read results using references to verified summary facts and linked record cells.
+It can avoid repeating a single-day date or put a shared date above several
+records. This also covers eligible table, SQL and read-analysis results, with one
+optional response call after analysis. Drafts, confirmations, write receipts and
+incomplete results keep their guarded facts. The foreground deadline is eight
+seconds for read-document composition/Calendar semantic selection and four
+seconds for ordinary guarded replies,
+within the overall request deadline. Failure returns the server reply without
+another model attempt; a semantic-selection failure leaves the requested count
+unavailable. See [flexible read answers](answer-composition.md) for the fact
+bindings, validation limits, token reservation and fallback behavior.
 
 The raw-history workflow has no fixed model-request count per owner turn. Reads
 with `continue_analysis=true` can feed `query_relations`, further source reads or

@@ -24,6 +24,16 @@ def offline(monkeypatch):
 
 def generated(body,parts=None):
     payload=json.loads(body['input'][0]['content'])
+    if payload.get('answer_document'):
+        if parts is None:
+            view=payload['answer_facts']
+            blocks=[{'kind':'text','template':'{{'+key+'}}'} for key in view['facts']]
+            blocks += [{'kind':'rows','record_refs':[row['id']],'heading':'',
+                        'template':'{{index}}. '+' — '.join('{{'+key+'}}' for key in row['fields'])}
+                       for row in view['records']]
+            parts={'blocks':blocks}
+        return {'model':'gpt-6-luna','status':'completed','usage':{'input_tokens':1000,'output_tokens':100},
+            'output':[{'type':'message','status':'completed','content':[{'type':'output_text','text':json.dumps(parts,ensure_ascii=False)}]}]}
     if payload.get('validation_reply'):
         return {'model':'gpt-6-luna','status':'completed','usage':{'input_tokens':1000,'output_tokens':100},
             'output':[{'type':'message','status':'completed','content':[{'type':'output_text','text':json.dumps({

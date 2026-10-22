@@ -87,7 +87,7 @@ def test_derived_result_can_be_queried_again_and_finished_by_reference():
     r,_=turn(api,'ก.ย. แต่ละร้านคิดเป็นสัดส่วนเท่าไร',expense(continue_analysis=True),
         sql(lambda rs:f"SELECT item,SUM(amount) AS total FROM {name(rs,'expense')} GROUP BY item",continue_analysis=True),
         sql(second,continue_analysis=True),finish(refs=None))
-    assert r.status=='answer' and 'fraction: 0.67' in r.message,r
+    assert r.status=='answer' and 'B — 0.67' in r.message,r
 
 
 @pytest.mark.parametrize('damage',['foreign_ref','duplicate','source','missing_column'])

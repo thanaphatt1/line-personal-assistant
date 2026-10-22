@@ -314,8 +314,8 @@ def day_label(value):
     return f'{day.day} {MONTHS[day.month-1]} {day.year}'
 
 
-def calendar_rows(events,scope):
-    """One row per appointment, grouped by its first visible Bangkok day.
+def calendar_records(events,scope):
+    """Display cells for each appointment's first visible Bangkok day.
 
     Spanning appointments retain their original date range instead of being
     counted again on every day. A carry-in belongs under the query's first day.
@@ -334,14 +334,20 @@ def calendar_rows(events,scope):
             elif day!=end.date():when=start.strftime('%H:%M')+' ถึง '+day_label(end.date().isoformat())+' '+end.strftime('%H:%M')
             else:when=start.strftime('%H:%M')+'–'+end.strftime('%H:%M')
         rows.append((max(day,first),not event['all_day'],order,event['title'],when))
+    return [{'date':day.isoformat(),'title':label_text(title),'when':when}
+            for day,_,_,title,when in sorted(rows)]
+
+
+def calendar_rows(events,scope):
     result=[];previous=None;ordinal=0
-    for day,_,_,title,when in sorted(rows):
+    for event in calendar_records(events,scope):
+        day=date.fromisoformat(event['date'])
         heading=''
         if day!=previous:
             heading='\nวัน'+WEEKDAYS[day.weekday()]+'ที่ '+day_label(day.isoformat())+':\n'
             ordinal=0;previous=day
         ordinal+=1
-        result.append(heading+f'{ordinal}. {when} — '+label_text(title))
+        result.append(heading+f"{ordinal}. {event['when']} — "+event['title'])
     return result
 
 
@@ -413,7 +419,14 @@ def facts(output, at):
         for i,g in enumerate(output.get('groups',[]),1):
             label=day_label(g['label']) if grouping=='date' else label_text(g['label'])
             values[f'row{i}']=f"{i}. {label} — {g['amount']} บาท ({g['count']} รายการ)"
-        for i,e in enumerate(output['entries'],1):values[f'row{i}']=f"{day_label(e['date'])} — {label_text(e['item'])} {Decimal(e['amount']):.2f} บาท"
+        previous=None
+        for i,e in enumerate(output['entries'],1):
+            row=f"{label_text(e['item'])} {Decimal(e['amount']):.2f} บาท"
+            if scope['start']!=scope['end']:
+                if order=='date':
+                    if e['date']!=previous:row='\n'+day_label(e['date'])+':\n'+row
+                else:row=day_label(e['date'])+' — '+row
+            values[f'row{i}']=row;previous=e['date']
     else:
         if scope.get('filter_text'):values['filter']=label_text(scope['filter_text'])
         values['count']=str(output['count'])+(' ครั้ง' if scope.get('filter_text') else ' นัด')

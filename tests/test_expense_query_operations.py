@@ -50,7 +50,7 @@ def test_item_ranking_groups_all_payments_before_sorting_not_largest_single_paym
     output=result.data['tool_result']
     assert output['groups']==[{'label':'กาแฟ','amount':'800.00','count':2},{'label':'รถไฟ','amount':'700.00','count':1}]
     assert output['expense']=='1500.00' and output['count']==3
-    assert '1. กาแฟ — 800.00 บาท (2 รายการ)' in result.message
+    assert 'กาแฟ — 800.00 บาท' in result.message and '2 รายการ' in result.message
 
 @pytest.mark.parametrize('options,labels',[
     ({'order_by':'amount'},['B','A','C']),
@@ -66,7 +66,7 @@ def test_date_groups_use_decimal_sum_and_count_order():
     api=SemanticHosted();seed(api,[('2026-09-01','A',0.1),('2026-09-01','B',0.2),('2026-09-02','C',100)])
     result,_=turn(api,'เดือน ก.ย. แยกวันเรียงจำนวน',expense(group_by='date',order_by='count',descending=True))
     assert result.data['tool_result']['groups'][0]=={'label':'2026-09-01','amount':'0.30','count':2}
-    assert '1 ก.ย. 2026 — 0.30 บาท (2 รายการ)' in result.message
+    assert '1 ก.ย. 2026 — 0.30 บาท' in result.message and '2 รายการ' in result.message
 
 @pytest.mark.parametrize('grouping',['category','subcategory'])
 def test_unmapped_category_group_never_claims_complete_ranking(grouping):
@@ -152,7 +152,7 @@ def test_join_and_group_are_composable_with_grounded_finisher_and_followup_scope
     seed(api,[('2026-09-03','A',35),('2026-09-10','A',40),('2026-09-11','A',999)])
     result,_=turn(api,'เดือนที่แล้ววันที่คุมสอบใช้ไรเยอะสุด',cal,
         expense(start=None,end=None,date_mode='previous',group_by='item',order_by='amount',descending=True,continue_analysis=True,join=True),finish())
-    assert '1. A — 75.00 บาท (2 รายการ)' in result.message
+    assert 'A — 75.00 บาท' in result.message and '2 รายการ' in result.message
     assert result.data['read_query']['calendar_basis']['dates']==['2026-09-03','2026-09-10']
     # A later turn cannot silently broaden this conditional query to all days.
     result,_=turn(api,'ขอเรียงยอด',expense(start=None,end=None,date_mode='previous',order_by='amount',descending=True))

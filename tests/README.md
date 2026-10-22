@@ -1,5 +1,10 @@
 # Test guide
 
+The [read-answer composer](test_answer_composition.py) checks flexible prose,
+shared date headings, complete linked cells, preserved ranking, invalid-document
+fallback and exact signed replay. Its model responses are scripted; fresh
+synthetic model evaluations are retained separately outside this checkout.
+
 The [SQL executor](test_relational_sql.py) and
 [relational workflow](test_relational_queries.py) suites cover joins, CTEs,
 CASE/window calculations, exact decimal helpers, complete inputs beyond display

@@ -46,9 +46,11 @@ def test_six_reads_and_finish_exceed_two_calls_and_preserve_every_tool_output():
         return finish('calendar_count')(body)
     result,original=turn(api,'ดูนัด 1-6 พ.ย. รวมกี่ครั้ง',*calls,done)
     output=result.data['tool_result']
-    assert output['complete'] and output['count']==2 and len(api.model_bodies)==7
+    assert output['complete'] and output['count']==2 and len(api.model_bodies)==8
     assert 'มี 2 ครั้งครับ' in result.message and len(output['query_refs'])==6
-    state=api.snapshot();assert len(state['model_runs'])==7 and all(run['decision'] is None for run in state['model_runs'].values())
+    state=api.snapshot();planner={key:run for key,run in state['model_runs'].items() if not key.startswith('realize01_')}
+    assert len(planner)==7 and all(run['decision'] is None for run in planner.values())
+    assert result.data['response_realization']['status']=='llm'
     calls=len(api.model_bodies);reads=len(api.calendar_requests)
     with TestClient(api.app()) as client:assert api.send(client,deepcopy(original)).status_code==200
     assert len(api.model_bodies)==calls and len(api.calendar_requests)==reads
@@ -66,7 +68,7 @@ def test_calendar_inference_can_continue_into_expense_reads_and_code_sums_matchi
         day,read('expense','2026-11-10',identifier='day_2'),finish('expense_sum'))
     assert result.data['tool_result']['expense']=='75.00' and result.data['tool_result']['count']==2
     assert '75.00 บาท' in result.message and 'TA 2 ครั้ง' in result.message and '99.00' not in result.message
-    assert len(api.model_bodies)==5 and len(api.selection_bodies)==1
+    assert len(api.model_bodies)==6 and len(api.selection_bodies)==1
     assert not api.google.sheet_writes and not api.calendar.posts
 
 def test_calendar_union_deduplicates_occurrence_across_overlapping_reads():

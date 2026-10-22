@@ -104,11 +104,12 @@ def test_cross_calendar_invitation_copy_counts_once_and_distinct_occurrences_rem
     assert result.data['tool_result']['count']==2
     assert len(json.loads(api.selection_bodies[0]['input'][0]['content'])['calendar_selection']['events'])==2
 
-def test_monthly_unfiltered_query_preserves_grouped_replies_without_semantic_call():
+def test_monthly_unfiltered_query_preserves_dates_and_order_without_semantic_call():
     api=SemanticHosted();api.calendar.events={'a':appointment('a'), 'b':appointment('b',30)}
     result,_=november(api,None)
     assert result.data['tool_result']['count']==2 and '2 นัด' in result.message
-    assert 'วันอาทิตย์ที่ 1 พ.ย. 2026:' in result.message and 'วันจันทร์ที่ 30 พ.ย. 2026:' in result.message
+    assert '1 พ.ย. 2026 — ทั้งวัน — TA a' in result.message and '30 พ.ย. 2026 — ทั้งวัน — TA b' in result.message
+    assert result.message.index('TA a')<result.message.index('TA b')
     assert not api.selection_bodies and len(api.model_bodies)==2
 
 def test_semantic_results_are_durable_and_duplicate_signed_delivery_does_not_requery_or_reinfer():

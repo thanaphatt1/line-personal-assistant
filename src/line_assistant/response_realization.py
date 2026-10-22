@@ -1,7 +1,8 @@
 """One optional, budgeted Luna realization of immutable server facts.
 
 The model composes speech and fact references, never tools or business values.
-Ordinary replies use neutral language outside facts. Diagnosed enrollment
+Completed reads use free prose/layout over linked display cells. Write and
+incomplete replies use neutral language outside facts. Diagnosed enrollment
 failures permit a short explanatory sentence; status and the
 next question are still inserted by the server, never rewritten by the model.
 """
@@ -15,6 +16,7 @@ import hashlib,json,re
 from .state import Claim,Result
 from .model_api import MODEL_ID,BudgetBlocked
 from .language import BANGKOK
+from . import answer_composition
 
 MAX_OUTPUT=768
 MAX_BODY_BYTES=24000
@@ -32,7 +34,7 @@ def speech_words(outcome,query=False):
         'clarification':('ยัง','ต้อง','ตรวจสอบ','ร่าง','เพิ่ม'),
         'stale':('ยัง','ต้อง','ตรวจสอบ','ร่าง','ยืนยัน','ใหม่','ชุด','นัด','ล่าสุด')}.get(outcome,())
     return (*NEUTRAL,*extra,*QUERY_WORDS) if query else (*NEUTRAL,*extra)
-INSTRUCTIONS=(
+INSTRUCTIONS=answer_composition.INSTRUCTIONS+(
     'Realize a concise natural Thai reply from immutable server facts and relevant conversation context. '
     'Return JSON with an optional opening (prefer an empty string) and parts, each kind=text or fact. fact.value is an ID, never a copied/edited fact. '
     'Include EVERY fact ID exactly once in the supplied order. The status fact is authoritative: draft is not saved, '
@@ -233,6 +235,12 @@ def body_for(host,result):
     payload={'outcome':result.status,'query_reply':query,'locked_rows':[v for k,v in result.data.get('query_facts',{}).items() if k.startswith('row')],'fact_order':list(facts),'facts':facts,'current_owner_text':context_text(owner_text)[:240],
         'relevant_context':context,'allowed_speech_words':list(speech_words(result.status,query)),
         'questions_allowed':result.status in {'clarification','stale','expired'} or any(k.startswith('ask') or k=='instruction' for k in facts)}
+    answer=answer_composition.for_result(host,result)
+    if answer:
+        # The old rendered rows are fallback only. They are not supplied as
+        # fixed strings or automatically appended to a composed read answer.
+        payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
+        payload.update(answer_document=True,answer_facts=answer)
     feedback=(result.data.get('tool_result') or {}).get('validation_feedback')
     if feedback:
         payload['validation_feedback']={k:deepcopy(feedback[k]) for k in ('version','tool','codes','kind','invalid_fields','required_fields','next_action')}
@@ -248,6 +256,9 @@ def body_for(host,result):
         'store':False,'service_tier':'default','truncation':'disabled','text':{'format':{'type':'json_schema','name':'grounded_reply_parts','strict':True,'schema':schema(list(facts),result.status,query)}}}
     if payload.get('validation_reply'):
         body['text']['format'].update(name='grounded_validation_reply',schema=validation_schema(feedback['codes']))
+    if answer:
+        body['max_output_tokens']=answer_composition.MAX_OUTPUT
+        body['text']['format'].update(name='grounded_answer_document',schema=answer_composition.schema())
     if len(encoded(body))>MAX_BODY_BYTES:return None
     return body
 
@@ -257,6 +268,15 @@ def validate_body(body):
     try:
         p=json.loads(body['input'][0]['content'])
         if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
+        if p.get('answer_document'):
+            return (set(body)==keys and set(p)=={'outcome','current_owner_text','relevant_context','answer_document','answer_facts'}
+                and p['answer_document'] is True and p['outcome'] in {'answer','summary'} and answer_composition.valid_view(p['answer_facts'])
+                and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
+                and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'}
+                and body['max_output_tokens']==answer_composition.MAX_OUTPUT
+                and body['store'] is False and body['service_tier']=='default' and body['truncation']=='disabled'
+                and body['text']=={'format':{'type':'json_schema','name':'grounded_answer_document','strict':True,'schema':answer_composition.schema()}}
+                and len(encoded(body))<=MAX_BODY_BYTES)
         if p.get('validation_reply'):
             from .validation_explanations import ENROLLMENT_ERRORS
             feedback=p['validation_feedback']
@@ -299,6 +319,7 @@ def parse(value,body):
     document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
     if payload.get('calendar_selection'):return selection.parse(document,payload)
     if payload.get('validation_reply'):return parse_validation(document,payload)
+    if payload.get('answer_document'):return answer_composition.render(document,payload['answer_facts'])
     facts=payload['facts']
     if payload.get('query_reply'):
         if set(document)!={'opening','parts'} or document['opening']!='' or not isinstance(document['parts'],dict) or set(document['parts'])!=set(facts):raise ValueError('query_parts')
@@ -360,16 +381,18 @@ def realize(host,event,result):
     if previous and previous.result.data.get('response_realization') and (reply and reply.status=='sent' or previous.result.data['response_realization'].get('core_hash')==identity(result)):return deepcopy(previous.result)
     if result.status in {'denied','ignored'} or result.status=='summary' and not result.data.get('read_query') or result.status=='answer' and not result.data.get('tool_result'):return result
     started=monotonic();core_hash=identity(result)
-    def fallback(reason):
-        emit('reply_fallback',reason=code(reason))
+    def fallback(reason,validation_code=None):
+        emit('reply_fallback',reason=code(reason),**({'validation_code':validation_code} if validation_code else {}))
         metadata={'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}
+        if validation_code:metadata['validation_code']=validation_code
         if selection.pending(result):return selection.fallback(result,metadata)
         return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
     if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')
     body=body_for(host,result)
     if body is None:return fallback('body_bound')
     from .pilot_http import remaining_rpc_seconds
-    deadline=selection.TIMEOUT_SECONDS if selection.pending(result) else TIMEOUT_SECONDS
+    deadline=(selection.TIMEOUT_SECONDS if selection.pending(result) else
+              answer_composition.TIMEOUT_SECONDS if json.loads(body['input'][0]['content']).get('answer_document') else TIMEOUT_SECONDS)
     remaining=remaining_rpc_seconds();timeout=min(deadline,remaining-2) if remaining is not None else deadline
     if timeout<0.05:return fallback('deadline')
     if not _inflight.acquire(blocking=False):return fallback('inflight')
@@ -395,11 +418,13 @@ def realize(host,event,result):
         try:cached={'status':'llm','text':parse(value,body)} if status=='received' else {'status':'fallback','reason':status}
         except OverflowError:
             host.guard.halt();cached={'status':'fallback','reason':'usage_bound'}
+        except answer_composition.AnswerError as error:
+            cached={'status':'fallback','reason':'invalid_output','validation_code':code(str(error))}
         except Exception:cached={'status':'fallback','reason':'invalid_output'}
         host.guard.complete(key,cached)
     else:_inflight.release()
     emit('model_result',role='reply',run_ref=ref(key),status=code(cached.get('status')),
          reason=code(cached['reason']) if 'reason' in cached else None)
-    if cached.get('status')!='llm':return fallback(cached.get('reason','unavailable'))
+    if cached.get('status')!='llm':return fallback(cached.get('reason','unavailable'),cached.get('validation_code'))
     try:return apply(result,cached['text'],{'status':'llm','core_hash':core_hash,'run_key':key,'elapsed_ms':round((monotonic()-started)*1000)})
     except Exception:return fallback('render_bound')

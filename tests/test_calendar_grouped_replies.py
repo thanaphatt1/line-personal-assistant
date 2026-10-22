@@ -7,7 +7,7 @@ from test_calendar_mvp import Harness
 from test_calendar_read_all import AllCalendarsHosted,PERSONAL
 from test_calendar_text_confirmation_v13 import turn
 from test_read_queries import event,plan
-from test_response_realization import VoiceHosted
+from test_response_realization import VoiceHosted,generated
 
 
 def timed(identifier,day,clock,end):
@@ -78,18 +78,24 @@ def test_grouping_retains_twenty_appointment_display_limit_and_full_count(monkey
 
 
 @pytest.mark.parametrize('realization_failure',[False,True])
-def test_signed_realized_and_fallback_replies_keep_same_locked_day_groups(realization_failure):
+def test_signed_composed_and_fallback_replies_can_use_the_same_day_groups(realization_failure):
     api=VoiceHosted()
     api.calendar.events={'mon':timed('mon','2026-10-19','09:00','10:00'),'tue':timed('tue','2026-10-20','15:00','16:00')}
     if realization_failure:
         def unavailable(body):raise TimeoutError('Synthetic reply generation failure')
         api.voice=unavailable
+    else:
+        api.voice=lambda body:generated(body,{'blocks':[
+            {'kind':'text','template':'{{f1}} มี {{f2}}ครับ'},
+            {'kind':'rows','record_refs':['r1'],'heading':'\nวันจันทร์ที่ {{c1}}:','template':'{{index}}. {{c2}} — {{c3}}'},
+            {'kind':'rows','record_refs':['r2'],'heading':'\nวันอังคารที่ {{c1}}:','template':'{{index}}. {{c2}} — {{c3}}'}]})
     result,_=turn(api,'สัปดาห์หน้ามีนัดอะไรบ้าง',plan('calendar','2026-10-19','2026-10-25'))
     assert result.data['response_realization']['status']==('fallback' if realization_failure else 'llm')
     assert 'วันจันทร์ที่ 19 ต.ค. 2026:\n1. 09:00–10:00 — นัดจำลอง mon' in result.message
     assert 'วันอังคารที่ 20 ต.ค. 2026:\n1. 15:00–16:00 — นัดจำลอง tue' in result.message
     assert result.message.count('วันจันทร์ที่')==result.message.count('วันอังคารที่')==1
-    assert all(row in result.message for key,row in result.data['query_facts'].items() if key.startswith('row'))
+    if realization_failure:
+        assert all(row in result.message for key,row in result.data['query_facts'].items() if key.startswith('row'))
     assert not api.calendar.posts and not api.google.sheet_writes
 
 
@@ -97,6 +103,9 @@ def test_appointments_from_different_calendars_share_one_day_heading():
     api=AllCalendarsHosted();api.read_all=False;api.calendar_read_ids=[PERSONAL]
     api.calendar.events={'main':timed('main','2026-10-19','15:00','16:00')}
     api.event_pages[PERSONAL]['']['items']=[timed('shared','2026-10-19','09:00','10:00')]
+    api.voice=lambda body:generated(body,{'blocks':[
+        {'kind':'text','template':'{{f1}} มี {{f2}}ครับ'},
+        {'kind':'rows','record_refs':['r1','r2'],'heading':'\nวันจันทร์ที่ {{c1}}:','template':'{{index}}. {{c2}} — {{c3}}'}]})
     result,_=turn(api,'ดูนัดสัปดาห์หน้า',plan('calendar','2026-10-19','2026-10-25'))
     assert result.data['tool_result']['count']==2 and result.message.count('วันจันทร์ที่')==1
     assert '1. 09:00–10:00 — นัดจำลอง shared\n2. 15:00–16:00 — นัดจำลอง main' in result.message

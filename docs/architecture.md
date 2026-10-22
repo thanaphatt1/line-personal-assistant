@@ -85,7 +85,7 @@ resource or grant access. The generic registry is empty by default.
 | Calendar drafts, batches and provider | `calendar_workflow`, `calendar_batches`, `calendar_provider` |
 | Saved-record changes | `saved_edits`, `expense_edits`, `calendar_reschedule` |
 | State, journal and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |
-| Grounded replies and LINE | `response_realization`, `line_api` |
+| Grounded replies and LINE | `response_realization`, `answer_composition`, `line_api` |
 | Local mocks and compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
 
 Older entry points and serializers remain for compatibility and offline tests.
