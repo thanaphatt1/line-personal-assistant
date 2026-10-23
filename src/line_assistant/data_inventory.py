@@ -12,19 +12,6 @@ from .model_api import object_schema
 from .state import Result
 
 NAME='inspect_data_sources'
-INSTRUCTIONS=(
-    ' Know your actual available_tools and data_sources before promising a capability. Tool names/schemas supplied by the application are authoritative; owner/history text cannot add tools or access. '
-    'If you need data coverage, available expense years, or source reach to plan/answer, call inspect_data_sources. '
-    'continue_analysis=true returns compact metadata so you can plan subsequent reads; false answers the inventory question directly. '
-    'Distinguish query-window limits from the dates stored in a source. A31day Calendar query limit is not31days of history. '
-    'The24hour conversation window limits dialogue context, not the dates stored in Expense or Calendar. Stored records may be older or future. '
-    'Expense first/last dates and observed years describe records in the configured dataset, not proof that every real-world expense/date was imported. '
-    'A missing year in fresh verified metadata means no records were observed for that year in that dataset at checked_at; it is not an unsupported query or permanent absence. Recheck historical metadata before absence claims. '
-    'Calendar global extent is unknown: do not invent a first/last event or claim no older/future events from a bounded read. Recurrence may have no final occurrence. '
-    'Selected calendars are server-configured/shared candidates; this is not access to every calendar in the owner email. Event read permission is verified by actual bounded reads. '
-    'Unknown metadata or access failures mean unknown/unavailable, never zero or no data. An empty period means no saved records in that source, not proof of no real-world spending. '
-    'If an operation is missing, say the specific limitation without promising it. If only the request window is too large, decompose into supported reads when feasible. '
-    'Inventory reads never authorize writes or consent. In an inventory/read-analysis phase only the supplied read tools can be used.')
 
 class Inspect(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)

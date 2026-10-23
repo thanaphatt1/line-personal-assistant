@@ -17,37 +17,23 @@ from .language import BANGKOK
 from .tool_errors import PlanningError,recovery
 
 NAME='resolve_temporal'
-INSTRUCTIONS=(
-    ' resolve_temporal interprets owner temporal wording as a typed semantic plan; the server calculates and validates it. '
-    'Use it when literal date/time parsing is insufficient, for relative event offsets, weekdays or durations. '
-    'Copy the original owner source_ref/source_text. Model interpretation is a proposal, never consent. '
-    'components supplies complete ISO date and/or HH:MM without changing the owner meaning; resolve omitted month/year using the ORIGINAL owner source timestamp. '
-    'offset uses a verified temporal_context basis_ref, signed days/months/years/minutes; negative minutes means earlier. '
-    'weekday uses weekday=0..6 (Monday..Sunday), direction=next/previous/inclusive, anchored to the source timestamp unless an explicit verified basis is selected. '
-    'duration supplies hours and minutes; the server calculates total minutes. Do not invent an end time or duration. '
-    'Do not resolve an ambiguous clock/date/target; ask one specific question. Only Bangkok is supported. '
-    'Tool results expose temporal_ref and date/time/duration_text projections. Use temporal_ref in pending field changes, '
-    'temporal_refs on Calendar/table/saved-edit proposals, or an expense date_ref. Keep source_text as the original wording. '
-    'For an offset datetime use date AND time projections together, especially across midnight. A reference is an observed snapshot, not a live formula. '
-    'For saved appointments first read/query/find them; metadata or an invented name is not a temporal basis. '
-)
 
 
 class Resolve(Strict):
     source_ref:str=Field(min_length=1,max_length=64)
     source_text:str=Field(min_length=1,max_length=200)
     kind:Literal['date','time','datetime','duration']
-    mode:Literal['components','offset','weekday','duration']
-    basis_ref:str|None=None
-    date:str|None=None
-    time:str|None=None
+    mode:Literal['components','offset','weekday','duration']=Field(description='components: explicit ISO date/HH:MM interpreted from owner wording and original source timestamp; offset: server arithmetic from an offered basis; weekday: anchored weekday selection; duration: elapsed hours/minutes.')
+    basis_ref:str|None=Field(default=None,description='An actual offered temporal_context basis. Null uses the original source timestamp for components/weekday; never invent a saved-event basis.')
+    date:str|None=Field(default=None,description='Complete ISO date for components, otherwise null. Omitted year/month follow the original owner source timestamp.')
+    time:str|None=Field(default=None,description='Bangkok HH:MM for components, otherwise null. An endpoint clock is not an elapsed duration.')
     days:int=Field(default=0,ge=-36600,le=36600)
     months:int=Field(default=0,ge=-1200,le=1200)
     years:int=Field(default=0,ge=-100,le=100)
     minutes:int=Field(default=0,ge=-10080,le=10080)
     hours:str|int|None=None
-    weekday:int|None=Field(default=None,ge=0,le=6)
-    direction:Literal['next','previous','inclusive']|None=None
+    weekday:int|None=Field(default=None,ge=0,le=6,description='Monday=0 through Sunday=6. Used only by weekday mode.')
+    direction:Literal['next','previous','inclusive']|None=Field(default=None,description='weekday direction: next/previous are strict; inclusive permits the anchor date.')
     timezone:Literal['Asia/Bangkok']='Asia/Bangkok'
 
 

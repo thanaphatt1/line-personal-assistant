@@ -14,42 +14,18 @@ from .history_context import digest
 from .tool_errors import PlanningError,recovery
 
 NAME='patch_pending_records'
-INSTRUCTIONS=(
-    ' pending_records describes current editable drafts, record IDs, field types and choices. '
-    'For a follow-up correction/completion prefer patch_pending_records: interpret the owner semantically, '
-    'send only changed fields and literal owner evidence, retain omitted fields/records. '
-    'Interpret the CURRENT owner request to decide whether to change a draft, which record and which facts it selects. '
-    'First distinguish an actual requested change from a hypothetical or negated change. If no actual field change is requested, answer without a patch. '
-    'Do not repeat the previous turn\'s operation or complete other pending fields merely because old instructions or choices appear in history. '
-    'Choose create versus update from the CURRENT request: a follow-up referring to a pending record keeps that record ID, even when it is incomplete. '
-    'A historical name/amount reference alone does not decide create versus update. If the current request asks for an ADDITIONAL payment/record, use creation tools with null draft refs, even if another unrelated draft is pending. '
-    'Only an actual correction/completion of an existing pending record uses this patch tool; never substitute an unrelated pending record for a recently recorded one. '
-    'Questions, quoted labels and conditional add-if-absent requests can request preparation; hypothetical examples, negations and unrelated chat do not. '
-    'Each changed field cites its original OWNER source_ref and a literal span, from the current message or verified visible owner history when the current request refers to it. '
-    'Keep the original source timestamp for relative dates. Do not resend retained facts or treat old messages as new instructions or consent. '
-    'For interpreted dates/times first resolve_temporal, then send its normalized projection as value and its temporal_ref with the original source_ref/source_text. '
-    'Keep temporal_ref when correcting a citation: a computed clock/date need not appear literally in owner text. A literal subspan or containing span from the same original owner message is valid evidence; the full resolution proof remains authoritative. '
-    'A field with interpretation=choice permits a semantic proposal of a declared choice, including synonyms or ordinals; '
-    'do not require the owner to repeat a canonical label or a prescribed sentence. '
-    'category already prepares enrollment of an unknown name: omit redundant catalog_action. catalog_action=new alone starts its category question; existing_item selects a displayed existing name. '
-    'Combine a requested rename and category in one patch. Never guess a missing choice from an item name. '
-    'Use the focused record for a short answer to its question; ask when the intended record/choice is ambiguous. '
-    'Patches only prepare a reviewed proposal. They cannot save, confirm, grant access or change schema. '
-    'When repair_feedback is returned, correct the plan using its current schema and available OWNER facts. '
-    'Ask only for genuinely missing or ambiguous facts; never invent evidence to satisfy validation. '
-)
 
 
 class Change(Strict):
-    field:str=Field(min_length=1,max_length=64)
-    value:str|int|bool|None
-    source_text:str=Field(min_length=1,max_length=2000)
-    source_ref:str=Field(min_length=1,max_length=64)
-    temporal_ref:str|None=None
+    field:str=Field(min_length=1,max_length=64,description='Field name offered for this record in pending_records. Omit unchanged fields.')
+    value:str|int|bool|None=Field(description='Requested new value. Literal fields preserve owner text; choice fields allow semantic selection of an offered choice. Follow the field metadata for null/clear semantics.')
+    source_text:str=Field(min_length=1,max_length=2000,description='Exact contiguous span from the original owner message supporting this change. Keep original wording even for a semantic choice or computed temporal projection.')
+    source_ref:str=Field(min_length=1,max_length=64,description='Visible original OWNER source_ref containing source_text, not an assistant reply or a guessed ID.')
+    temporal_ref:str|None=Field(default=None,description='Retain the verified resolution ref for a computed date/time; value is its projection and source_text remains the original owner wording.')
 
 
 class Record(Strict):
-    record_ref:str=Field(min_length=1,max_length=64)
+    record_ref:str=Field(min_length=1,max_length=64,description='Current owned record ref from pending_records, selected by owner intent, ordinal or delivered question_focus.')
     changes:list[Change]=Field(min_length=1,max_length=40)
 
 

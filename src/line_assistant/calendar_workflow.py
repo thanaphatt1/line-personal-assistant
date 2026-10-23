@@ -213,7 +213,10 @@ class CalendarWorkflow:
     def single_definitions(self):
         nullable={'type':['string','null']}
         fields={name:{**nullable,'description':'Literal full owner event name, excluding leading request verbs unless explicitly quoted/named as title' if name=='title' else 'Literal owner date/time/duration wording; null retains the certified value'} for name in FIELDS}
-        fields['date_text']['description']='Copy only the literal date span, excluding clock/duration/all-day mode words even when adjacent. วันที่20ตุลาทั้งวัน -> วันที่20ตุลา; all_day=true separately.'
+        fields['date_text']['description']='Copy only the literal date span, excluding adjacent clock, duration and all-day mode wording. Select all_day separately.'
+        fields['time_text']['description']='Literal owner start clock, without date or duration. Null when unknown or for an explicitly all-day event.'
+        fields['end_time_text']['description']='Literal owner endpoint clock. Do not place an endpoint in duration_text or calculate an absent endpoint.'
+        fields['duration_text']['description']='Literal elapsed duration, not an endpoint clock or a model-calculated clock difference. Null when absent.'
         temporal_refs={'type':'array','maxItems':5,'items':object_schema({'field':{'type':'string','enum':[f for f in FIELDS if f!='title']},'temporal_ref':{'type':'string'}})}
         return [{'type':'function','name':'prepare_calendar_event','strict':True,
             'description':'Prepare one appointment, never writes. all_day=true only for explicit owner all-day wording; requires a date, never times. Timed appointments need start and end/duration. Null retains existing mode/facts. One all-day date per event; clarify or split multi-day ranges. Use owned source refs/current version. No guests, recurrence or reminders.',

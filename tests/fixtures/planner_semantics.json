@@ -1,0 +1,90 @@
+{
+  "format": "planner-semantics-v1",
+  "purpose": "Development comparisons, not an unseen holdout or a general accuracy estimate",
+  "clock": "2026-10-23T09:59:00+07:00",
+  "provider_mode": "Synthetic Google, LINE, state, reply wording and Calendar membership; real planner only",
+  "setups": {
+    "transport_catalog": [["RailLite", "Transportation"], ["MetroJet", "Transportation"], ["LimeRide", "Transportation"]],
+    "batch": "วันนี้ RailLite 41 MetroJet 13 LimeRide 27",
+    "exclusion_rows": [["2026-09-03", "Tablet Nebula", "1200"], ["2026-09-07", "Tram", "55"], ["2026-09-07", "Coffee", "25"], ["2026-09-08", "Tram", "55"]],
+    "ranking_rows": [["2026-09-01", "CloudCafe", "90"], ["2026-09-02", "CloudCafe", "90"], ["2026-09-03", "NebulaTablet", "150"]],
+    "activity_rows": [["2026-09-07", "RailLite", "41"], ["2026-09-07", "Lunch", "30"], ["2026-09-08", "Tools", "100"], ["2026-09-11", "Drink", "20"]],
+    "activity_event": {"title": "อบรมหลักสูตรเช้า", "start": "2026-09-07", "exclusive_end": "2026-09-08", "membership": "match"},
+    "tables": "table_registry.json"
+  },
+  "cases": [
+    {
+      "id": "new_batch",
+      "setup": "transport_catalog",
+      "message": "วันนี้ RailLite 41 MetroJet 13 LimeRide 27",
+      "expect": {"status": "preview", "payments": [["RailLite", "41"], ["MetroJet", "13"], ["LimeRide", "27"]], "date": "2026-10-23"}
+    },
+    {
+      "id": "referenced_batch",
+      "setup": "Reject a scripted incomplete proposal with all three item values null for batch; preserve the original owner message and delivered error",
+      "message": "เอารายการด้านบนลงบัญชีให้ที",
+      "expect": {"status": "preview", "payments": [["RailLite", "41"], ["MetroJet", "13"], ["LimeRide", "27"]], "date": "2026-10-23", "evidence": "Original factual owner message plus current intent"}
+    },
+    {
+      "id": "unrelated_pending",
+      "setup": "Prepare unknown เครื่องเขียนดาว 29 with today's date and leave its name/category question pending",
+      "message": "วันนี้ RailLite 41 MetroJet 13 LimeRide 27",
+      "expect": {"status": "preview", "payments": [["RailLite", "41"], ["MetroJet", "13"], ["LimeRide", "27"]], "unrelated_pending_unchanged": true}
+    },
+    {
+      "id": "rename_category",
+      "setup": "Prepare unknown ขนมจันทร์ 31 with today's date; ask its name/category question",
+      "message": "เป็นชื่อใหม่ เปลี่ยนเป็น ขนมจันทร์ตลาดเช้า แล้วใช้หมวดอาหาร",
+      "expect": {"status": "preview", "item": "ขนมจันทร์ตลาดเช้า", "category": "Food", "amount": "31", "date": "2026-10-23", "same_pending_record": true}
+    },
+    {
+      "id": "incomplete_calendar",
+      "setup": "Fresh state",
+      "message": "ช่วยจดนัดตรวจสายตาวันพรุ่งนี้",
+      "expect": {"status": "clarification", "title": "ตรวจสายตา", "date": "2026-10-24", "missing": "Timing or explicit all-day intent; no assumed endpoint/duration"}
+    },
+    {
+      "id": "exclusion",
+      "setup": "exclusion_rows",
+      "message": "เดือนกันยาช่วยรวมยอดให้หน่อย ตัด Tablet Nebula ออกไปจากการคิดนะ",
+      "expect": {"status": "answer", "amount_baht": "135", "payments": 3, "excluded_item": "Tablet Nebula"}
+    },
+    {
+      "id": "entity_ranking",
+      "setup": "ranking_rows",
+      "message": "กันยาร้านไหนกินเงินเยอะสุด นับยอดรวมแต่ละร้านนะ",
+      "expect": {"status": "answer", "first_item": "CloudCafe", "first_total_baht": "180", "semantics": "Aggregate by entity before ranking"}
+    },
+    {
+      "id": "detail_followup",
+      "setup": "exclusion_rows; deliver September aggregate excluding Tablet Nebula before this turn",
+      "message": "ขอชื่อรายการพวกนั้นด้วย",
+      "expect": {"status": "answer", "retained_period": ["2026-09-01", "2026-09-30"], "excluded_item": "Tablet Nebula", "items": ["Tram", "Coffee", "Tram"], "equivalent_grouping": "Tram 110 from 2 payments; Coffee 25 from 1 payment"}
+    },
+    {
+      "id": "missing_period",
+      "setup": "Fresh state; no recoverable prior query",
+      "message": "สรุปยอดที่จ่ายให้หน่อย",
+      "expect": {"clarify": "Period", "no_invented_total": true, "no_business_data_read": true, "equivalent_route": "Direct question or date_required rejection before a source read"}
+    },
+    {
+      "id": "activity_dates",
+      "setup": "activity_rows and activity_event",
+      "message": "เดือนที่แล้ววันที่ไปอบรม ใช้เงินเท่าไหร่",
+      "expect": {"status": "answer", "amount_baht": "71", "payments": 2, "selected_dates": ["2026-09-07"], "order": ["Calendar", "Expenses"], "semantics": "Spending on matching dates, not proven event costs; accept direct final results or a report selecting the exact complete expense query ref"}
+    },
+    {
+      "id": "people_insert",
+      "setup": "table_registry.json with fresh synthetic stores",
+      "message": "เพิ่มผู้ติดต่อ อรุณ เบอร์ 0000187",
+      "expect": {"status": "preview", "table": "people", "values": {"name": "อรุณ", "phone": "0000187", "status": "pending"}}
+    },
+    {
+      "id": "income_insert",
+      "setup": "table_registry.json with fresh synthetic stores",
+      "message": "วันนี้รายรับงานที่บ้าน 950 บาท",
+      "expect": {"status": "preview", "table": "family_income", "amount": "950", "date": "2026-10-23"}
+    }
+  ],
+  "global_assertions": ["No business write or confirmation", "Replay the signed delivery without another model call or business write", "Compare semantic facts and selected refs; allow equivalent SQL aliases and supported result envelopes", "Keep original failures and oracle corrections; never rerun a received model response to select a passing outcome"]
+}

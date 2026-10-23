@@ -62,7 +62,9 @@ def test_expense_scope_reply_keeps_pending_facts_without_tool_or_implicit_consen
     body=h.port.records[-1]['request'];context=json.loads(body['input'][0]['content'])
     assert body['tool_choice']=='auto' and context['message']==text
     assert 'next_tool' not in json.dumps(context['available_drafts']) and 'Advance owned' not in body['instructions']
-    assert 'optional background' in body['instructions'] and context['available_drafts'][0]['entries'][0]['amount']=='60'
+    from line_assistant.planner_instructions import build
+    assert body['instructions']==build(body['tools'])
+    assert context['available_drafts'][0]['entries'][0]['amount']=='60'
     assert not h.state.actions and not h.sheets.entries
 
 def test_resume_can_ask_for_missing_category_from_context_without_any_tool_call():

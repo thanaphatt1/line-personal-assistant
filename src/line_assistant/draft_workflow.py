@@ -53,8 +53,10 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
     for t in result:
         p=t['parameters']['properties']
         if t['name']=='prepare_expenses':
+            p['draft_ref']['description']='Null for a new payment set. Pending changes use the offered pending-record tool and its current IDs.'
             p['entries'].update(minItems=1,maxItems=5)
             entry=p['entries']['items']
+            entry['properties']['entry_ref']['description']='Null for a new payment. An existing record is selected only through its current owned pending view.'
             if previous_prices:
                 offered=[e['previous_price']['ref'] for d in available for e in d.get('entries',[]) if e.get('previous_price',{}).get('state')=='offered']
                 entry['properties']['previous_price_ref']={'type':['string','null'],'enum':[None,*offered],
@@ -72,10 +74,11 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
             entry['required'].append('date_ref')
             fields=object_schema({name:{'type':'array','items':{'type':'string'},'maxItems':16} for name in ['item','amount','date','note']})
             entry['properties']['field_sources']={'anyOf':[{'type':'null'},fields],
-                'description':'Optional owner source refs per changed field across messages; null or an empty field list uses source_refs. Unchanged fields retain certified provenance. Never consent.'}
+                'description':'Optional original OWNER refs for individual fields when their evidence comes from different messages. Null uses the entry source_refs for verification. These refs locate evidence; they do not fill missing values except explicitly selected verified recorded facts.'}
             entry['required'].append('field_sources')
+            entry['properties']['source_refs']['description']='Original visible OWNER message refs containing this payment name, amount and date evidence. Include earlier factual messages when the current message only refers to them, and include current_source_ref for current intent. Never cite assistant text or an unrelated pending record.'
             entry['properties']['date_text']['description']='Literal owner date expression; server resolves it using cited originals and Bangkok time. Null keeps an existing date. Do not generate an ISO or a context mode.'
-            t['description']='Prepare requested expenses; matching is included. NEW draft: supply item/amount, or explicitly cite their field_sources to copy unique verified recorded facts; include current source_ref. Null without a selected fact means missing. Existing draft updates retain null fields. For dates send date_text or an offered date_ref, never both; server normalizes. Never writes.'
+            t['description']='Prepare all requested payment occurrences; catalog matching is included. Supply every known item and amount explicitly from the cited original owner messages. Null means genuinely missing, except when explicit field_sources select a unique verified recorded fact for reuse. For dates use literal date_text or an offered date_ref, never both; omitted new date defaults to Bangkok today. Existing null fields retain certified facts. Never writes.'
         if t['name']=='prepare_item_enrollment':
             steps=['show_choices']
             if any(r['step']=='choose_existing_or_new' for r in pending):steps+=['begin_new_item','use_existing_item','choose_category']

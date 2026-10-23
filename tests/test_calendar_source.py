@@ -19,12 +19,12 @@ def test_bundle_is_deterministic_includes_calendar_and_excludes_runtime_data(tmp
     packager.verify(a)
     with tarfile.open(a/'source.tar.gz') as archive:
         names=set(archive.getnames())
-        for module in ['calendar_dates','calendar_provider','calendar_transport','calendar_workflow','saved_edits','expense_edits','calendar_reschedule','saved_edit_transport','historical_categories','previous_prices','query_followups','tables','table_storage','table_workflow','action_trace','pending_records','tool_repair','relational','relational_sql','answer_composition']:
+        for module in ['calendar_dates','calendar_provider','calendar_transport','calendar_workflow','saved_edits','expense_edits','calendar_reschedule','saved_edit_transport','historical_categories','previous_prices','query_followups','tables','table_storage','table_workflow','action_trace','pending_records','tool_repair','relational','relational_sql','answer_composition','planner_instructions']:
             path='src/line_assistant/'+module+'.py'
             assert archive.extractfile(path).read()==(ROOT/path).read_bytes()
         runtime_names={n for n in names if n.startswith('src/line_assistant/') and n.endswith('.py')}
-        expected={n for n in packager.INPUTS if n.startswith('src/line_assistant/') and n.endswith('.py')}
-        assert runtime_names==expected and len(runtime_names)==110
+        expected={str(path.relative_to(ROOT)) for path in (ROOT/'src/line_assistant').rglob('*.py')}
+        assert runtime_names==expected
         path='src/line_assistant/response_realization.py'
         assert archive.extractfile(path).read()==(ROOT/path).read_bytes()
         assert not any(n.startswith(('tests/','local-data/','.git/','docs/')) or n in {'.env','.env.example','RELEASE_V11.json'} for n in names)

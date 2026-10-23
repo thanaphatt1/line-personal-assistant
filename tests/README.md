@@ -1,5 +1,11 @@
 # Test guide
 
+The [planner prompt contracts](test_planner_instructions.py) check guidance
+selection from offered tools, preserved dialogue and parameter documentation.
+The [planner semantic corpus](fixtures/planner_semantics.json) supplies synthetic
+cross-domain scenarios for separate real-model development comparisons; it is
+not executed as paid inference by pytest. See [prompt design](../docs/planning-prompts.md).
+
 The [additional-payment regressions](test_additional_expenses.py) cover
 recorded-fact reuse on another date, unrelated pending drafts, catalog item
 case variants, creation-only repair, cold signed restore/confirmation/replay,

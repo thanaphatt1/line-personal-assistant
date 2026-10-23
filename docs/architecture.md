@@ -9,7 +9,9 @@ The main analysis layer is read-only SQL over observed records. The LLM chooses
 sources and query meaning; Python validates access, materializes complete
 matched snapshots and executes the query. Simple typed reads remain available.
 See the [runtime diagrams](system-flow.md), [SQL contract](relational-queries.md)
-and [table registration](tables.md).
+and [table registration](tables.md). The [planning prompt](planning-prompts.md)
+uses shared principles and optional capability sections; parameter formats
+belong to the tool schemas.
 
 ## Query path
 
@@ -76,7 +78,7 @@ resource or grant access. The generic registry is empty by default.
 | Area | Modules |
 | --- | --- |
 | Ingress/composition and HTTP scope | `main`, `history_cloud_run`, `pilot_config`, `pilot_http`, `calendar_transport` |
-| Dialogue, planning and offered tools | `history_first`, `raw_history`, `data_inventory` |
+| Dialogue, planning and offered tools | `history_first`, `raw_history`, `planner_instructions`, `data_inventory` |
 | SQL schemas and isolated execution | `relational`, `relational_sql` |
 | Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
 | Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |

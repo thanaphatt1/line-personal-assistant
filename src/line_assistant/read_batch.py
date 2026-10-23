@@ -4,17 +4,6 @@ from .history_context import digest
 from .tool_errors import recovery
 
 NAME='query_sources'
-INSTRUCTIONS=(
-    ' Use query_sources to batch independent expense/Calendar/table reads with already-known periods and criteria '
-    'in one tool call, e.g. comparing two months or reading spending and appointments for the same week. '
-    'Each read uses the exact corresponding typed tool arguments with continue_analysis=true. '
-    'Do not batch a dependent read: Calendar classification/date selection must finish BEFORE expenses use its query_ref. '
-    'A partial batch is not complete evidence; inspect each result before finish_query_analysis or query_relations. '
-    'Repair failed members before finishing the original comparison; do not replace it with a report of only successful reads. '
-    'period_text must be a contiguous literal OWNER span. For coordinated periods such as เดือน ก.ย. กับ ต.ค. ปี 2026, '
-    'copy the ENTIRE original phrase into each member rather than assembling a nonexistent phrase like เดือน ก.ย. ปี 2026. '
-    'When a query_relations result already answers the question choose continue_analysis=false to finish directly. '
-)
 
 
 def definition(offered):
@@ -25,7 +14,7 @@ def definition(offered):
             'tool':{'type':'string','enum':[tool['name']]},'arguments':deepcopy(tool['parameters'])},
             'required':['tool','arguments']})
     return {'type':'function','name':NAME,'strict':True,'description':
-        'Batch independent saved-data reads in ONE planning step. Same typed/source checks as individual tools; no writes or dependent refs. Each result has its own complete status and query_ref.',
+        'Batch independent saved-data reads in one planning step, with continue_analysis=true. No writes or dependent refs. Each member retains its own completeness and query_ref; repair failed members before finishing. period_text copies a contiguous original owner span; a coordinated phrase may be cited in full for each member, never reconstructed from separated words.',
         'parameters':{'type':'object','additionalProperties':False,'properties':{
             'reads':{'type':'array','minItems':1,'maxItems':8,'items':{'anyOf':variants}}},'required':['reads']}}
 
