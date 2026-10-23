@@ -68,12 +68,12 @@ def jsonable(value):
     return json.loads(json.dumps(value, default=lambda item: item.isoformat()))
 
 
-def workspace_snapshot(state):
+def workspace_snapshot(state, *, include_records=True):
     return jsonable({
                      "pending": asdict(state.pending) if state.pending else None,
                      "last": asdict(state.last) if state.last else None,
                      "recent_turns": state.recent_turns,
-                     **{name: {key: compact_record(asdict(item)) for key, item in getattr(state, name).items()}
+                     **{name: {key: compact_record(asdict(item)) for key, item in getattr(state, name).items()} if include_records else {}
                         for name in ("receipts", "claims", "actions", "replies")}})
 
 def compact_record(record):
@@ -88,12 +88,15 @@ def compact_record(record):
     return record
 
 
-def state_snapshot(state, owner_id):
-    return jsonable({"version": 1, "owner_id": owner_id, **workspace_snapshot(state),
-                     **{name: {key: asdict(item) for key, item in getattr(state, name).items()}
+def state_snapshot(state, owner_id, *, include_records=True):
+    return jsonable({"version": 1, "owner_id": owner_id, **workspace_snapshot(state,include_records=include_records),
+                     **{name: {key: asdict(item) for key, item in getattr(state, name).items()} if include_records else {}
                         for name in ("model_runs", "model_budgets")},
-                     "workbook_id": state.workbook_id, "workspaces": state.workspaces,
-                     "event_workbooks": state.event_workbooks, "production_ready": state.production_ready,
+                     "workbook_id": state.workbook_id,
+                     "workspaces": state.workspaces if include_records else
+                         {book: {**part, **{name: {} for name in ('claims','receipts','actions','replies')}}
+                          for book,part in state.workspaces.items()},
+                     "event_workbooks": dict(state.event_workbooks) if include_records else {}, "production_ready": state.production_ready,
                      "model_halted": state.model_halted,
                      "canary": asdict(state.canary) if state.canary else None})
 

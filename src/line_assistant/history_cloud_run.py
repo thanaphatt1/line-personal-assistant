@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED','PILOT_STATE_RECORDS_ENABLED'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -46,6 +46,7 @@ class HistoryConfig:
     saved_expense_delete_enabled: bool=False
     catalog_aliases_enabled: bool=False
     record_actions_enabled: bool=False
+    state_records_enabled: bool=False
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -103,12 +104,15 @@ class HistoryConfig:
                 binding=registration.storage
                 if binding.backend=='sheets' and binding.spreadsheet_id==core.spreadsheet_id and (binding.sheet_id in {core.expense_sheet_id,core.database_sheet_id} or binding.tab in {'All Expenses','Database'}):raise ValueError()
         except ValueError:raise ConfigError('Explicit valid table registry and history/state required; existing expense tabs are reserved') from None
+        records=values.get('PILOT_STATE_RECORDS_ENABLED','false')
+        if records not in {'true','false'} or records=='true' and (h!='true' or s!='true'):
+            raise ConfigError('State records require explicit history/state opt-in')
         extras=[values.get(key,'false') for key in ('PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED')]
         if any(v not in {'true','false'} for v in extras) or any(v=='true' for v in extras) and (h!='true' or s!='true'):
             raise ConfigError('Owner record features require explicit history/state flags')
         if extras[0]=='true' and expense!='true':raise ConfigError('Expense removal requires saved edits and the reviewed writer policy')
         if extras[2]=='true' and expense!='true':raise ConfigError('Record buttons require saved expense editing')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras))
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras),records=='true')
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
@@ -154,12 +158,14 @@ class HistoryHttp(PilotHttp):
         return super().request(service,method,path,body=body,params=params,headers=headers)
     def _json(self,response):
         if not response.is_success:return super()._json(response)
-        if getattr(self,'raw_history_enabled',False) and response.request.url.path.endswith((':runQuery',':batchGet')):
+        if getattr(self,'raw_history_enabled',False) and response.request.url.path.endswith((':runQuery',':batchGet',':runAggregationQuery')):
             value=response.json()
             if isinstance(value,list):return value
             raise LiveDisabled('Invalid paginated history response')
         return super()._json(response)
     def allowed(self,service,method,path,body,params):
+        records=getattr(self.state,'record_store',None)
+        if service=='firestore' and records is not None and records.authorize(method,path,body,params):return
         for table_store in getattr(self,'table_stores',()):
             if service==table_store.binding.backend and table_store.authorize(method,path,body,params):return
         store=getattr(self,'expense_store',None)
@@ -230,6 +236,7 @@ class HistoryHttp(PilotHttp):
 
 def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None,clock=None,semantic_enabled=True,raw_history_enabled=True):
     values=values or {};config=HistoryConfig.from_mapping(values)
+    if config.state_records_enabled and not raw_history_enabled:raise ConfigError('State records require original-message history')
     if config.table_registry_json and not raw_history_enabled:raise ConfigError('Tables require original-message history')
     if config.expense_backend=='firestore' and not raw_history_enabled:raise ConfigError('Firestore expenses require original-message history')
     if (config.calendar_enabled or config.response_realization_enabled or config.saved_expense_enabled or config.saved_calendar_enabled or config.provisional_categories_enabled or config.previous_prices_enabled or config.catalog_aliases_enabled or config.record_actions_enabled) and not raw_history_enabled:raise ConfigError('Calendar/response realization/saved edits/proposals require raw history')

@@ -200,3 +200,83 @@ def test_emulator_signed_cold_price_confirmation_replay_and_calendar():
         assert api.calendar.posts == 1 and api.google.sheet_writes == 0
     finally:
         api.emulator.client.close()
+
+
+def test_emulator_owner_evidence_migration_cold_replay_reschedule_and_count():
+    import hashlib
+    from state_records_hosted import RecordsHosted
+    from line_assistant import state_record_codec as record_codec
+    from line_assistant.snapshot_codec import encode
+    from line_assistant.pilot_http import rpc_budget
+    from calendar_reschedule_hosted import find_last,move
+    from test_calendar_created_reschedule import created
+
+    class EmulatorRecords(RecordsHosted):
+        def __init__(self):
+            self.emulator=None;self.owner='U'+uuid.uuid4().hex
+            super().__init__()
+            self.emulator=EmulatorPort(ENDPOINT)
+            original=next(d for n,d in self.google.documents.items() if '/assistant_pilot_states/' in n)
+            snapshot=decode(original['fields']['snapshot']['stringValue'],800000)
+            assert not snapshot['actions'] and not snapshot['claims']
+            snapshot['owner_id']=self.owner
+            owner_hash=hashlib.sha256(self.owner.encode()).hexdigest()
+            self.owner_name='projects/'+PROJECT+'/databases/(default)/documents/assistant_pilot_states/'+owner_hash
+            fields={**deepcopy(original['fields']),'owner_hash':{'stringValue':owner_hash},
+                    'snapshot':{'stringValue':encode(snapshot,200000,compact=True)}}
+            self.emulator.request('POST','/v1/projects/'+PROJECT+'/databases/(default)/documents:commit',
+                body={'writes':[{'update':{'name':self.owner_name,'fields':fields},'currentDocument':{'exists':False}}]})
+        def configuration(self,enabled=True):
+            return {**super().configuration(enabled),'PILOT_PROJECT_ID':PROJECT,
+                'PILOT_SERVICE_ACCOUNT':'assistant@'+PROJECT+'.iam.gserviceaccount.com','PILOT_LINE_OWNER_ID':self.owner}
+        def event(self,*args,**kwargs):
+            value=super().event(*args,**kwargs);value['source']['userId']=self.owner;return value
+        def handle(self,request):
+            if self.emulator is not None and request.url.host=='firestore.googleapis.com':
+                response=self.emulator.client.request(request.method,request.url.path,params=request.url.params,
+                    content=request.content,headers={'Content-Type':'application/json'})
+                return httpx.Response(response.status_code,json=response.json())
+            if request.url.host=='metadata.google.internal' and request.url.path.endswith('/email'):
+                return httpx.Response(200,text='assistant@'+PROJECT+'.iam.gserviceaccount.com',headers={'Metadata-Flavor':'Google'})
+            return super().handle(request)
+        def stored_snapshot(self):
+            if self.emulator is None:return super().stored_snapshot()
+            return decode(self.emulator.request('GET','/v1/'+self.owner_name)['fields']['snapshot']['stringValue'],200000)
+        def snapshot(self):
+            value=self.stored_snapshot()
+            if value.get('state_records_v1',{}).get('phase')!='ready':return value
+            for group in ('events','actions','models','budgets'):
+                parent=self.owner_name+'/evidence_sets/v1/groups/'+group
+                rows=self.emulator.request('POST','/v1/'+parent+':runQuery',body={'structuredQuery':{'from':[{'collectionId':'records'}]}})
+                for result in rows:
+                    if 'document' not in result:continue
+                    doc=result['document'];record=record_codec.decode(doc,doc['name'],'synthetic-line-channel-secret')
+                    for kind,payload in record['values'].items():value[kind][record['key']]=deepcopy(payload)
+            return value
+
+    api=EmulatorRecords()
+    try:
+        saved=created(api)
+        review,_=turn(api,'เปลี่ยนเป็นวันที่ 14',find_last,move())
+        assert review.status=='preview'
+        updated,confirmation=turn(api,'ยืนยัน')
+        assert updated.status=='updated' and updated.data['id']==saved.data['event_id']
+        with TestClient(api.app()) as client:assert api.send(client,deepcopy(confirmation)).status_code==200
+        app=api.app()
+        try:
+            with rpc_budget(512),app.state.assistant.state.session():
+                state=app.state.assistant.state
+                assert state.model_record_count()>0
+                assert state.record_store.mode=='ready'
+        finally:app.state.pilot_http.close()
+        assert api.calendar.posts==1 and api.patches==1
+        stored=api.stored_snapshot()
+        assert stored['version']==2 and not stored['receipts'] and not stored['model_runs']
+        from datetime import timedelta
+        api.now+=timedelta(days=31)
+        app=api.app()
+        try:
+            with rpc_budget(512),app.state.assistant.state.session():
+                assert app.state.assistant.state.model_record_count()==0
+        finally:app.state.pilot_http.close()
+    finally:api.emulator.client.close()

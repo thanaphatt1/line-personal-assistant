@@ -77,8 +77,15 @@ for backend in ('sheets','firestore'):
             'PILOT_SAVED_EXPENSE_DELETE_ENABLED': 'true' if saved else 'false',
             'PILOT_CATALOG_ALIASES_ENABLED': 'true' if saved else 'false',
             'PILOT_RECORD_ACTIONS_ENABLED': 'true' if saved else 'false',
+            'PILOT_STATE_RECORDS_ENABLED': 'true' if saved else 'false',
         }, secret_loader=lambda name: SecretStr('synthetic-' + name))
         assert result['status'] == 'passed' and result['provider_requests'] == 0
+
+for backend in ('sheets','firestore'):
+    result=run_checks({**base,'PILOT_STATE_CODEC_ENABLED':'false','PILOT_STATE_RECORDS_ENABLED':'true',
+        'PILOT_EXPENSE_BACKEND':backend,'PILOT_FIRESTORE_EXPENSE_SCHEMA_VERIFIED':'true'},
+        secret_loader=lambda name:SecretStr('synthetic-'+name))
+    assert result['status']=='passed' and result['provider_requests']==0
 
 for table_backend in ('sheets','firestore'):
     binding = ({'backend':'sheets','spreadsheet_id':'synthetic-table-workbook-0001','tab':'People','sheet_id':701}

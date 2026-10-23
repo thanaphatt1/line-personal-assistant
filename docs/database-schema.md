@@ -194,17 +194,33 @@ The [snapshot codec](../src/line_assistant/snapshot_codec.py) accepts versioned
 JSON/compression formats within explicit encoded/expanded size limits. Oversize
 or invalid snapshots stop processing instead of truncating action/history proofs.
 Compression does not encrypt the contents.
+Hosted history always enables lossless compression and validates expanded
+history against the codec's 8,000,000-byte limit. The complete stored snapshot
+must still fit within 200,000 encoded bytes, or 800,000 when
+`PILOT_STATE_CODEC_ENABLED=true`. This legacy flag selects the stored size
+limit independently of history compression. The local SQLite prototype retains
+its existing 800,000-byte history limit. Reaching a bound never removes
+receipts, model reservations or action proofs to make room.
+
+With `PILOT_STATE_RECORDS_ENABLED=true`, the runtime migrates retained evidence
+to authenticated owner-scoped documents and keeps active context in this
+snapshot. See [evidence storage](state-records.md) for paths, fields, bounded
+cleanup and the release/recovery contract. The initial migration is opt-in;
+already migrated state remains readable with the flag off on compatible code.
 
 ## Inside the snapshot: implementation-specific fields
 
-The following are logical JSON shapes **inside `snapshot`**, not separate
-Firestore collections. Empty maps/nulls are normal for a new state. Older
+The following describe logical state. In legacy core version 1 they are inside
+`snapshot`. In core version 2, `claims`, `receipts`, `replies`, `event_workbooks`,
+`actions`, `model_runs` and `model_budgets` use separate evidence records; their
+inline maps stay empty. Empty maps/nulls are normal for a new state. Older
 supported formats can omit some fields and restore documented code defaults;
 hand-written partial snapshots are not a supported setup method.
 
 | Field/group | Shape and required/conditional behavior | Meaning |
 | --- | --- | --- |
-| `version`, `owner_id` | Required integer `1` and owner string in the core format | Version and exact restore binding; the owner string is private data. |
+| `version`, `owner_id` | Required integer `1` (inline evidence) or `2` (external evidence), and owner string | Version and exact restore binding; the owner string is private data. |
+| `state_records_v1` | Required for core version 2 | Authenticated migration cursor or ready marker with budget month, last-action pointers and cleanup cursors. |
 | `workbook_id`, `workspaces`, `event_workbooks` | Selected workbook string/null, map of retained workspace snapshots, map from event ID to workbook; maps initially empty | Prevent a prior event from moving to a newly selected workbook. Only configured current/legacy workbooks are eligible. |
 | `pending` | Null or `{kind, token, origin_event_id, source_timestamp, expires_at, payload}` | One domain review/selection at a time; `source_timestamp` is webhook milliseconds, `expires_at` is an aware ISO timestamp. Payload shape depends on the review kind. |
 | `last`, `recent_turns` | Null or `{kind, refs, expires_at}`; a bounded list | Verified last-action/follow-up context, not authorization for a new write. |

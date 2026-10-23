@@ -192,12 +192,12 @@ class DurableModelGuard:
                 'monthly_reservation' if self.limit < budget.reserved_micro_usd+reserved else
                 'monthly_calls' if budget.calls>=self.max_calls_month else
                 'daily_calls' if budget.day_calls.get(day,0)>=day_limit else
-                'record_capacity' if len(self.state.model_runs)>=MAX_MODEL_RECORDS else None)
+                'record_capacity' if getattr(self.state,'model_record_count',lambda:len(self.state.model_runs))()>=MAX_MODEL_RECORDS else None)
         if reason:
             diagnostic={'reason':reason,'month':month,'day':day,'reserved_micro_usd':budget.reserved_micro_usd,
                 'next_reservation_micro_usd':reserved,'monthly_limit_micro_usd':self.limit,'calls_month':budget.calls,
                 'calls_today':budget.day_calls.get(day,0),'max_calls_day':day_limit,'max_calls_month':self.max_calls_month,
-                'record_count':len(self.state.model_runs),'max_model_records':MAX_MODEL_RECORDS,'actual_billed_spend_known':False}
+                'record_count':getattr(self.state,'model_record_count',lambda:len(self.state.model_runs))(),'max_model_records':MAX_MODEL_RECORDS,'actual_billed_spend_known':False}
             logging.getLogger('uvicorn.error.line_assistant.quota').warning('model_quota_blocked %s',json.dumps(diagnostic,separators=(',',':')))
             raise BudgetBlocked("Model budget or call count exhausted",diagnostic=diagnostic)
         budget.reserved_micro_usd += reserved

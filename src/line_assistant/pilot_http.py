@@ -108,7 +108,8 @@ class PilotHttp:
             if response.status_code in {409, 412}:
                 code = "ABORTED"
             raise ApiError(response.status_code, code, category=category) from None
-        response_limit = 950000 if self.config.state_codec_enabled and url.startswith('https://firestore.googleapis.com/') else 512 * 1024
+        from .state_records import authorized_response
+        response_limit = 950000 if (self.config.state_codec_enabled and url.startswith('https://firestore.googleapis.com/') or authorized_response(self,url)) else 512 * 1024
         if len(response.content) > response_limit:
             raise OutcomeUnknown("Provider response exceeded pilot bound",reason='response_too_large')
         return response

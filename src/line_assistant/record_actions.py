@@ -43,6 +43,8 @@ class RecordActions:
             'displayText':utf16_limit(label or LABELS[operation],100),
             'data':'|'.join(['r1',operation,value['ref'],str(index),value['nonce']])}
     def delivered(self,ref,nonce):
+        store=getattr(self.h.state,'record_store',None)
+        if store is not None and store.mode=='ready':store.prefetch_receipt_ref(ref)
         for event,receipt in self.h.state.receipts.items():
             value=receipt.result.data.get('record_actions')
             if not value or value.get('ref')!=ref:continue

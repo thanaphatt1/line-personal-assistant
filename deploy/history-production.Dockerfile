@@ -8,6 +8,7 @@ COPY src/line_assistant/ ./src/line_assistant/
 COPY scripts/container_entrypoint.py ./scripts/container_entrypoint.py
 COPY scripts/verify_signed_startup.py ./scripts/verify_signed_startup.py
 COPY scripts/verify_history_signed_startup.py ./scripts/verify_history_signed_startup.py
+COPY scripts/migrate_state_records.py ./scripts/migrate_state_records.py
 USER 10001
 EXPOSE 8080
 CMD ["python", "scripts/verify_history_signed_startup.py"]

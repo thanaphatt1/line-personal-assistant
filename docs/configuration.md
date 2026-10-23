@@ -25,6 +25,11 @@ Use `deploy/runtime.env.example` as a checklist for environment values configure
 
 Synthetic targets in code exist for offline tests. A real transport refuses those defaults. A supplied identity/target is bound through metadata, state, adapter and HTTP allowlists; changing a model argument does not change a resource target.
 
+`PILOT_STATE_RECORDS_ENABLED` defaults to false. With production history and raw
+history enabled, it opts an existing owner into separate durable evidence
+records. Review the [migration and compatible recovery contract](state-records.md)
+before activation. The flag does not disable reading an already migrated format.
+
 ## Reading all calendars
 
 Set `PILOT_CALENDAR_READ_ALL_ENABLED=true` alongside the existing Calendar/history

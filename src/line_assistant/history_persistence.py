@@ -10,6 +10,7 @@ from .persistence import SQLiteStore,state_snapshot,restore_state
 from .conversation_mocks import ConversationSheets
 from .contracts import Transaction
 from .adapters import Reconciliation
+from .snapshot_codec import MAX_EXPANDED_BYTES
 
 MAX_LOCAL_SNAPSHOT_BYTES=800000
 
@@ -18,8 +19,15 @@ def aware(value):
     if at.utcoffset() is None:raise ValueError('History timestamps must be aware')
     return at
 
-def history_snapshot(state):
-    value={'format':'local-history-state-v1','owner_id':state.owner_id,'core':state_snapshot(state,state.owner_id),
+def snapshot_size(value,max_snapshot_bytes):
+    if type(max_snapshot_bytes) is not int or not 1<=max_snapshot_bytes<=MAX_EXPANDED_BYTES:
+        raise ValueError('Invalid history snapshot capacity')
+    raw=json.dumps(value,ensure_ascii=False,separators=(',',':'))
+    if len(raw.encode())>max_snapshot_bytes:raise ValueError('Local history snapshot exceeds capacity')
+    return raw
+
+def history_snapshot(state,*,max_snapshot_bytes=MAX_LOCAL_SNAPSHOT_BYTES,include_records=True):
+    value={'format':'local-history-state-v1','owner_id':state.owner_id,'core':state_snapshot(state,state.owner_id,include_records=include_records),
            'history':deepcopy(state.history),'history_bytes':state.history_bytes,'history_removed':state.history_removed,
            'drafts':deepcopy(state.drafts),'draft_proofs':deepcopy(state.draft_proofs)}
     if state.owner_features_used or state.catalog_aliases:
@@ -37,17 +45,15 @@ def history_snapshot(state):
     if state.raw_history_enabled and state.raw_history_migrated:
         value['history']=[]
         value['raw_history']={'enabled':True,'rolling_summary':deepcopy(state.rolling_summary)}
-    raw=json.dumps(value,ensure_ascii=False,separators=(',',':'))
-    if len(raw.encode())>MAX_LOCAL_SNAPSHOT_BYTES:raise ValueError('Local history snapshot exceeds capacity')
-    return json.loads(raw)
+    return json.loads(snapshot_size(value,max_snapshot_bytes))
 
-def restore_history(state,value,owner,*,expected_scope=None):
+def restore_history(state,value,owner,*,expected_scope=None,max_snapshot_bytes=MAX_LOCAL_SNAPSHOT_BYTES):
     # Validate off to the side: a rejected snapshot cannot partially replace a
     # live worker's validated values, receipts or model reservation records.
     if value.get('format') not in {'local-history-state-v1','local-history-state-v2'} or value.get('owner_id')!=owner:raise ValueError('History snapshot owner/version mismatch')
     extension=value.get('owner_features_v1')
     if (value['format']=='local-history-state-v2')!=(extension is not None):raise ValueError('Owner feature state/version mismatch')
-    if len(json.dumps(value,ensure_ascii=False,separators=(',',':')).encode())>MAX_LOCAL_SNAPSHOT_BYTES:raise ValueError('Local history snapshot exceeds capacity')
+    snapshot_size(value,max_snapshot_bytes)
     fresh=HistoryState(history_bytes=value['history_bytes']);fresh.owner_id=owner
     raw=value.get('raw_history')
     if raw is not None:
