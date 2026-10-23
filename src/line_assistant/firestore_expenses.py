@@ -307,7 +307,7 @@ class FirestoreExpenseStore:
                 return tuple(result)
             if not isinstance(result, dict):
                 raise ValueError()
-            if kind == 'edit_saved_expense':
+            if kind in {'edit_saved_expense','delete_saved_expense'}:
                 if (set(result) != {'id', 'before', 'after', 'proof'} or result['id'] != payload['id']
                         or result['before'] != {k: payload['before'][k] for k in ['item', 'amount', 'date']}
                         or result['after'] != payload['after'] or result['proof'] != 'transaction_receipt'):
@@ -332,13 +332,14 @@ class FirestoreExpenseStore:
                 or action.payload != payload or action.status != 'executing' or action.deadline <= self.state.clock()):
             raise LiveDisabled('Exact executing owner-confirmed business action required')
         config = self.state.client.http.config
-        if (kind == 'edit_saved_expense' and (not config.saved_expense_enabled or config.saved_expense_concurrency != 'firestore_transaction')
+        if (kind in {'edit_saved_expense','delete_saved_expense'} and (not config.saved_expense_enabled or config.saved_expense_concurrency != 'firestore_transaction')
+                or kind=='delete_saved_expense' and not config.saved_expense_delete_enabled
                 or kind == 'save_proposed_mapping' and (not config.provisional_mapping_enabled or not config.provisional_categories_enabled
                     or config.saved_expense_concurrency != 'firestore_transaction'
                     or action.metadata.get('historical_classification') and not config.historical_categories_enabled)
                 or action.metadata.get('previous_price_bases') and not config.previous_prices_enabled):
             raise LiveDisabled('Business action feature/concurrency policy is disabled')
-        if kind in {'edit_saved_expense', 'save_proposed_mapping'}:
+        if kind in {'edit_saved_expense','delete_saved_expense', 'save_proposed_mapping'}:
             m = action.metadata
             if (m.get('owner') != self.target.owner_id or m.get('workbook') != self.scope_id
                     or m.get('payload_hash') != digest(payload)):
@@ -384,7 +385,7 @@ class FirestoreExpenseStore:
                 review = draft.get('review') or {}
                 if review.get('catalog_hash') != digest([[r.item, r.category, r.subcategory] for r in tax.rows]):
                     raise Conflict('Confirmed catalog changed before commit')
-            updates, additions, new_expenses = [], [], []
+            updates, additions, new_expenses = [], [], [];removed_count=0
             if kind in {'add_transactions', 'catalog_expense'}:
                 plan = Enrollment.model_validate(payload).checked() if kind == 'catalog_expense' else AddTransactions.model_validate(payload)
                 if kind == 'catalog_expense':
@@ -401,6 +402,17 @@ class FirestoreExpenseStore:
                 result = tuple(transaction_id(key, i) for i in range(len(plan.entries)))
                 for identifier, entry in zip(result, plan.entries):
                     new_expenses.append((identifier, entry))
+            elif kind == 'delete_saved_expense':
+                current=next((r for r in records if r['id']==payload['id']),None)
+                if current is None:raise NotFound('Saved expense is missing')
+                if current['version']!=payload['before']['version']:raise Conflict('Saved expense changed after review')
+                if payload.get('operation')!='delete' or payload['after'] is not None or payload.get('changes')!={'operation':'delete'}:
+                    raise WriteBlocked('Invalid confirmed removal')
+                updates.append({'delete':self.target.parent+'/expenses/'+current['id'],
+                                'currentDocument':{'updateTime':current['version']}})
+                removed_count=1
+                result={'id':current['id'],'before':{k:current[k] for k in ['item','amount','date']},
+                        'after':None,'proof':'transaction_receipt'}
             elif kind == 'edit_saved_expense':
                 current = next((r for r in records if r['id'] == payload['id']), None)
                 if current is None:
@@ -447,7 +459,7 @@ class FirestoreExpenseStore:
                 updates.append(self._update(self.target.parent + '/catalog/' + self.catalog_id(row['item']),
                     {'schema_version': SCHEMA, 'owner_hash': self.target.owner_hash, **row}, {'exists': False}))
             meta.update(revision=meta['revision'] + 1, catalog_revision=meta['catalog_revision'] + bool(additions),
-                        expense_count=meta['expense_count'] + len(new_expenses), catalog_count=meta['catalog_count'] + len(additions))
+                        expense_count=meta['expense_count'] + len(new_expenses)-removed_count, catalog_count=meta['catalog_count'] + len(additions))
             updates.append(self._update(self.target.parent, meta, {'updateTime': document['updateTime']}))
             updates.append(self._update(self._operation_name(key), {'schema_version': SCHEMA,
                 'owner_hash': self.target.owner_hash, 'scope_hash': digest(self.scope_id), 'kind': kind,
@@ -507,9 +519,10 @@ class FirestoreExpenseStore:
 
 
 class FirestoreSavedExpenseEditor:
-    def __init__(self, store, *, writes_enabled=False):
+    def __init__(self, store, *, writes_enabled=False,delete_enabled=False):
         self.sheets = store  # Host compatibility; no Sheet coordinates exposed.
         self.writes_enabled = writes_enabled
+        self.delete_enabled=delete_enabled
 
     def records(self, start=None, end=None, *, ids=None):
         if ids is not None and (not 1 <= len(ids) <= 10 or any(not isinstance(i, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', i) for i in ids)):
@@ -527,12 +540,14 @@ class FirestoreSavedExpenseEditor:
     def apply(self, payload, key, *, bind_request):
         if not self.writes_enabled:
             raise WriteBlocked('Saved expense editing is disabled')
-        bind_request({'operation': 'edit_saved_expense', 'payload_hash': digest(payload)},
+        kind='delete_saved_expense' if payload.get('operation')=='delete' else 'edit_saved_expense'
+        if kind=='delete_saved_expense' and not self.delete_enabled:raise WriteBlocked('Saved expense removal is disabled')
+        bind_request({'operation': kind, 'payload_hash': digest(payload)},
                      {'id': payload['id'], 'version': payload['before']['version']})
-        return self.sheets._write('edit_saved_expense', payload, key)
+        return self.sheets._write(kind, payload, key)
 
     def reconcile(self, key, payload):
-        return self.sheets.reconcile_kind(key, payload, 'edit_saved_expense')
+        return self.sheets.reconcile_kind(key, payload, 'delete_saved_expense' if payload.get('operation')=='delete' else 'edit_saved_expense')
 
 
 class FirestoreMappingEditor:

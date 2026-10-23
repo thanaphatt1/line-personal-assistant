@@ -120,6 +120,18 @@ def test_emulator_saved_edit_provider_update_time_and_stale_review(store):
     with pytest.raises(Conflict):editor.apply(payload, 'new-stale-review', bind_request=lambda *args: None)
 
 
+def test_emulator_conditional_delete_and_positive_receipt_after_restart(store):
+    identifier=store.add([transaction(note='remove only this record')],'append-delete')[0]
+    editor=FirestoreSavedExpenseEditor(store,writes_enabled=True,delete_enabled=True)
+    before=editor.get(identifier)
+    payload={'domain':'expense','operation':'delete','id':identifier,'before':before,'after':None,'changes':{'operation':'delete'}}
+    result=editor.apply(payload,'delete',bind_request=lambda *args:None)
+    assert result['after'] is None and not store.classification_entries()
+    fresh=FirestoreSavedExpenseEditor(FirestoreExpenseStore(store.client,store.target),writes_enabled=False)
+    assert fresh.reconcile('delete',payload).receipt==result
+    assert store.summary(date(2026,10,18),date(2026,10,18))['expense']=='0.00'
+
+
 def test_emulator_atomic_enrollment_and_duplicate_action(store):
     payload = {'entries': [transaction('Metro pass').model_dump(mode='json')],
                'catalog': [{'item': 'Metro pass', 'category': 'Transportation', 'subcategory': 'Rail'}]}

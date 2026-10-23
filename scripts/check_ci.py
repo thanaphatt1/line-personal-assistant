@@ -74,6 +74,9 @@ for backend in ('sheets','firestore'):
             'PILOT_PROVISIONAL_MAPPING_ENABLED': 'true' if saved else 'false',
             'PILOT_HISTORICAL_CATEGORIES_ENABLED': 'true' if saved else 'false',
             'PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED': 'true' if saved else 'false',
+            'PILOT_SAVED_EXPENSE_DELETE_ENABLED': 'true' if saved else 'false',
+            'PILOT_CATALOG_ALIASES_ENABLED': 'true' if saved else 'false',
+            'PILOT_RECORD_ACTIONS_ENABLED': 'true' if saved else 'false',
         }, secret_loader=lambda name: SecretStr('synthetic-' + name))
         assert result['status'] == 'passed' and result['provider_requests'] == 0
 

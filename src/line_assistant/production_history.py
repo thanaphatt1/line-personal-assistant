@@ -19,6 +19,8 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         return self.legacy._route(text,event,stamp,at)
     def _route(self,text,event,stamp,at):
         self._legacy_turn=False
+        if self.catalog_aliases.has_pending() or self.catalog_aliases.is_control(text) or self.record_actions.is_control(text):
+            return super()._route(text,event,stamp,at)
         if self.table_flow.enabled and (text.startswith('ยืนยันตาราง ') or self.table_flow.has_focus()):
             return super()._route(text,event,stamp,at)
         if self.historical_categories.has_pending() or self.historical_categories.is_control(text):return super()._route(text,event,stamp,at)

@@ -29,8 +29,11 @@ def spans(text,item,catalog):
     if match.status!='exact':return finditer(text,item)
     # A canonical name may use an original whitespace variant only when the
     # original itself resolves to that identity. Another exact name wins.
-    return [m for m in finditer(text,item,whitespace=True)
-            if catalog.resolve(m.group()).canonical==match.canonical]
+    candidates=[m for label in [item,*[a for a,target in catalog.aliases.items() if target==match.canonical]]
+                for m in finditer(text,label,whitespace=True)
+                if catalog.resolve(m.group()).canonical==match.canonical]
+    unique={m.span():m for m in candidates}
+    return [unique[key] for key in sorted(unique)]
 
 
 def identity(item,catalog):

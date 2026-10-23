@@ -22,6 +22,12 @@ def history_snapshot(state):
     value={'format':'local-history-state-v1','owner_id':state.owner_id,'core':state_snapshot(state,state.owner_id),
            'history':deepcopy(state.history),'history_bytes':state.history_bytes,'history_removed':state.history_removed,
            'drafts':deepcopy(state.drafts),'draft_proofs':deepcopy(state.draft_proofs)}
+    if state.owner_features_used or state.catalog_aliases:
+        # Older runtimes must reject rather than silently discard durable
+        # vocabulary or attempt an unknown removal action during rollback.
+        value['format']='local-history-state-v2'
+        extra={'owner':state.owner_id,'scope':state.workbook_id,'aliases':deepcopy(state.catalog_aliases)}
+        extra['seal']=digest(extra);value['owner_features_v1']=extra
     if state.calendar_drafts:
         format_name='calendar-history-v2' if any('all_day' in d for d in state.calendar_drafts.values()) else 'calendar-history-v1'
         value['calendar_v1']={'format':format_name,'drafts':deepcopy(state.calendar_drafts),'proofs':deepcopy(state.calendar_proofs)}
@@ -35,10 +41,12 @@ def history_snapshot(state):
     if len(raw.encode())>MAX_LOCAL_SNAPSHOT_BYTES:raise ValueError('Local history snapshot exceeds capacity')
     return json.loads(raw)
 
-def restore_history(state,value,owner):
+def restore_history(state,value,owner,*,expected_scope=None):
     # Validate off to the side: a rejected snapshot cannot partially replace a
     # live worker's validated values, receipts or model reservation records.
-    if value.get('format')!='local-history-state-v1' or value.get('owner_id')!=owner:raise ValueError('History snapshot owner/version mismatch')
+    if value.get('format') not in {'local-history-state-v1','local-history-state-v2'} or value.get('owner_id')!=owner:raise ValueError('History snapshot owner/version mismatch')
+    extension=value.get('owner_features_v1')
+    if (value['format']=='local-history-state-v2')!=(extension is not None):raise ValueError('Owner feature state/version mismatch')
     if len(json.dumps(value,ensure_ascii=False,separators=(',',':')).encode())>MAX_LOCAL_SNAPSHOT_BYTES:raise ValueError('Local history snapshot exceeds capacity')
     fresh=HistoryState(history_bytes=value['history_bytes']);fresh.owner_id=owner
     raw=value.get('raw_history')
@@ -51,6 +59,15 @@ def restore_history(state,value,owner):
         # journal and the next request reads them before summarizing if needed.
         if fresh.rolling_summary and fresh.rolling_summary.get('format')!='raw-summary-provenance-v2':fresh.rolling_summary=None
     restore_state(fresh,value['core'],owner)
+    if extension is not None:
+        from .catalog_aliases import validate_records
+        scope=expected_scope if expected_scope is not None else fresh.workbook_id
+        if (not isinstance(extension,dict) or set(extension)!={'owner','scope','aliases','seal'}
+            or extension['owner']!=owner or extension['scope']!=scope
+            or extension['seal']!=digest({k:v for k,v in extension.items() if k!='seal'})):
+            raise ValueError('Invalid owner feature scope/proof')
+        validate_records(extension['aliases'])
+        fresh.catalog_aliases=deepcopy(extension['aliases']);fresh.owner_features_used=True
     rows=fresh.raw_journal.load(state.clock()) if raw else value['history']
     if not isinstance(rows,list) or not raw and len(json.dumps(rows,ensure_ascii=False,separators=(',',':')).encode())>fresh.history_bytes:raise ValueError('Invalid persisted history bound')
     if type(value['history_removed']) is not int or value['history_removed']<0:raise ValueError('Invalid removal counter')

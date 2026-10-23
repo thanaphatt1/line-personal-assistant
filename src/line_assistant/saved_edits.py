@@ -22,7 +22,7 @@ from .sheet_metadata import transaction_id
 from .state import Action,LastAction,Pending,Result
 from .transport import ApiError,NotReady,WriteBlocked
 
-NAMES=frozenset({'find_saved_records','prepare_saved_expense_edit','prepare_calendar_reschedule','review_saved_record_change','check_saved_record_change'})
+NAMES=frozenset({'find_saved_records','prepare_saved_expense_edit','prepare_saved_expense_delete','prepare_calendar_reschedule','review_saved_record_change','check_saved_record_change'})
 PREFIX='saved_record_'
 
 class Args(BaseModel):model_config=ConfigDict(extra='forbid',strict=True)
@@ -42,6 +42,9 @@ class Expense(Args):
     item_text:str|None=Field(max_length=200)
     amount_text:str|None=Field(max_length=120)
     date_text:str|None=Field(max_length=120)
+    source_refs:list[str]=Field(min_length=1,max_length=16)
+class Delete(Args):
+    candidate_ref:str=Field(min_length=1,max_length=40)
     source_refs:list[str]=Field(min_length=1,max_length=16)
 class Calendar(Args):
     candidate_ref:str=Field(min_length=1,max_length=40)
@@ -72,6 +75,7 @@ class SavedEdits:
         if type(expense_enabled) is not bool or type(calendar_enabled) is not bool:raise ValueError('Explicit saved-record flags required')
         self.h=host;self.expense=expense_editor;self.calendar=calendar_editor
         self.flags={'expense':expense_enabled,'calendar':calendar_enabled};self.request_candidates={}
+        self.delete_enabled=False
         if expense_enabled and (not expense_editor or expense_editor.sheets is not host.bound_sheets):raise ValueError('Bound saved expense editor required')
         if calendar_enabled and (not calendar_editor or calendar_editor.calendar_id!=host.calendar_flow.calendar_id):raise ValueError('Bound saved Calendar editor required')
     @property
@@ -105,6 +109,7 @@ class SavedEdits:
         try:
             p=self.pending();v=p.payload
             value.update(domain=v['domain'],version=v['version'],stage=p.kind,review_ref=v['ref'])
+            if v.get('requested_field'):value['requested_field']=v['requested_field']
             value['candidates']=[{'candidate_ref':r['ref'],'ordinal':i+1,**visible_record(r['record'],v['domain'])} for i,r in enumerate(v.get('candidates',[]))]
             if v.get('before'):value.update(before=visible_record(v['before'],v['domain']),after=deepcopy(v['after']))
         except ValueError:pass
@@ -120,6 +125,11 @@ class SavedEdits:
         if self.flags['expense']:
             result.append({'type':'function','name':'prepare_saved_expense_edit','strict':True,'description':'Propose one before/after saved-expense review, NEVER writes. candidate_ref only from a unique current find result or a delivered owner-choice list. Null fields retain certified values. Changes require literal owner item_text/amount_text/date_text citations; do not invent a new catalog mapping. item is an exact existing catalog label, amount is a positive decimal string, date is explicit YYYY-MM-DD. Never use a row number, fabricate an ID or pass confirmation.',
                 'parameters':object_schema({'candidate_ref':{'type':'string'},**{k:nullable for k in ['item','amount','date','item_text','amount_text','date_text']},'source_refs':refs})})
+            if self.delete_enabled:
+                result[0]['description']+=' Also locates owner-requested saved expense removals/undo. Removal is a separate reviewed proposal, never an automatic reversal.'
+                result.append({'type':'function','name':'prepare_saved_expense_delete','strict':True,
+                    'description':'Prepare removal of ONE saved expense selected by a current candidate_ref. Use find_saved_records first, scope=last for undoing a recent payment; multiple matches require owner selection. Cite current owner removal intent. Shows the exact item/amount/date before a new confirmation; never deletes directly or treats a cancellation of unsaved work as removal.',
+                    'parameters':object_schema({'candidate_ref':{'type':'string'},'source_refs':refs})})
         if self.flags['calendar']:
             result.append({'type':'function','name':'prepare_calendar_reschedule','strict':True,'description':'Propose a SAVED appointment before/after review, NEVER writes. Use owned candidate_ref; multiple matches first require owner choice. date/end_date are owner-interpreted YYYY-MM-DD, time/end_time local Bangkok HH:MM; cite each changed field with literal owner *_text. Null retains start components. When moving only the start or keeping duration, end_date/end_time/end_date_text/end_time_text MUST ALL BE NULL: server calculates the end. Only an explicitly stated new end date/clock permits an end field, never a duration-preserving phrase. All-day end_date is the last inclusive date; never give clock fields for all-day events. Preserve mode/title/reminders and other data. No guests, recurrence, delete/cancel or title changes. No model confirmation.',
                 'parameters':object_schema({'candidate_ref':{'type':'string'},**{k:nullable for k in ['date','time','end_date','end_time','date_text','time_text','end_date_text','end_time_text']},
@@ -128,6 +138,19 @@ class SavedEdits:
             ('review_saved_record_change','Show/refresh the current saved-record selection or before/after review. Read only and not confirmation; a refreshed review revokes previous confirmation.'),
             ('check_saved_record_change','Read-only status/positive reconciliation of an already confirmed saved-record change. Never issues or retries a write.')]])
         return result
+    def calendar_action_matches(self,key,action,identifier):
+        if action.status!='completed' or not action.result:return False
+        if action.kind=='create_event':
+            # Creation receipts have always exposed event_id; edit receipts
+            # expose id. Resolve each contract without rewriting old actions.
+            from .calendar_transport import completed_creation_id
+            return completed_creation_id(key,action,self.h.settings.owner_id,self.target('calendar'))==identifier
+        m,p=action.metadata,action.payload
+        return (action.kind=='reschedule_saved_event' and action.result.status=='updated'
+            and action.result.data.get('id')==identifier and p.get('id')==identifier
+            and m.get('saved_record_edit') and p.get('domain')=='calendar'
+            and m.get('owner')==self.h.settings.owner_id and m.get('workbook')==storage_scope(self.h.sheets)
+            and m.get('target')==self.target('calendar') and m.get('payload_hash')==digest(p))
     def latest_ids(self,domain):
         last=self.h.state.last
         if not last or last.expires_at<=self.h.clock():return []
@@ -135,8 +158,7 @@ class SavedEdits:
         if domain=='calendar' and last.kind=='event':
             ids=list(last.refs)
             for identifier in ids:
-                if not any(a.status=='completed' and a.result and a.result.data.get('id')==identifier and
-                    (a.metadata.get('calendar_id')==self.target(domain) or a.metadata.get('saved_record_edit') and a.payload.get('domain')==domain and a.metadata.get('target')==self.target(domain)) for a in self.h.state.actions.values()):return []
+                if not any(self.calendar_action_matches(k,a,identifier) for k,a in self.h.state.actions.items()):return []
             return ids
         if domain=='expense' and last.kind=='transactions':
             found=[(k,a) for k,a in self.h.state.actions.items() if a.status=='completed' and a.kind in {'add_transactions','catalog_expense'} and a.result and tuple(a.result.data.get('refs',()))==tuple(last.refs)]
@@ -168,11 +190,15 @@ class SavedEdits:
                 if not identity.canonical:raise ValueError('saved_edit_item_identity_unknown')
                 records=[r for r in records if tax.catalog.identity(r['item']).canonical==identity.canonical]
             else:records=[r for r in records if normalized(r['title'])==normalized(p.name)]
-        ref='se_'+digest([self.h.settings.owner_id,storage_scope(self.h.sheets),self.target(p.domain),self.h._active_event_id])[:20]
+        return self.select_records(records,p.domain,p.source_refs,p.model_dump(mode='json'),extra=extra)
+    def select_records(self,records,domain,source_refs,query,*,extra=0,requested_field=None):
+        if self.h.state.pending and not self.has_pending():raise ValueError('another_pending_workflow')
+        ref='se_'+digest([self.h.settings.owner_id,storage_scope(self.h.sheets),self.target(domain),self.h._active_event_id])[:20]
         candidates=[{'ref':'sr_'+digest([ref,r['id'],r['version']])[:20],'record':r} for r in records[:10]]
         value={'format':'saved-record-change-v1','ref':ref,'owner':self.h.settings.owner_id,'workbook':storage_scope(self.h.sheets),
-            'target':self.target(p.domain),'domain':p.domain,'version':1,'at':self.h._current['at'],'source_refs':list(p.source_refs),
-            'candidates':candidates,'count':len(records),'uneditable_count':extra,'query':p.model_dump(mode='json')}
+            'target':self.target(domain),'domain':domain,'version':1,'at':self.h._current['at'],'source_refs':list(source_refs),
+            'candidates':candidates,'count':len(records),'uneditable_count':extra,'query':deepcopy(query)}
+        if requested_field:value['requested_field']=requested_field
         self.store('selection',value)
         self.request_candidates={r['ref']:r for r in candidates} if len(records)==1 and not extra else {}
         return self.selection_output(value,continue_model=len(records)==1 and not extra)
@@ -241,7 +267,7 @@ class SavedEdits:
         fields=['item','amount','date'] if domain=='expense' else ['date','time','end_date','end_time']
         # Redundant certified values are not new facts. Some model responses
         # echo an unchanged start date while changing only its clock.
-        retained=v['after'] if p.kind==PREFIX+'review' and v.get('before',{}).get('id')==before['id'] else before
+        retained=(v.get('after') or before) if p.kind==PREFIX+'review' and v.get('before',{}).get('id')==before['id'] else before
         if domain=='expense':unchanged={k:retained[k] for k in fields}
         elif retained['all_day']:
             unchanged={'date':retained['start'],'end_date':(date.fromisoformat(retained['end'])-timedelta(days=1)).isoformat()}
@@ -277,7 +303,7 @@ class SavedEdits:
                         cited=[m for m in facts['money'] if start<=m.start and m.end<=end]
                         if len(cited)==1 and cited[0].value is not None and Decimal(cited[0].value)==Decimal(changes['amount']):valid=True
                 if not valid:raise ValueError('saved_edit_amount_not_owner_money')
-            if p.kind==PREFIX+'review' and v.get('before',{}).get('id')==before['id']:
+            if p.kind==PREFIX+'review' and v.get('operation')!='delete' and v.get('before',{}).get('id')==before['id']:
                 changes={**v['changes'],**changes}
                 if changes.get('item') and tax.catalog.identity(changes['item']).canonical!=changes['item']:raise ValueError('saved_edit_catalog_changed')
             after=expense_after(before,changes);catalog_hash=digest([[r.item,r.category,r.subcategory] for r in tax.rows])
@@ -293,16 +319,20 @@ class SavedEdits:
                     raise ValueError('calendar_temporal_date_pair_required')
         current=self.editor(domain).get(before['id'])
         if current['version']!=before['version']:raise Conflict('Selected saved record changed; find and review it again')
+        v.pop('operation',None)
         v.update(before=current,after=after,changes=changes,catalog_hash=catalog_hash,source_refs=list(dict.fromkeys(v['source_refs']+parsed.source_refs)))
         return self.new_review(v,origin=p.origin_event_id)
     def new_review(self,v,*,origin=None):
         v=deepcopy(v);v['version']+=1;v['at']=self.h._current['at'];v['nonce']=secrets.token_hex(8)
         for candidate in v.get('candidates',[]):
             if candidate['record']['id']==v['before']['id']:candidate['record']=deepcopy(v['before'])
-        v['review_hash']=digest({k:v[k] for k in ['owner','workbook','target','domain','ref','version','before','after','changes','catalog_hash']})
+        v['review_hash']=digest({k:v[k] for k in ['owner','workbook','target','domain','ref','version','before','after','changes','catalog_hash',*(['operation'] if v.get('operation') else [])]})
         self.store('review',v,origin=origin)
         return self.review_output(v)
     def review_output(self,v):
+        if v.get('operation')=='delete':
+            message='นำรายการนี้ออกจากรายจ่ายใช่ไหมครับ?\n'+describe(v['before'],'expense')+'\nยังไม่ได้ลบครับ พิมพ์ “ยืนยัน” หรือกดปุ่มเพื่อนำรายการนี้ออก'
+            return self.output('saved_edit_review',message,'expense',review_ref=v['ref'],review_version=v['version'],review_hash=v['review_hash'],operation='delete')
         message='ตรวจรายการก่อน–หลังครับ ยังไม่ได้แก้ข้อมูล\nก่อน: '+describe(v['before'],v['domain'])+'\nหลัง: '+describe(v['after'],v['domain'])
         message+='\nถ้าถูกต้อง พิมพ์ “ยืนยัน” หรือ “ยืนยันแก้ '+v['ref']+' '+v['nonce']+'” เพื่อแก้รายการนี้ครับ'
         return self.output('saved_edit_review',message,v['domain'],review_ref=v['ref'],review_version=v['version'],review_hash=v['review_hash'])
@@ -311,13 +341,18 @@ class SavedEdits:
         data={'domain':output['domain'],'saved_record_edit':True,'tool_result':deepcopy(output)}
         if output['status']=='saved_edit_candidates':data['saved_edit_selection']=output['selection_ref']
         if output['status']=='saved_edit_review':data['saved_edit_review']={k:output[k] for k in ['review_ref','review_version','review_hash']}
+        if output.get('operation')=='delete' and output['status']=='saved_edit_review':
+            from .conversation_ui import render_actions
+            v=self.pending().payload
+            data['line_message']=render_actions(output['message'],[{'type':'postback','label':'ยืนยันนำออก','data':'e1|confirm|'+v['ref']+'|'+v['nonce']}])
         return Result(status,output['message'],data)
     def refresh(self):
         p=self.pending();v=deepcopy(p.payload)
         if p.kind==PREFIX+'selection':return self.selection_output(v)
         if not self.flags[v['domain']]:raise WriteBlocked('Saved-record changes are disabled')
         current=self.editor(v['domain']).get(v['before']['id'])
-        v['before']=current;v['after']=expense_after(current,v['changes']) if v['domain']=='expense' else rescheduled_times(current,v['changes'])
+        if v.get('operation')=='delete' and not self.delete_enabled:raise WriteBlocked('Saved removal disabled')
+        v['before']=current;v['after']=None if v.get('operation')=='delete' else expense_after(current,v['changes']) if v['domain']=='expense' else rescheduled_times(current,v['changes'])
         if v['domain']=='expense':v['catalog_hash']=digest([[r.item,r.category,r.subcategory] for r in self.h._taxonomy().rows])
         return self.new_review(v,origin=p.origin_event_id)
     def tool(self,name,args):
@@ -326,6 +361,7 @@ class SavedEdits:
         try:
             if name=='find_saved_records':return self.find(args)
             if name=='prepare_saved_expense_edit':return self.prepare(args,'expense')
+            if name=='prepare_saved_expense_delete':return self.prepare_delete(args)
             if name=='prepare_calendar_reschedule':return self.prepare(args,'calendar')
             if args:raise ValueError('saved_edit_no_status_arguments')
             if name=='review_saved_record_change':return self.refresh()
@@ -335,6 +371,23 @@ class SavedEdits:
         except (ValueError,Conflict,NotFound,NotReady,ApiError,WriteBlocked):
             return self.output('saved_edit_unavailable','ยังไม่ได้แก้ข้อมูลครับ รายการ/ข้อมูลต้นทางอาจเปลี่ยนหรือยังไม่ชัดเจน กรุณาค้นหาและตรวจรายการล่าสุดอีกครั้ง',domain if domain in {'expense','calendar'} else 'expense')
         raise ValueError('unknown_saved_edit_tool')
+
+    def prepare_delete(self,args,*,owner_button=False):
+        p=Delete.model_validate(args)
+        if not self.delete_enabled:raise WriteBlocked('Saved removal disabled')
+        selection,before=self.selected(p.candidate_ref,'expense')
+        if self.h._current['source_ref'] not in p.source_refs:raise ValueError('saved_edit_current_owner_source_required')
+        if owner_button:
+            if self.h._active_event_kind!='postback' or p.source_refs!=[self.h._current['source_ref']]:raise ValueError('saved_delete_invalid_button_source')
+        else:self.h._owner_sources(p.source_refs)
+        current=self.editor('expense').get(before['id'])
+        if current['version']!=before['version']:raise Conflict('Saved record changed')
+        v=deepcopy(selection.payload)
+        v.update(operation='delete',before=current,after=None,changes={'operation':'delete'},
+            catalog_hash=digest([[r.item,r.category,r.subcategory] for r in self.h._taxonomy().rows]),
+            source_refs=list(dict.fromkeys(v['source_refs']+p.source_refs)))
+        self.h.state.owner_features_used=True
+        return self.new_review(v,origin=selection.origin_event_id)
 
     def control(self,text):
         exact=None
@@ -360,7 +413,7 @@ class SavedEdits:
             return Result('stale','คำยืนยันเกิดก่อนรายการก่อน–หลังล่าสุดครับ ยังไม่ได้แก้ข้อมูล')
         if exact and (exact[0]!=v['ref'] or not hmac.compare_digest(exact[1],v['nonce'])):
             return Result('stale','รหัสยืนยันแก้ไขหมดอายุหรือเปลี่ยนแล้วครับ ยังไม่ได้แก้ข้อมูล')
-        if not self.flags[v['domain']]:return Result('setup_required','ยังไม่ได้เปิดการแก้รายการที่บันทึกแล้วครับ ยังไม่ได้แก้ข้อมูล')
+        if not self.flags[v['domain']] or v.get('operation')=='delete' and not self.delete_enabled:return Result('setup_required','ยังไม่ได้เปิดการทำงานนี้กับรายการที่บันทึกแล้วครับ ยังไม่ได้เปลี่ยนข้อมูล')
         blocked=self.h._blocked_action()
         if blocked:return self.resume(blocked) if self.h.state.actions[blocked].metadata.get('saved_record_edit') else self.h._uncertain(blocked)
         if v['domain']=='expense' and digest([[r.item,r.category,r.subcategory] for r in self.h._taxonomy().rows])!=v['catalog_hash']:
@@ -368,10 +421,11 @@ class SavedEdits:
             return Result('stale','Database เปลี่ยนแล้วครับ กรุณาตรวจรายการก่อน–หลังใหม่ ยังไม่ได้แก้ข้อมูล')
         payload={'format':'saved-record-change-v1','domain':v['domain'],'id':v['before']['id'],'before':deepcopy(v['before']),
             'after':deepcopy(v['after']),'changes':deepcopy(v['changes']),'catalog_hash':v['catalog_hash']}
+        if v.get('operation')=='delete':payload['operation']='delete'
         key=self.h.settings.owner_id+':savededit:'+digest([v['workbook'],v['target'],v['ref'],v['version']])
         now=self.h.clock()
         if key not in self.h.state.actions:
-            self.h.state.actions[key]=Action('edit_saved_expense' if v['domain']=='expense' else 'reschedule_saved_event',payload,
+            self.h.state.actions[key]=Action('delete_saved_expense' if v.get('operation')=='delete' else 'edit_saved_expense' if v['domain']=='expense' else 'reschedule_saved_event',payload,
                 {'saved_record_edit':True,'owner':self.h.settings.owner_id,'workbook':v['workbook'],'target':v['target'],
                  'payload_hash':digest(payload),'review_ref':v['ref'],'review_version':v['version'],'review_hash':v['review_hash'],
                  'confirmation_event':self.h._active_event_id,'confirmation_source_at':self.h._current['at'],'request_fence':None},
@@ -381,6 +435,16 @@ class SavedEdits:
 
     def complete(self,key,receipt):
         action=self.h.state.actions[key];domain=action.payload['domain']
+        if action.payload.get('operation')=='delete':
+            message=('ตรวจแล้ว รายการนี้ถูกนำออกจากรายจ่ายแล้วครับ' if receipt.get('proof')=='observed_removed_state' else 'นำรายการนี้ออกจากรายจ่ายแล้วครับ')+'\n'+describe(receipt['before'],'expense')
+            result=Result('deleted',message,{'domain':'expense','saved_record_edit':True,'id':receipt['id'],
+                'before':receipt['before'],'after':None,'verification':receipt['proof'],'action_ref':key})
+            remaining=[i for i in self.latest_ids('expense') if i!=receipt['id']]
+            action.status='completed';action.result=deepcopy(result)
+            if self.has_pending() and self.h.state.pending.token==action.metadata['review_ref']:self.h.state.pending=None
+            if self.h.state.last and self.h.state.last.kind in {'saved_expense','transactions'}:
+                self.h.state.last=LastAction('saved_expense',tuple(remaining),self.h.clock()+timedelta(seconds=self.h.settings.last_action_ttl_seconds)) if remaining else None
+            self.h.state.checkpoint();return result
         message=('ตรวจแล้ว รายการตรงกับค่าที่คุณยืนยันครับ' if receipt.get('proof')=='observed_desired_state' else 'แก้ไขรายจ่ายแล้วครับ' if domain=='expense' else 'เลื่อนนัดแล้วครับ')
         message+='\nก่อน: '+describe(receipt['before'],domain)+'\nหลัง: '+describe(receipt['after'],domain)
         result=Result('updated',message,{'domain':domain,'saved_record_edit':True,'id':receipt['id'],'before':receipt['before'],
@@ -403,7 +467,7 @@ class SavedEdits:
             except Exception:proof=None
             if proof and proof.outcome=='committed':return self.complete(key,proof.receipt)
             action.status='uncertain';self.h.state.checkpoint();return self.h._uncertain(key)
-        if action.deadline<=self.h.clock() or not self.flags[domain]:
+        if action.deadline<=self.h.clock() or not self.flags[domain] or payload.get('operation')=='delete' and not self.delete_enabled:
             action.status='completed';action.result=Result('expired' if action.deadline<=self.h.clock() else 'setup_required','รายการแก้ไขหมดอายุหรือถูกปิดใช้งานครับ ยังไม่ได้แก้ข้อมูล')
             self.h.state.checkpoint();return deepcopy(action.result)
         action.status='executing';self.h.state.checkpoint();self.h.phase_hook('saved_edit_executing',key)

@@ -32,6 +32,15 @@ def expense_after(before,changes):
 def edit_body(target,payload,row):
     before,after=payload['before'],payload['after']
     if type(row) is not int or not 2<=row<=target.max_rows:raise ValueError('saved_expense_row_bound')
+    if payload.get('operation')=='delete':
+        if after is not None or payload.get('changes')!={'operation':'delete'} or payload['id']!=before['id']:
+            raise ValueError('saved_expense_delete_target')
+        # Keep the stable ID in E as positive removal evidence, preserve all
+        # other columns/formatting, and never shift another expense's row.
+        return {'requests':[{'updateCells':{'start':{'sheetId':target.expense_sheet_id,'rowIndex':row-1,'columnIndex':0},
+            'rows':[{'values':[{'userEnteredValue':{'stringValue':''}} for _ in range(4)]}],'fields':'userEnteredValue'}}],
+            'includeSpreadsheetInResponse':True,'responseRanges':[tab_range(target.expense_tab,f'A{row}:E{row}')],
+            'responseIncludeGridData':True}
     if set(after)!={'item','amount','date'} or payload['id']!=before['id']:raise ValueError('saved_expense_target')
     requests=[]
     for field,column in [('date',0),('item',1),('amount',2)]:
@@ -45,11 +54,12 @@ def edit_body(target,payload,row):
 
 
 class SavedExpenseEditor:
-    def __init__(self,sheets,*,writes_enabled=False,single_writer_reviewed=False):
-        if type(writes_enabled) is not bool or type(single_writer_reviewed) is not bool:raise ValueError('explicit_saved_edit_flags')
+    def __init__(self,sheets,*,writes_enabled=False,single_writer_reviewed=False,delete_enabled=False):
+        if any(type(v) is not bool for v in (writes_enabled,single_writer_reviewed,delete_enabled)):raise ValueError('explicit_saved_edit_flags')
         if writes_enabled and not single_writer_reviewed:raise ValueError('saved_expense_concurrency_policy_required')
         self.sheets=sheets;self.client=sheets.client;self.target=sheets.target;self.base=sheets.base
         self.writes_enabled=writes_enabled;self.single_writer_reviewed=single_writer_reviewed;self.mocked=self.client.mocked
+        self.delete_enabled=delete_enabled
 
     def records(self,start=None,end=None,*,ids=None):
         metadata=self.target.transaction_id_metadata
@@ -67,11 +77,14 @@ class SavedExpenseEditor:
         for raw in rows[1:]:
             if len(raw)>=5 and isinstance(raw[4],str) and raw[4]:counts[raw[4]]=counts.get(raw[4],0)+1
         if any(n>1 for value,n in counts.items() if requested is None or value in requested):raise Conflict('Duplicate saved transaction ID')
-        result=[];unidentified=0
+        result=[];unidentified=0;removed=[]
         for index,raw in enumerate(rows[1:],2):
             if not any(v not in ('',None) for v in raw):continue
             values=normalized_row(raw,5)
             if requested is not None and (not isinstance(values[4],str) or values[4] not in requested):continue
+            if (all(v in ('',None) for v in values[:4]) and isinstance(values[4],str)
+                and re.fullmatch(r'[A-Za-z0-9_-]{1,128}',values[4])):
+                removed.append({'id':values[4],'row':index,'raw':values,'workbook':self.target.spreadsheet_id});continue
             try:
                 if len(values)!=5 or type(values[0]) not in {int,float} or int(values[0])!=values[0]:raise ValueError()
                 if not isinstance(values[1],str) or not 1<=len(values[1])<=200 or type(values[2]) not in {int,float}:raise ValueError()
@@ -86,7 +99,7 @@ class SavedExpenseEditor:
                 'raw':values,'workbook':self.target.spreadsheet_id}
             record['version']=digest({k:record[k] for k in ['id','raw','workbook']})
             result.append(record)
-        return {'records':result,'unidentified_count':unidentified,'complete':True}
+        return {'records':result,'unidentified_count':unidentified,'complete':True,'removed':removed}
 
     def get(self,identifier):
         rows=self.records(ids=[identifier])['records']
@@ -100,6 +113,8 @@ class SavedExpenseEditor:
         if not self.writes_enabled or not self.single_writer_reviewed or not self.target.writes_enabled or not self.target.input_access_verified:
             raise WriteBlocked('Saved expense editing is disabled or concurrency policy unreviewed')
         if payload.get('domain')!='expense' or not key:raise WriteBlocked('Bound saved expense action required')
+        deleting=payload.get('operation')=='delete'
+        if deleting and not self.delete_enabled:raise WriteBlocked('Saved expense removal is disabled')
         current=self.get(payload['id'])
         if current['version']!=payload['before']['version']:raise Conflict('Saved expense changed after review')
         # Enforced range protections remain fail-closed, as for identified appends.
@@ -126,13 +141,26 @@ class SavedExpenseEditor:
                     if data.get('rowData'):cells=data['rowData'][0].get('values',[])
         if len(cells)<5 or cells[4].get('userEnteredValue',{}).get('stringValue')!=payload['id']:
             raise OutcomeUnknown('Saved expense stable ID at mutation is unproven')
-        try:after=self.get(payload['id'])
+        try:
+            if deleting:
+                removed=self.records(ids=[payload['id']])['removed']
+                if len(removed)!=1:raise ValueError('Removal not observed')
+                return {'id':payload['id'],'row':removed[0]['row'],
+                    'before':{k:payload['before'][k] for k in ['item','amount','date']},'after':None,'proof':'ack_and_readback'}
+            after=self.get(payload['id'])
         except Exception:raise OutcomeUnknown('Saved expense write occurred but readback is unavailable') from None
         if not self._same_after(after,payload):raise OutcomeUnknown('Saved expense readback does not match confirmed values')
         return {'id':after['id'],'row':after['row'],'before':{k:payload['before'][k] for k in ['item','amount','date']},
             'after':{k:after[k] for k in ['item','amount','date']},'proof':'ack_and_readback'}
 
     def reconcile(self,key,payload):
+        if payload.get('operation')=='delete':
+            try:removed=self.records(ids=[payload['id']])['removed']
+            except Exception:return Reconciliation('unknown')
+            if len(removed)==1:
+                return Reconciliation('committed',{'id':payload['id'],'row':removed[0]['row'],
+                    'before':{k:payload['before'][k] for k in ['item','amount','date']},'after':None,'proof':'observed_removed_state'})
+            return Reconciliation('unknown')
         try:row=self.get(payload['id'])
         except Exception:return Reconciliation('unknown')
         if self._same_after(row,payload):

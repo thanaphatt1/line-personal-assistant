@@ -226,7 +226,14 @@ or Calendar creation ID; an entry/source reference cannot authorize an effect.
 
 ### History, drafts and review proofs
 
-`history24.current` and retained workspace parts use `local-history-state-v1`.
+`history24.current` and retained workspace parts normally use `local-history-state-v1`.
+After [owner record controls](owner-record-controls.md) are used, they use
+`local-history-state-v2` and include `owner_features_v1`: owner, storage scope,
+confirmed alias records and an integrity seal. Each alias retains its literal
+name, canonical target, original source refs and aware confirmation timestamp.
+This vocabulary survives the rolling history window. Feature-OFF preserves it;
+older v1-only runtimes reject it. Reviewed Sheets removals clear A:D and retain
+E's unique transaction ID as a tombstone, which business reads skip.
 The name is a persisted format identifier also used by the production composition;
 it does not mean state persistence uses a local SQLite database.
 

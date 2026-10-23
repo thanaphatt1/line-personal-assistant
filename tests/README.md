@@ -1,5 +1,18 @@
 # Test guide
 
+[Create-then-reschedule regressions](test_calendar_created_reschedule.py) use a
+single synthetic Calendar through signed creation, cold restoration and ETag
+updates. They cover a day-only follow-up after 28 minutes, intervening replies,
+one-event batches, all-day events, repeated moves, unknown writes and foreign
+or altered creation proofs at the exact read boundary.
+
+[Owner record controls](test_owner_features.py) cover reviewed expense removal,
+delivered buttons and confirmed vocabulary across cold signed webhooks.
+[Provider/state boundaries](test_owner_feature_boundaries.py) exercise stable
+IDs, tombstones, atomic Firestore receipts, uncertain writes, scope/version
+validation, interrupted alias actions and paginated Unicode labels. These use
+synthetic providers; the optional official emulator separately verifies deletion.
+
 The [planner prompt contracts](test_planner_instructions.py) check guidance
 selection from offered tools, preserved dialogue and parameter documentation.
 The [planner semantic corpus](fixtures/planner_semantics.json) supplies synthetic

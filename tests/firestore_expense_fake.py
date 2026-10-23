@@ -105,11 +105,12 @@ class BusinessFirestore:
                         return httpx.Response(409, json={'error': {'status': 'ABORTED'}})
             writes = body['writes']; proposed = deepcopy(self.documents)
             for write in writes:
-                value = write['update']; name = value['name']; condition = write['currentDocument']
+                value = write.get('update'); name = value['name'] if value else write['delete']; condition = write['currentDocument']
                 current = proposed.get(name)
                 if condition == {'exists': False} and current is not None or 'updateTime' in condition and (current or {}).get('updateTime') != condition['updateTime']:
                     return httpx.Response(409, json={'error': {'status': 'FAILED_PRECONDITION'}})
-                proposed[name] = {**deepcopy(value), 'updateTime': self.stamp()}
+                if value:proposed[name] = {**deepcopy(value), 'updateTime': self.stamp()}
+                else:proposed.pop(name, None)
             self.documents.clear(); self.documents.update(proposed); self.commits += 1
             self.transactions.pop(tx, None)
             if self.lost_ack:

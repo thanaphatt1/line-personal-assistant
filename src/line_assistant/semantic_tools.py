@@ -55,9 +55,12 @@ def recorded_result_matches(core,shown):
     if core==shown:return True
     if not core or core.status!='recorded' or shown.status!='recorded':return False
     from .response_realization import identity
-    if shown.data.get('response_realization',{}).get('core_hash')!=identity(core):return False
-    return {k:v for k,v in shown.data.items() if k not in {'response_realization','line_message'}}=={
-        k:v for k,v in core.data.items() if k!='line_message'}
+    realization=shown.data.get('response_realization')
+    if realization:
+        if realization.get('core_hash')!=identity(core):return False
+    elif shown.message!=core.message:return False
+    return {k:v for k,v in shown.data.items() if k not in {'response_realization','line_message','record_actions'}}=={
+        k:v for k,v in core.data.items() if k not in {'line_message','record_actions'}}
 
 
 def confirmed_date(h):

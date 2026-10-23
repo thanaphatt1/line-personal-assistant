@@ -16,7 +16,7 @@ def actions(http):
         m,p=a.metadata,a.payload;domain=p.get('domain')
         target=c.storage_scope_id if domain=='expense' else c.calendar_id
         if (domain not in {'expense','calendar'} or not key.startswith(c.owner_id+':savededit:')
-            or a.kind!=('edit_saved_expense' if domain=='expense' else 'reschedule_saved_event')
+            or a.kind!=('delete_saved_expense' if p.get('operation')=='delete' else 'edit_saved_expense' if domain=='expense' else 'reschedule_saved_event')
             or not m.get('saved_record_edit') or m.get('owner')!=c.owner_id or m.get('workbook')!=c.storage_scope_id
             or m.get('target')!=target or m.get('payload_hash')!=digest(p)):continue
         yield key,a
@@ -34,10 +34,10 @@ def calendar_read(http,path):
     for _,a in actions(http):
         if a.payload['domain']=='calendar':ids.add(a.payload['id'])
     # Existing confirmed creation receipts may supply scope=last.
-    for a in s.actions.values():
-        if a.status=='completed' and a.metadata.get('calendar_id')==c.calendar_id and a.result:
-            identifier=a.result.data.get('id')
-            if isinstance(identifier,str):ids.add(identifier)
+    from .calendar_transport import completed_creation_id
+    for key,a in s.actions.items():
+        identifier=completed_creation_id(key,a,c.owner_id,c.calendar_id)
+        if identifier is not None:ids.add(identifier)
     base='/calendar/v3/calendars/'+quote(c.calendar_id,safe='')+'/events/'
     return any(path==base+quote(i,safe='') for i in ids)
 
@@ -54,7 +54,10 @@ def mutation(http,service,method,path,body,params,headers=None):
             if not (c.saved_expense_enabled and c.saved_expense_concurrency=='reviewed_single_writer'):continue
             if (service!='sheets' or method!='POST' or path!='/v4/spreadsheets/'+c.storage_scope_id+':batchUpdate'
                 or params is not None or headers):continue
-            if p['after']!=expense_after(p['before'],p['changes']) or body!=edit_body(c.sheet_target(),p,proof.get('row')):continue
+            if p.get('operation')=='delete':
+                if not c.saved_expense_delete_enabled or p['after'] is not None or p['changes']!={'operation':'delete'}:continue
+            elif p['after']!=expense_after(p['before'],p['changes']):continue
+            if body!=edit_body(c.sheet_target(),p,proof.get('row')):continue
         else:
             if not c.calendar_enabled or not c.saved_calendar_enabled:continue
             if (service!='calendar' or method!='PATCH' or path!='/calendar/v3/calendars/'+quote(c.calendar_id,safe='')+'/events/'+quote(p['id'],safe='')

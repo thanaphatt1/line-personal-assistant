@@ -257,12 +257,16 @@ class HistoryFirstAssistant(Assistant):
         from .table_workflow import TableWorkflow
         if table_registry is not None and not raw_history_enabled:raise ValueError('Tables require original-message history')
         self.table_flow=TableWorkflow(self,table_registry)
+        from .catalog_aliases import CatalogAliases
+        from .record_actions import RecordActions
+        self.catalog_aliases=CatalogAliases(self)
+        self.record_actions=RecordActions(self)
 
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
         event=(self._active_event_id,storage_scope(self.sheets))
         if self._taxonomy_cache_event!=event:self._taxonomy_cache=None;self._taxonomy_cache_event=event
-        if self._taxonomy_cache is None:self._taxonomy_cache=self.sheets.taxonomy()
+        if self._taxonomy_cache is None:self._taxonomy_cache=self.catalog_aliases.overlay(self.sheets.taxonomy())
         return self._taxonomy_cache
 
     def _workflow(self):
@@ -1240,6 +1244,8 @@ class HistoryFirstAssistant(Assistant):
     def _tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            from .catalog_aliases import NAMES as ALIAS_NAMES
+            if self.raw_history_enabled and name in ALIAS_NAMES:return self.catalog_aliases.tool(name,args)
             if self.raw_history_enabled and name=='query_sources':
                 from .read_batch import execute
                 return execute(self,args)
@@ -1395,6 +1401,7 @@ class HistoryFirstAssistant(Assistant):
         if tool_output and tool_output.get('historical_categories'):return self.historical_categories.result(tool_output)
         if tool_output and tool_output.get('provisional_categories'):return self.provisional_categories.result(tool_output)
         if tool_output and tool_output.get('saved_record_edit'):return self.saved_edits.result(tool_output)
+        if tool_output and tool_output.get('catalog_alias'):return self.catalog_aliases.result(tool_output)
         if tool_output and tool_output.get('status')=='stored_query':
             from .read_queries import result
             rendered=result(tool_output,datetime.fromisoformat(self._current['at']))
@@ -1527,6 +1534,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _resume(self,key):
         action=self.state.actions[key]
+        if action.metadata.get('catalog_alias'):return self.catalog_aliases.resume(key)
         if action.metadata.get('table_change'):return self.table_flow.resume(key)
         if action.metadata.get('previous_price_bases') and action.status!='completed':
             if action.status in {'executing','uncertain'}:
@@ -1609,6 +1617,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _finish(self,event,at,result):
         result=self._finalize_result(event,result)
+        result=self.record_actions.attach(event,result)
         if self.raw_history_enabled:
             from .query_followups import annotate
             result=annotate(self,result)
@@ -1630,6 +1639,7 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
+        if result.data.get('domain') in {'catalog_alias','record_source'} or result.data.get('record_action_focus') or result.data.get('record_action_selection'):return result
         from .clarifications import compact
         result=compact(self,result)
         if result.data.get('domain')=='table' or result.data.get('query_analysis'):
@@ -1661,13 +1671,17 @@ class HistoryFirstAssistant(Assistant):
         self.table_flow.candidates={}
         self.table_flow.selection_sets={}
         self.provisional_categories.current_basis=None
-        shown_text='เลือกการทำงานกับรายการผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|')) else text
+        shown_text='เลือกการทำงานกับรายการผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|','r1|','a1|')) else text
         if self.raw_history_enabled:
             from .raw_history import RAW_SOURCE
             original=RAW_SOURCE.get()
             if original and original[0]==event and isinstance(original[1],str):shown_text=original[1]
         self._current={'role':'user','source_ref':source_ref(event),'text':shown_text,'at':at.isoformat()}
         self.state.append('user',event,at,text=shown_text)
+        record_control=self.record_actions.control(text)
+        if record_control is not None:return self._finish(event,at,record_control)
+        alias_control=self.catalog_aliases.control(text)
+        if alias_control is not None:return self._finish(event,at,alias_control)
         table_control=self.table_flow.control(text)
         if table_control is not None:return self._finish(event,at,table_control)
         historical_control=self.historical_categories.control(text)
@@ -1772,6 +1786,7 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request+=self.provisional_categories.definitions()
                     definitions_for_request+=self.historical_categories.definitions()
                     definitions_for_request+=self.table_flow.definitions()
+                    definitions_for_request+=self.catalog_aliases.definitions()
                     from .read_batch import definition as batch_definition
                     definitions_for_request.append(batch_definition(definitions_for_request))
                     from .temporal import definitions as temporal_definitions,context as temporal_context
@@ -1789,7 +1804,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -1901,7 +1916,7 @@ class HistoryFirstAssistant(Assistant):
                     from .query_analysis import remember
                     last=remember(self,last,at,step);self._query_analysis_active=True
                     previous=(call,last);continue
-                if last.get('calendar_connection'):return self._finish(event,at,self._result(last))
+                if last.get('calendar_connection') or last.get('catalog_alias'):return self._finish(event,at,self._result(last))
                 if last.get('historical_categories'):
                     if last.get('continue_model'):
                         previous=(call,last);continue

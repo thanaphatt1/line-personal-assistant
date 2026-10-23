@@ -295,6 +295,10 @@ class SheetsApi:
         for raw in rows[1:]:
             if not any(v not in ('', None) for v in raw):continue
             row = normalized_row(raw, width)
+            if metadata and all(v in ('',None) for v in row[:4]) and isinstance(row[width-1],str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}',row[width-1]):
+                identifier=row[width-1]
+                if identifier in seen:raise Conflict('Duplicate existing transaction ID')
+                seen.add(identifier);continue
             if (type(row[0]) not in {int, float} or type(row[2]) not in {int, float}
                     or not isinstance(row[1], str) or not 1 <= len(row[1]) <= 200
                     or not isinstance(row[3], str) or len(row[3]) > 500

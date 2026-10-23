@@ -38,6 +38,7 @@ Additional guides cover:
 - [Capability and data coverage](docs/data-inventory.md), [read examples](docs/read-queries.md) and [behavior](docs/behavior.md).
 - [Performance and conversation quality](docs/performance.md): phase timings, batched reads, loading status, focused clarification and indexed Firestore reads.
 - Optional expense workflows: [provisional categories](docs/provisional-categories.md), [historical category review](docs/historical-categories.md) and [previous saved amounts](docs/previous-expense-prices.md). Proposed mappings remain distinct from confirmed records and final write consent.
+- [Owner record controls](docs/owner-record-controls.md): reviewed expense removal, explicitly confirmed catalog aliases, and amount/date/source buttons on saved expenses.
 
 This README describes the current source. Feature activation depends on configuration; a GitHub source push and a production deployment are separate actions.
 

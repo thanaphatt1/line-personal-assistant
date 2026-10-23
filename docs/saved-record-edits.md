@@ -5,6 +5,13 @@ one saved expense's item, amount or date, and for moving one saved appointment.
 A new owner confirmation of a delivered before/after review is required for
 each change. Publishing source does not enable the feature or deploy it.
 
+The recent-record lookup accepts the persisted Calendar creation receipt's
+`event_id` and the saved-reschedule receipt's `id`, through explicit contracts.
+Selection and exact provider reads share the same owner/calendar/payload-bound
+creation identity check. Existing saved receipts need no migration. A follow-up
+can select the recent event, retain its month and times, and prepare a date-only
+move; the provider is read again and a new delivered review must be confirmed.
+
 The model interprets the request and calls typed find/propose tools. The server
 keeps stable provider IDs and versions, returns opaque candidate references,
 checks literal owner sources and renders the authoritative review. Several
@@ -12,7 +19,9 @@ matches require an owner choice. Legacy expense rows without an existing
 `transaction_id` cannot be edited; the feature never assigns IDs to old rows.
 Unknown catalog names require clarification rather than a new mapping.
 An expense name change selects an existing catalog item; it cannot create a new
-category, change category assignments, edit Remark or delete a saved row. Edits
+category, change category assignments or edit Remark. Separately enabled
+[owner record controls](owner-record-controls.md) add reviewed removal and
+saved-record buttons. Edits
 apply to one identified record at a time. Expense selection uses the certified
 recent result or an explicit inclusive range of at most367dates.
 

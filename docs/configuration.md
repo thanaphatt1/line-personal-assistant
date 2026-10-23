@@ -135,6 +135,9 @@ required versus generated fields, catalog relationships and Firestore storage.
 | `PILOT_PROVISIONAL_MAPPING_ENABLED` | `false` | Proposals and reviewed Database writer policy |
 | `PILOT_HISTORICAL_CATEGORIES_ENABLED` | `false` | Provisional categories/history; optional complete-grid historical review |
 | `PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED` | `false` | History/state; optional owner-selected amount from exact saved history |
+| `PILOT_SAVED_EXPENSE_DELETE_ENABLED` | `false` | Saved expense edits/concurrency policy; separate reviewed one-record removal |
+| `PILOT_CATALOG_ALIASES_ENABLED` | `false` | History/state/raw journal; owner-confirmed catalog vocabulary |
+| `PILOT_RECORD_ACTIONS_ENABLED` | `false` | Saved expense edits; delivered save/edit buttons with stable IDs |
 | `PILOT_TABLE_REGISTRY_JSON` | empty | History/state; JSON schemas and explicit existing storage bindings; see [tables](tables.md) |
 
 Historical permanent saves also require the separate mapping flag and
@@ -146,6 +149,10 @@ Previous-amount suggestions require no new Sheet schema. They show a saved
 transaction total and its date, then require an owner choice and ordinary final
 confirmation. See [previous expense amounts](previous-expense-prices.md) for
 source exclusions, current-date handling, stale checks and same-image OFF recovery.
+
+See [owner record controls](owner-record-controls.md) for removal semantics,
+alias persistence and buttons. Once these features are used, the v2 history
+envelope requires a compatible recovery runtime; feature-OFF preserves it.
 
 Configure `PILOT_MODEL_MONTHLY_MICRO_USD`, `PILOT_MODEL_MAX_CALLS_DAY` and `PILOT_MODEL_MAX_CALLS_MONTH` deliberately. Monetary values are integer micro-USD. The supported model is fixed by the typed adapter; `PILOT_MODEL_ID` must match `model_api.MODEL_ID`. The retained compatibility layer accepts up to 100 calls/day, 300/month and 500000 micro-USD configured allocation in production. These application controls are not a provider billing hard limit.
 

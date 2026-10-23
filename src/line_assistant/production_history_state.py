@@ -47,7 +47,7 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                 or not isinstance(extra['workspaces'],dict) or set(extra['workspaces'])-self.approved_workbooks):
             raise ValueError('Invalid history workspace binding')
         for book,parts in extra['workspaces'].items():
-            fresh=HistoryState();fresh.raw_journal=journal_for(book);fresh.clock=self.clock;restore_history(fresh,{**parts,'core':core},self.owner_id)
+            fresh=HistoryState();fresh.raw_journal=journal_for(book);fresh.clock=self.clock;restore_history(fresh,{**parts,'core':core},self.owner_id,expected_scope=book)
         restore_history(self,{**extra['current'],'core':core},self.owner_id)
         self.history_workspaces=deepcopy(extra['workspaces'])
     def select_workbook(self,workbook_id,*,legacy_workbook):
@@ -66,6 +66,7 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                 self.calendar_drafts={};self.calendar_proofs={}
                 self.calendar_batches={};self.calendar_batch_proofs={}
                 self.calendar_connections=None;self.calendar_connection_probe=None
+                self.catalog_aliases={};self.owner_features_used=False
 
 def production_binding(state,sheets,port):
     from .pilot_http import PilotPort

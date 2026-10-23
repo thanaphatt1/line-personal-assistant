@@ -7,6 +7,17 @@ from .calendar_event_types import parse_payload
 from .history_context import digest
 from .transport import LiveDisabled
 
+def completed_creation_id(key,action,owner,calendar_id):
+    """Resolve the persisted creation contract for selection and exact reads."""
+    m=action.metadata
+    if (not key.startswith(owner+':calendar:') or action.kind!='create_event' or action.status!='completed'
+        or not m.get('calendar_mvp') or m.get('calendar_id')!=calendar_id
+        or m.get('calendar_payload_hash')!=digest([owner,calendar_id,action.payload])
+        or not action.result or action.result.status!='created' or action.result.data.get('domain')!='calendar'):
+        return None
+    identifier=action.result.data.get('event_id')
+    return identifier if identifier==hashlib.sha256(key.encode()).hexdigest() else None
+
 def authorize(http,method,path,body,params):
     c=http.config;s=http.state
     if (not getattr(c,'calendar_enabled',False) or not c.history_enabled or not s or not s.holder
