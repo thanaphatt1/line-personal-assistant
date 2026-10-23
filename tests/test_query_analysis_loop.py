@@ -42,7 +42,7 @@ def test_six_reads_and_finish_exceed_two_calls_and_preserve_every_tool_output():
     calls=[read('calendar',f'2026-11-0{i}',identifier=f'call_{i}') for i in range(1,7)]
     def done(body):
         assert len(results(body))==6
-        assert {t['name'] for t in body['tools']}=={'query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_temporal','query_relations'}
+        assert {t['name'] for t in body['tools']}=={'query_sources','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_temporal','query_relations'}
         return finish('calendar_count')(body)
     result,original=turn(api,'ดูนัด 1-6 พ.ย. รวมกี่ครั้ง',*calls,done)
     output=result.data['tool_result']

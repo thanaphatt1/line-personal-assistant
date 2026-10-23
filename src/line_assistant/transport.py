@@ -74,7 +74,9 @@ class ApiError(RuntimeError):
 
 
 class OutcomeUnknown(RuntimeError):
-    pass
+    def __init__(self,message,*,reason=None):
+        super().__init__(message)
+        self.reason=reason if reason in {'timeout','transport','response_too_large','invalid_response'} else None
 
 
 class NotReady(RuntimeError):
@@ -109,6 +111,11 @@ class RestClient:
                                    timeout=10, follow_redirects=False, trust_env=False)
 
     def request(self, method: str, path: str, *, body=None, params=None, headers=None):
+        from .action_trace import span
+        with span('provider_'+self.service):
+            return self._request(method,path,body=body,params=params,headers=headers)
+
+    def _request(self, method, path, *, body=None, params=None, headers=None):
         if not path.startswith("/") or path.startswith("//") or "://" in path:
             raise ValueError("Relative provider path required")
         # Deny before even consulting an injected token provider.
@@ -141,6 +148,7 @@ class RestClient:
             value = response.json()
         except ValueError:
             raise OutcomeUnknown("Provider returned invalid acknowledgement") from None
+        if self.service=='firestore' and method=='POST' and path.endswith(':runQuery') and isinstance(value,list):return value
         if not isinstance(value, dict):
             raise OutcomeUnknown("Provider returned invalid acknowledgement")
         return value

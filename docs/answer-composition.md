@@ -43,6 +43,14 @@ validation. Filters, ordering notes, same-day spending caveats and truncation
 notices remain required evidence. Source text resembling template syntax is
 inserted literally and is never evaluated again.
 
+The composer also receives the executed logical scope and SQL, excluding
+physical bindings and raw source rows. It must describe the actual calculation
+rather than repeat an unfulfilled requested condition. A legacy expense
+inclusion is supplied as the complete required fact `เฉพาะ <label>`, rather
+than a bare name whose surrounding prose could silently change its polarity.
+This does not prove that every SQL plan expresses the user's intent or that
+every free sentence is semantically correct.
+
 Free prose may connect these values and describe the result. Generated
 business numbers, unknown references, obvious write/consent claims and
 instructions are rejected. **These checks do not prove the semantics of all
@@ -67,13 +75,39 @@ review, create consent or report a write. Query tools still compute, select and
 sort the data; the reply model only presents it.
 
 The existing response-realization flag and owner-bound usage reservation apply.
-One optional response call is now also available after eligible table/SQL/read
-analysis results; it was previously skipped there. There is no critic call,
-automatic wording retry or new provider. Document output reserves up to1,536
+An optional response call is available after eligible table/SQL/read analysis
+results. A fully received document that fails presentation validation can get
+**one repair call** with structured validator feedback. There is no critic
+call or new provider. Each document attempt reserves up to1,536
 tokens; ordinary guarded replies retain768. The foreground deadline remains
-eight seconds for document composition inside the overall request deadline;
+eight seconds **shared by both attempts**, including reservation time, inside the overall request deadline;
 ordinary guarded replies retain their four-second deadline. The existing24,000-byte body
 and4,500-UTF-16-unit reply limits apply.
+
+Feedback contains the rejected document, a fixed validation code/guidance and,
+when applicable, missing fact IDs, missing row cells or the required record
+order. These are local presentation references. The repaired request retains
+the exact original facts, cells, executed query evidence and output schema;
+it has no tools and cannot fetch, calculate, save or confirm anything. The
+model rewrites the full answer and the same validator checks it again.
+Rejected prose remains untrusted data, including any embedded instructions.
+
+Only a received, usage-checked final JSON document rejected by the read
+renderer qualifies. Timeouts, transport failures, refusals, malformed provider
+envelopes, invalid JSON and usage-bound failures do not start a repair. Calendar
+semantic classification, incomplete replies, write reviews and receipts retain
+their existing paths. An unchanged or still-invalid repair stops after that
+one additional attempt. The grounding checks remain in place; this loop does
+not prove arbitrary SQL intent or free-prose semantics.
+
+Every repair has its own owner-bound durable claim, body fingerprint and
+budget reservation before model I/O. Reservations are not refunded. Completed
+decisions can recover after a crash without retransmission; an unknown reserved
+attempt cannot be retried. The existing receipt checkpoint clears consumed
+candidate caches together, retaining accounting and unknown-attempt records.
+Repeated LINE delivery reuses the delivered answer without new model requests
+or business effects. If feedback exceeds the request bound, the budget is
+unavailable or time expires, the original authoritative reply is used.
 
 Invalid, unavailable, over-budget, over-size or late composition uses the
 authoritative server reply. Its expense fallback also avoids repeated dates:
@@ -88,3 +122,7 @@ The scripted contracts in
 layout flexibility, shared context, record binding, malicious documents,
 fallback and signed cold replay. Scripted output is not a model-quality
 benchmark or a live business end-to-end test.
+
+[`test_answer_repair.py`](../tests/test_answer_repair.py) covers correction from
+validator feedback, fixed input facts, durable recovery, unknown attempts,
+budget/deadline exhaustion, invalid feedback, replay and isolation from writes.

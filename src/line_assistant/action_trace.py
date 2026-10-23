@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import hashlib,json,re,sys
 from time import monotonic
+from threading import RLock
 from uuid import uuid4
 
 ACTIVE=ContextVar('assistant_action_trace',default=None)
@@ -85,8 +86,37 @@ class Trace:
     def __init__(self,event,sink):
         self.turn_ref=ref(event);self.attempt_ref=uuid4().hex;self.sink=sink
         self.started=monotonic();self.count=0;self.dropped=0;self.sink_failures=0
+        self.lock=RLock();self.pending={};self.durations={};self.calls={};self.fallbacks=0
+        self.closed=False
+        self.status='unknown'
+        self.replayed=False
 
     def emit(self,phase,*,final=False,**fields):
+        with self.lock:self._emit(phase,final=final,**fields)
+
+    def _emit(self,phase,*,final=False,**fields):
+        if self.closed:return
+        now=monotonic()
+        pairs={'model_request':('model',fields.get('run_ref')),'tool_request':('tool',fields.get('call_ref'))}
+        if phase in pairs:
+            kind,key=pairs[phase];label=code(fields.get('role') if kind=='model' else fields.get('tool'))
+            self.pending[(kind,key)]=(now,label)
+            if not fields.get('cached'):self.calls[kind]=self.calls.get(kind,0)+1
+        elif phase in {'model_result','tool_result'}:
+            kind='model' if phase=='model_result' else 'tool'
+            key=fields.get('run_ref' if kind=='model' else 'call_ref')
+            start=self.pending.pop((kind,key),None)
+            if start:
+                duration=max(0,round((now-start[0])*1000));fields['duration_ms']=duration
+                label=kind+'_'+start[1];self.durations[label]=self.durations.get(label,0)+duration
+        if phase=='reply_fallback':self.fallbacks+=1
+        if phase=='receipt_replay':self.replayed=True
+        if phase=='turn_finished':self.status=code(fields.get('status'))
+        if phase=='turn_interrupted':self.status='interrupted'
+        if phase=='webhook_finished':fields['status']=self.status
+        if phase in {'turn_finished','turn_interrupted','webhook_finished'}:
+            fields['performance']={'total_ms':max(0,round((now-self.started)*1000)),
+                'phase_ms':dict(self.durations),'calls':dict(self.calls),'reply_fallbacks':self.fallbacks,'replayed':self.replayed}
         if self.count>=MAX_RECORDS and not final:self.dropped+=1;return
         row={'event':'assistant_action_trace','version':1,'turn_ref':self.turn_ref,'attempt_ref':self.attempt_ref,
              'sequence':self.count,'elapsed_ms':round((monotonic()-self.started)*1000),'phase':phase,**fields}
@@ -100,6 +130,24 @@ def emit(phase,**fields):
     if current is not None:current.emit(phase,**fields)
 
 
+@contextmanager
+def span(label):
+    """Fixed labels only; no paths, payloads or exception messages in metrics."""
+    current=ACTIVE.get();started=monotonic();status='completed'
+    try:yield
+    except BaseException:
+        status='failed';raise
+    finally:
+        if current is not None:
+            with current.lock:
+                label=code(label);duration=max(0,round((monotonic()-started)*1000))
+                current.durations[label]=current.durations.get(label,0)+duration
+                current.calls[label]=current.calls.get(label,0)+1
+                # Successful provider timings aggregate without consuming the
+                # bounded action-log budget on lease/journal RPCs.
+                if status=='failed':current.emit('span_finished',span=label,duration_ms=duration,status=status)
+
+
 def log_record(row):
     # One bare JSON line lets Cloud Logging parse jsonPayload. Uvicorn's
     # ordinary log formatter prefixes INFO and would make this plain text.
@@ -107,9 +155,11 @@ def log_record(row):
 
 
 @contextmanager
-def turn(host,event):
+def turn(host,event,*,boundary='assistant'):
+    if ACTIVE.get() is not None:
+        yield ACTIVE.get();return
     source=event.get('source',{});event_id=event.get('webhookEventId')
-    enabled=(host.raw_history_enabled and isinstance(source,dict) and source.get('type')=='user'
+    enabled=(getattr(host,'raw_history_enabled',False) and isinstance(source,dict) and source.get('type')=='user'
              and source.get('userId')==host.settings.owner_id and isinstance(event_id,str)
              and re.fullmatch(r'[A-Za-z0-9_-]{1,128}',event_id))
     sink=getattr(host,'action_trace_sink',None)
@@ -122,7 +172,10 @@ def turn(host,event):
     except BaseException:
         trace.emit('turn_interrupted',final=True,dropped_records=trace.dropped,sink_failures=trace.sink_failures)
         raise
-    finally:ACTIVE.reset(token)
+    finally:
+        if boundary=='webhook':trace.emit('webhook_finished',final=True,dropped_records=trace.dropped,sink_failures=trace.sink_failures)
+        with trace.lock:trace.closed=True
+        ACTIVE.reset(token)
 
 
 def phase(host,name,key):

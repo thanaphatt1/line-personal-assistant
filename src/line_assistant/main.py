@@ -77,10 +77,17 @@ def create_app(assistant: Assistant | None = None, reply_dispatcher=None, *,
         results, deliveries = [], []
         for event in events:
             try:
-                result = await run_in_threadpool(assistant.handle, event)
-                results.append(asdict(result))
-                if reply_dispatcher:
-                    deliveries.append(await run_in_threadpool(reply_dispatcher.deliver, event, result, received_at))
+                from .action_trace import turn,span,emit,code
+                with turn(assistant,event,boundary='webhook'):
+                    from .loading import indicator
+                    with indicator(assistant,event,reply_dispatcher):
+                        result = await run_in_threadpool(assistant.handle, event)
+                    results.append(asdict(result))
+                    if reply_dispatcher:
+                        with span('line_delivery'):
+                            delivery=await run_in_threadpool(reply_dispatcher.deliver, event, result, received_at)
+                        deliveries.append(delivery)
+                        emit('reply_delivery',status=code(delivery))
             except Exception:
                 # Don't return adapter errors or log raw financial/calendar content.
                 raise HTTPException(503, "Adapter failed; retry with the same webhook event") from None

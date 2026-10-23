@@ -67,7 +67,7 @@ CALENDAR_INSTRUCTIONS=RAW_INSTRUCTIONS.replace('Thai owner expense assistant','T
 
 QUERY_INSTRUCTIONS=(
     ' Your voice: concise, helpful everyday Thai, polite ครับ. Start with the result; avoid robotic ISO dates in prose and unnecessary follow-up questions. '
-    'Understand the current message and 24h dialogue semantically. Use query_expenses for SAVED expense totals/listing and query_calendar for SAVED appointments. '
+    'Understand the current message and 24h dialogue semantically. Use query_expenses/query_calendar to read SAVED source data; query_relations is primary for filtering and analysis. '
     'Calendar queries combine the calendars selected by the server. For สัปดาห์นี้มีนัดอะไรบ้าง use query_calendar with date_mode=calendar_week, relative_offset=0 and upcoming=false; do not ask the owner to choose a calendar. '
     'You choose arguments; there is no keyword router. Resolve relative dates with authoritative bangkok_datetime (Bangkok); weeks Monday-Sunday, Thai abbreviated months and Buddhist years accepted. '
     'An unqualified month query uses the whole calendar month (first through last day), including เดือนนี้. Only explicit จนถึงวันนี้/so far clips the end to today. Thai short Buddhist year69 means2569 (2026); do not treat69 as2069. '
@@ -89,7 +89,9 @@ QUERY_INSTRUCTIONS=(
     'Alternatives such as เมื่อวานหรือวันนี้ are ambiguous: ask WHICH date; never combine OR into a range unless the owner asks both. '
     'An unknown requested filter (for example clothes absent from query_catalog) must never become null/all or a different known category. Ask or send its literal unknown label to the tool for clarification. '
     'For any Calendar title/type filter, copy its literal text to filter_text; never silently query all events instead. '
-    'Select the exact known filter label; do not invent categories, silently ignore an unknown filter, or classify unknown historical items yourself. If no filter is requested send null. '
+    'For SQL read expense filter=null, view=list, continue_analysis=true, then express the requested conditions in SQL WHERE. '
+    'The legacy source filter is positive equality only: it selects just that label, NEVER excludes it. Do not use it for negation or combined conditions. '
+    'Resolve intended labels from actual catalog/rows; do not invent categories, silently ignore an unknown filter, or classify unknown historical items yourself. If no filter is requested send null. '
     'An ACTIVITY such as คุมสอบ is a Calendar condition when asking spending on those days, not an expense item/category. '
     'Use query_calendar first for the requested period and literal activity, continue_analysis=true; then query_expenses with its calendar_query_refs, date_mode=previous and filter=null. '
     'Only an actual request for a spending category uses the catalog-filter unknown-label rule above. '
@@ -105,7 +107,7 @@ QUERY_INSTRUCTIONS=(
 )
 SAVED_EDIT_INSTRUCTIONS=(
     ' When dedicated find_saved_records/prepare_saved_expense_edit/prepare_calendar_reschedule tools are offered, they additionally support proposing changes to SAVED records. '
-    'Use those tools for an already recorded expense amount/item/date correction or an existing appointment reschedule, never prepare a new expense/event as its substitute. '
+    'Use those tools only to CHANGE an already recorded expense or reschedule an existing appointment. An ADDITIONAL payment on another date is a NEW expense, even when it reuses the name/amount of a saved record; it is not a saved-record date correction. '
     'First find_saved_records: scope=last only for an explicitly recent confirmed record; otherwise copy the stated date span into period_text and resolve an inclusive ISO range. Never invent IDs. '
     'If find_saved_records returns continue_model=true, it has exactly one editable record and no unidentified alternatives. When the owner already stated the changed fields, call the saved-edit prepare tool in the remaining step now; do not ask whether that unique record is the right one. The before/after review is the next owner check. Ask only genuinely missing changed fields. Multiple candidates require the owner to choose from the displayed list before any proposal. '
     'Use only current owned candidate_ref values in saved_record_edits or the find result. Preserve unmodified fields with null. '
@@ -125,6 +127,17 @@ CONNECTION_INSTRUCTIONS=(' For an owner request to connect/add another calendar,
 
 def request_instructions(definitions,*,calendar=False):
     base=CALENDAR_INSTRUCTIONS if calendar else RAW_INSTRUCTIONS
+    base+=(
+        ' First decide the operation from the CURRENT request and dialogue: new/additional record, pending completion, saved-record correction, or read. '
+        'recent_recorded_expenses are completed facts, NOT pending patch targets. An unrelated pending_records entry is never the target just because it is editable. '
+        'After saving Laptop Orion 1370, วันที่ 27 sep ด้วย ยอดนี้ / เพิ่มรายการนี้วันที่ 27 sep ด้วย requests an ADDITIONAL expense; prepare_expenses with null draft/entry refs and a fresh review. '
+        'In contrast แก้วันที่รายการที่บันทึกเป็น 27 sep changes the SAVED record, using find_saved_records. Changing a named pending row uses patch_pending_records. Ask if create versus correction is genuinely ambiguous. '
+        'For a new payment using referenced historical facts, source_refs MUST include current_source_ref and the original owner refs. Use explicit field_sources.item/amount for the selected original facts, field_sources.date for the CURRENT requested date. '
+        'Supply item/amount values, or send null with their explicit field_sources to copy a unique verified recorded fact. Null without that selected field citation means missing, never implicit inheritance from an unrelated draft. '
+        'Copy names and amounts from the selected verified owner sources; never cite assistant text. Do not inherit the earlier date merely because the amount is reused, or any old confirmation. Explicit current money overrides old money. '
+        'A new message stating a complete name/amount/date can prepare_expenses directly from current_source_ref without selecting an unrelated pending row. '
+        'If a proposed name conflicts with literal evidence, repair item/item_text from the original owner wording or a verified exact catalog identity. Do not switch creation into patching a different pending record to bypass that failure. '
+    )
     if any(t['name']=='resolve_temporal' for t in definitions):
         from .temporal import INSTRUCTIONS
         base+=INSTRUCTIONS
@@ -162,6 +175,9 @@ def request_instructions(definitions,*,calendar=False):
                'A price choice must use source_refs containing only current_source_ref, never a previous owner reply or numeric field_sources. '
                'An explicit amount such as เดือนนี้169 always uses amount with current owner evidence and previous_price_ref=null. '
                'Keep the new transaction date separate from the historical source_date. Selecting an old amount only prepares a fresh review; separate final owner confirmation is still required.')
+    if any(t['name']=='query_sources' for t in definitions):
+        from .read_batch import INSTRUCTIONS as BATCH_INSTRUCTIONS
+        base+=BATCH_INSTRUCTIONS
     return base
 
 HISTORICAL_CATEGORY_INSTRUCTIONS=(

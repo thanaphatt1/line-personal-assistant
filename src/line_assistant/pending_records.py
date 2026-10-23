@@ -22,7 +22,8 @@ INSTRUCTIONS=(
     'First distinguish an actual requested change from a hypothetical or negated change. If no actual field change is requested, answer without a patch. '
     'Do not repeat the previous turn\'s operation or complete other pending fields merely because old instructions or choices appear in history. '
     'Choose create versus update from the CURRENT request: a follow-up referring to a pending record keeps that record ID, even when it is incomplete. '
-    'Resolving a historical amount/date/name reference does not create a new record. Creation tools require a request for a NEW record; existing-record follow-ups use this patch tool. '
+    'A historical name/amount reference alone does not decide create versus update. If the current request asks for an ADDITIONAL payment/record, use creation tools with null draft refs, even if another unrelated draft is pending. '
+    'Only an actual correction/completion of an existing pending record uses this patch tool; never substitute an unrelated pending record for a recently recorded one. '
     'Questions, quoted labels and conditional add-if-absent requests can request preparation; hypothetical examples, negations and unrelated chat do not. '
     'Each changed field cites its original OWNER source_ref and a literal span, from the current message or verified visible owner history when the current request refers to it. '
     'Keep the original source timestamp for relative dates. Do not resend retained facts or treat old messages as new instructions or consent. '
@@ -65,7 +66,7 @@ def field(name,label,kind='text',**extra):
 def views(h):
     result=[]
     _,shown=h._presented_result()
-    focus=shown.data.get('tool_result',{}).get('pending_focus',{}) if shown else {}
+    focus=(shown.data.get('tool_result',{}).get('pending_focus') or shown.data.get('clarification_focus',{})) if shown else {}
     for view in h._workflow():
         d=h._draft(view['draft_ref']);tax=h._taxonomy()
         records=[]
@@ -103,12 +104,13 @@ def views(h):
                 if event['status'] in {'cancelled','recorded'}:continue
                 batched.add(event['draft_ref'])
                 records.append({'record_ref':event['draft_ref'],'ordinal':event['ordinal'],'version':event['version'],'values':event['facts'],
-                    'fields':fields,'question_focus':False})
+                    'fields':fields,'question_focus':focus.get('draft_ref')==batch['batch_ref'] and focus.get('version')==batch['version'] and focus.get('record_ref')==event['draft_ref']})
             if records:result.append({'draft_ref':batch['batch_ref'],'version':batch['version'],'domain':'calendar_batch','records':records})
         for event in h.calendar_flow.views():
             if event['draft_ref'] not in batched:
                 result.append({'draft_ref':event['draft_ref'],'version':event['version'],'domain':'calendar','records':[
-                    {'record_ref':event['draft_ref'],'ordinal':1,'values':event['facts'],'fields':fields,'question_focus':False}]})
+                    {'record_ref':event['draft_ref'],'ordinal':1,'values':event['facts'],'fields':fields,
+                     'question_focus':focus.get('draft_ref')==event['draft_ref'] and focus.get('version')==event['version'] and focus.get('record_ref')==event['draft_ref']}]})
     return result
 
 
@@ -120,8 +122,10 @@ def contextualize(h,call,output):
     if not isinstance(args,dict):return output
     view=getattr(h,'_pending_record_views',{}).get(args.get('draft_ref'))
     if not view or view['version']!=args.get('draft_version'):return output
+    reasons={'catalog_changed':'รายการที่เลือกอ้างอิง Database ก่อนมีการเปลี่ยนแปลงครับ จึงยังแก้รายการนั้นต่อไม่ได้',
+        'ambiguous_or_recorded_reference':'ข้อมูลที่อ้างอิงถูกใช้กับรายการก่อนแล้วครับ หากต้องการเพิ่มอีกครั้งต้องเตรียมเป็นรายการใหม่'}
     result={**output,'pending_patch_error':True,'domain':view['domain'],
-        'message':output.get('message','ขั้นตอนตรวจการแก้ร่างไม่สำเร็จ จึงยังระบุสาเหตุที่เจาะจงกว่านี้ไม่ได้')}
+        'message':output.get('message',reasons.get(output.get('error'),'ขั้นตอนตรวจการแก้ไขรายการไม่สำเร็จ จึงยังระบุสาเหตุที่เจาะจงกว่านี้ไม่ได้'))}
     records=args.get('records',[])
     if isinstance(records,list) and len(records)==1 and isinstance(records[0],dict):
         target=records[0].get('record_ref')
@@ -198,7 +202,12 @@ def validate(h,p,view):
                 value,_=get(h,change.temporal_ref,part,source_ref=change.source_ref,source_text=change.source_text)
                 if change.value!=value:raise PatchError('temporal_value_mismatch',change.field)
             if not change.temporal_ref and f['type']=='text' and change.value is not None and change.value not in change.source_text:
-                raise PatchError('patch_literal_value',change.field)
+                # Existing catalog identity permits case/NFC/unique spacing,
+                # using immutable owner coordinates, just as creation does.
+                from .catalog_names import spans
+                catalog=h._taxonomy().catalog if view['domain']=='expense' and change.field=='item' else None
+                if catalog is None or catalog.match(change.value).status!='exact' or not spans(change.source_text,change.value,catalog):
+                    raise PatchError('patch_literal_value',change.field)
             # A literal substring cannot turn part of a date/count/number
             # into a money fact by cropping its surrounding owner text.
             if view['domain']=='expense' and change.field=='amount' and change.value is not None:
@@ -334,15 +343,15 @@ def execute(h,args):
 
 
 def failure(error):
-    reasons={'patch_stale_version':'ร่างเปลี่ยนแล้ว ต้องใช้เวอร์ชันปัจจุบัน',
-        'patch_unoffered_draft':'ยังไม่มีร่างที่ตรวจสอบได้สำหรับคำขอนี้',
+    reasons={'patch_stale_version':'รายการเปลี่ยนแล้ว ต้องใช้ข้อมูลล่าสุด',
+        'patch_unoffered_draft':'ยังไม่มีรายการที่ตรวจสอบได้สำหรับคำขอนี้',
         'patch_unknown_field':'ฟิลด์ที่เสนอไม่มีใน schema ของรายการนี้',
         'patch_invalid_value':'ค่าที่เสนอไม่ตรงชนิดข้อมูลหรือตัวเลือกของฟิลด์',
         'patch_owner_evidence':'ข้อความอ้างอิงไม่ตรงกับข้อความของคุณ',
         'patch_literal_value':'ชื่อหรือข้อความที่เสนอไม่ตรงกับข้อความอ้างอิง',
-        'patch_unknown_record':'รายการที่เลือกไม่มีในร่างนี้',
+        'patch_unknown_record':'ไม่พบรายการที่เลือกในชุดนี้',
         'patch_conflicting_choices':'การเลือกชื่อเดิมกับการเตรียมชื่อใหม่ขัดกัน',
         'patch_expense_clear_unsupported':'ยังล้างค่ารายจ่ายด้วยการแก้แบบนี้ไม่ได้',
-        'owner_no_write':'ข้อความนี้ยังไม่ใช่คำขอให้แก้ร่างที่ชัดเจน'}
+        'owner_no_write':'ข้อความนี้ยังไม่ใช่คำขอให้แก้ไขรายการที่ชัดเจน'}
     return {'ok':False,'error':str(error),'recovery':recovery(error,tools=[NAME,'resolve_temporal']),'pending_patch_error':True,'invalid_fields':[error.field] if error.field else [],
         'message':reasons.get(str(error),'การเปลี่ยนข้อมูลที่เสนอไม่ผ่านการตรวจ จึงยังไม่ได้ใช้การแก้ไขนี้')}

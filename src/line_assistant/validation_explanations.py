@@ -10,9 +10,9 @@ import json,re
 REASONS={
  'owner_no_write':'ต้องการเปลี่ยนรายการไหนและเปลี่ยนอะไรครับ?',
  'ambiguous_unknown_item':'มีหลายรายการที่ยังต้องเลือกชื่อครับ ต้องการเพิ่มชื่อใหม่ให้รายการไหน ระบุชื่อหรือหมายเลขรายการได้เลย',
- 'new_item_already_started':'เริ่มเตรียมชื่อใหม่นี้ไว้แล้วครับ กรุณาเลือกหมวดจากร่างที่แสดง',
- 'stale_draft_version':'ร่างเปลี่ยนไปแล้วครับ ขอใช้ข้อมูลร่างล่าสุดก่อนทำต่อ',
- 'older_draft_update':'คำตอบนี้มาก่อนการแก้ร่างล่าสุดครับ จึงยังไม่เปลี่ยนร่าง',
+ 'new_item_already_started':'เริ่มเตรียมชื่อใหม่นี้ไว้แล้วครับ กรุณาเลือกหมวดจากรายการที่แสดง',
+ 'stale_draft_version':'รายการเปลี่ยนไปแล้วครับ ขอใช้ข้อมูลล่าสุดก่อนทำต่อ',
+ 'older_draft_update':'คำตอบนี้มาก่อนการแก้ไขรายการล่าสุดครับ จึงยังไม่เปลี่ยนข้อมูล',
  'new_item_requires_category_clarification':'ผมส่งหมวดหรือหมวดย่อยที่ยังยืนยันจากคำตอบของคุณไม่ได้ จึงยังไม่ใช้หมวดนั้นครับ',
  'category_step_not_ready':'ขั้นตอนเลือกหมวดยังไม่พร้อม จึงยังไม่เปลี่ยนหมวดครับ',
  'subcategory_step_not_ready':'ยังเลือกหมวดย่อยไม่ได้ ต้องตรวจหมวดหลักก่อนครับ',
@@ -20,12 +20,13 @@ REASONS={
  'subcategory_not_in_selected_category':'หมวดย่อยที่ส่งไปไม่อยู่ในหมวดหลักที่เลือกครับ',
  'invalid_tool_arguments':'ผมส่งข้อมูลให้เครื่องมือผิดรูปแบบ จึงยังทำขั้นตอนนี้ต่อไม่ได้ครับ',
  'source_not_in_visible_context':'ผมอ้างอิงข้อความต้นทางไม่ตรงกับประวัติที่ระบบให้ใช้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
- 'category_fields_belong_to_item_resolution':'ผมส่งหมวดผ่านขั้นตอนแก้ข้อมูลรายจ่าย ซึ่งต้องใช้ขั้นตอนเลือกหมวดแยกกัน จึงยังไม่เปลี่ยนร่างครับ',
+ 'category_fields_belong_to_item_resolution':'ผมส่งหมวดผ่านขั้นตอนแก้ข้อมูลรายจ่าย ซึ่งต้องใช้ขั้นตอนเลือกหมวดแยกกัน จึงยังไม่เปลี่ยนข้อมูลครับ',
  'count_amount_mismatch':'จำนวนเที่ยว/ขาที่ระบุไม่ตรงกับจำนวนยอดเงิน จึงยังไม่สร้างรายการบันทึก',
  'count_price_basis_ambiguous':'ระบุหลายเที่ยว/ขาแต่มีเงินเพียงยอดเดียว ยอดนี้เป็นยอดรวม หรือราคาต่อเที่ยว/ขาครับ?',
- 'unsupported_expense_count':'จำนวนเที่ยว/ขาที่ระบุยังตรวจสอบไม่ได้ รองรับจำนวนชัดเจน 1–5 รายการต่อร่าง',
+ 'unsupported_expense_count':'จำนวนเที่ยว/ขาที่ระบุยังตรวจสอบไม่ได้ รองรับจำนวนชัดเจน 1–5 รายการต่อชุด',
  'amount_occurrence_missing_or_reused':'ยังจับคู่ยอดเงินแต่ละรายการกับตำแหน่งตัวเลขต้นฉบับที่ไม่ซ้ำกันไม่ได้',
  'expense_batch_incomplete':'ข้อเสนอของโมเดลยังไม่ครบทุกชื่อและยอดในข้อความ จึงยังไม่ให้ยืนยันหรือบันทึกเฉพาะบางรายการ',
+ 'reused_expense_fields_required':'ผมยังใส่ชื่อ ยอด หรือแหล่งอ้างอิงของรายการเดิมไม่ครบในข้อเสนอรายการใหม่ครับ',
  'ambiguous_date_scope':'วันที่ท้ายข้อความหมายถึงรายการไหนครับ: ทุกรายการ หรือเฉพาะรายการสุดท้าย?',
  'amount_source':'ยังยืนยันยอดเงินของรายการจากข้อความต้นฉบับไม่ได้',
  'item_source':'ยังยืนยันชื่อเต็มของรายการจากข้อความต้นฉบับไม่ได้',
@@ -45,7 +46,7 @@ REASONS={
 ENROLLMENT_ERRORS={'new_item_requires_category_clarification','category_step_not_ready',
  'subcategory_step_not_ready','category_not_offered','subcategory_not_in_selected_category','new_item_already_started'}
 MODEL_ERRORS=ENROLLMENT_ERRORS|{'invalid_tool_arguments','amount_occurrence_missing_or_reused',
- 'expense_batch_incomplete','amount_source','item_source','full_item_name_required','note_source',
+ 'expense_batch_incomplete','reused_expense_fields_required','amount_source','item_source','full_item_name_required','note_source',
  'date_text_source','date_source','source_not_in_visible_context','category_fields_belong_to_item_resolution'}
 
 
@@ -67,6 +68,13 @@ def enrich(h,call,output):
  from .tool_errors import recovery
  result['recovery']=(output.get('recovery') if output.get('recovery',{}).get('kind')!='unavailable' else None) or recovery(kind='assistant_arguments' if kind=='model_arguments' else 'owner_input' if kind=='validation' else 'unavailable',
      fields=output.get('invalid_fields',[]),required=output.get('missing_fields',[]),tools=[call['name'],'patch_pending_records','resolve_temporal'])
+ if call['name']=='prepare_expenses':
+  try:creating=json.loads(call['arguments']).get('draft_ref') is None
+  except (ValueError,TypeError,AttributeError):creating=False
+  if creating:
+   # Repair a new-record proposal in that operation. An unrelated pending
+   # row cannot become the target merely to get around a source/name error.
+   result['recovery']={**result['recovery'],'allowed_tools':['prepare_expenses','resolve_temporal']}
  if values[0] not in ENROLLMENT_ERRORS and all(v in REASONS for v in values):
   # Existing count/date/source diagnostics contain checked rows and questions.
   # Keep those complete; the new metadata must not erase their evidence.

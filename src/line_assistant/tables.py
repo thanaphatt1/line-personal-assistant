@@ -182,6 +182,18 @@ class Registry:
     def scan(self, identifier):
         table, store = self.get(identifier)
         records = store.scan(table)
+        return self.validate_records(table,records)
+
+    def read(self, identifier, filters):
+        from .read_cache import read
+        table,store=self.get(identifier)
+        def load():
+            scan=getattr(store,'scan_filtered',None)
+            records=scan(table,filters) if scan else read(('table_full_scan',id(store),self.binding(identifier)),lambda:store.scan(table))
+            return self.validate_records(table,records)
+        return read(('table_snapshot',id(self),self.binding(identifier),digest([f.model_dump() for f in filters])),load)
+
+    def validate_records(self, table, records):
         seen = set()
         for record in records:
             if (set(record) != {'id', 'version', 'values'} or not isinstance(record['id'], str)
@@ -333,7 +345,7 @@ def query(registry, p, *, joined_dates=None, joined_values=None):
     names = set(p.group_by) | aliases if p.aggregates else {c.name for c in table.columns} | {'id'}
     if any(o.field not in names for o in p.order_by):
         raise TableError('unknown_order_field')
-    records = registry.scan(p.table_id)
+    records = registry.read(p.table_id,p.filters)
     matched = [r for r in records if all(test(dict(id=r['id'],**r['values'])) for test in tests)]
     if p.aggregates:
         groups = {}

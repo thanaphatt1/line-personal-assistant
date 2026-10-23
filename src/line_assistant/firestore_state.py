@@ -159,4 +159,6 @@ class FirestoreState(MemoryState):
         self.document = self._commit(fresh, fields)
 
     def before_effect(self):
+        from .read_cache import invalidate
+        invalidate()
         self.checkpoint()  # Verify holder/fence and renew immediately before HTTP.

@@ -1,5 +1,22 @@
 # Test guide
 
+The [additional-payment regressions](test_additional_expenses.py) cover
+recorded-fact reuse on another date, unrelated pending drafts, catalog item
+case variants, creation-only repair, cold signed restore/confirmation/replay,
+and safe planner failure diagnostics. Business providers are synthetic.
+
+The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
+missing-field questions, interruption, compound rename/category corrections,
+short continuations and one final save. [Batch reads](test_read_batch.py) compare
+identical computed answers against sequential planner/provider call counts.
+[Performance](test_performance.py) and [LINE loading](test_loading.py) check
+aggregate-only reporting, replay separation, signed owner scopes and failure
+isolation. [Filtered table reads](test_filtered_table_storage.py) check indexed
+scope completeness, decimal/null residual semantics, cursor failures and fresh
+requests; the official emulator also exercises a multi-page date-range query.
+These are scripted synthetic contracts; see the
+[performance guide](../docs/performance.md) for measurement boundaries.
+
 The [read-answer composer](test_answer_composition.py) checks flexible prose,
 shared date headings, complete linked cells, preserved ranking, invalid-document
 fallback and exact signed replay. Its model responses are scripted; fresh

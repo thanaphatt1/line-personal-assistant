@@ -104,6 +104,14 @@ class HistoryConfig:
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
+        from .loading import OWNER,PATH
+        if service=='line' and path==PATH:
+            if (not getattr(self,'raw_history_enabled',False) or self.canary or self.reply_check
+                    or method!='POST' or params is not None or headers is not None
+                    or OWNER.get()!=self.config.owner_id or body!={'chatId':self.config.owner_id,'loadingSeconds':20}):
+                raise LiveDisabled('Unbound loading indicator')
+            token=self.secrets['line-channel-access-token'].get_secret_value()
+            return self._json(self._http(method,'https://api.line.me'+PATH,json=body,headers={'Authorization':'Bearer '+token}))
         from .calendar_provider import CALENDAR_LIST_PATH,calendar_list_page,MAX_READ_CALENDARS
         if service=='calendar' and method=='GET' and path==CALENDAR_LIST_PATH:
             self.allowed(service,method,path,body,params)

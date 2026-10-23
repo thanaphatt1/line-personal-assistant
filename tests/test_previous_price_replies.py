@@ -55,7 +55,8 @@ def test_exact_reported_utterance_keeps_grounded_question_with_realization_ON(te
     e=r.data['tool_result']['entries'][0]
     assert r.status=='clarification' and e['item']=='Spotify' and e['amount'] is None
     assert e['date']=='2026-10-18' and e['previous_price']['amount']=='169.00'
-    assert all(s in r.message for s in ['169.00','2026-10-01','หลายยอด','ใช้ยอดเดิม','ยืนยันอีกครั้ง'])
+    assert all(s in r.message for s in ['169.00','2026-10-01','หลายยอด','ใช้ยอดเดิม','ยืนยันก่อนบันทึก'])
+    assert 'ร่าง' not in r.message
     assert r.data['response_realization']['status']=='llm' and len(api.model_bodies)==2
     assert not api.google.sheet_writes and not next(iter(api.drafts().values()))['review']
 

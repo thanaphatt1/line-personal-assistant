@@ -80,6 +80,8 @@ class Assistant:
                 self._receipt(event_id, fingerprint, result)
                 return result
             if previous:
+                from .action_trace import emit
+                emit('receipt_replay')
                 return deepcopy(previous.result)
             try:
                 occurred_at = datetime.fromtimestamp(stamp / 1000, timezone.utc)

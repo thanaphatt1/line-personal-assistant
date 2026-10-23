@@ -20,7 +20,7 @@ def button(api, preview, label='บันทึก'):
     event['postback']={'data':next(b['action']['data'] for b in actions if b['action']['label']==label)}
     return event
 
-@pytest.mark.parametrize('label,expected',[('บันทึก','recorded'),('ยกเลิกร่างนี้','cancelled')])
+@pytest.mark.parametrize('label,expected',[('บันทึก','recorded'),('ยกเลิกรายการนี้','cancelled')])
 def test_new_delivered_controls_survive_history_model_disabled_bridge_and_replay(label,expected):
     api=Hosted()
     with TestClient(api.app()) as client:

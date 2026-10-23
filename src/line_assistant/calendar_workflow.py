@@ -453,7 +453,7 @@ class CalendarWorkflow:
                 'calendar_action_pending':'ยังต้องตรวจสอบผลรายการเดิมก่อนแก้หรือสร้างนัดเพิ่ม',
                 'calendar_no_fact_change':'รายละเอียดร่างยังไม่เปลี่ยน กรุณาระบุข้อมูลที่ต้องการแก้ หรือขอตรวจร่าง',
                 'calendar_owner_no_write':'ยังไม่สร้างนัดตามที่คุณระบุ',
-                'calendar_ambiguous_cancel_target':'มีทั้งร่างรายจ่ายและนัด กรุณาระบุร่างที่ต้องการยกเลิก'}
+                'calendar_ambiguous_cancel_target':'มีทั้งรายจ่ายและนัดที่รอยืนยัน ต้องการยกเลิกรายการไหนครับ?'}
             messages.update(calendar_event_capacity='รองรับสูงสุด 8 นัดต่อชุด ยังไม่ยืนยันหรือสร้างบางส่วน',
                 calendar_event_fact_pairing='วันหรือเวลายังผูกกับนัดที่ระบุไม่ได้ กรุณาระบุชื่อนัดหรือหมายเลขที่ต้องการแก้',
                 calendar_ambiguous_event_target='มีหลายร่างนัด กรุณาระบุชื่อนัด หมายเลข หรือระบุว่าทั้งชุด',
@@ -547,7 +547,7 @@ class CalendarWorkflow:
         active=[d for d in self.h.state.calendar_drafts.values() if d['status'] not in {'recorded','cancelled'}]
         expenses=bool(self.h.state.pending) or any(d['status']!='recorded' for d in self.h.state.drafts.values())
         if re.fullmatch(r'ยกเลิก(?:\s*(?:ครับ|ค่ะ|คะ))?',text) and active and expenses:
-            return Result('clarification','มีทั้งร่างรายจ่ายและนัด กรุณาระบุร่างที่ต้องการยกเลิก')
+            return Result('clarification','มีทั้งรายจ่ายและนัดที่รอยืนยัน ต้องการยกเลิกรายการไหนครับ?')
         if re.fullmatch(r'ตรวจ(?:สอบ)?ผลนัด(?:ล่าสุด)?',text):
             keys=[k for k,a in self.h.state.actions.items() if a.metadata.get('calendar_mvp') and a.status in {'executing','uncertain'}]
             if len(keys)!=1:return Result('clarification','ไม่พบผลการสร้างนัดที่ไม่แน่นอนเพียงรายการเดียวให้ตรวจสอบ',{'domain':'calendar'})

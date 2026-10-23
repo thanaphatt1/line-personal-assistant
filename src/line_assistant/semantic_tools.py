@@ -51,16 +51,67 @@ def summary(h,args):
     from .read_queries import summary_output
     return summary_output(totals,period.model_dump(mode='json'))
 
+def recorded_result_matches(core,shown):
+    if core==shown:return True
+    if not core or core.status!='recorded' or shown.status!='recorded':return False
+    from .response_realization import identity
+    if shown.data.get('response_realization',{}).get('core_hash')!=identity(core):return False
+    return {k:v for k,v in shown.data.items() if k not in {'response_realization','line_message'}}=={
+        k:v for k,v in core.data.items() if k!='line_message'}
+
+
 def confirmed_date(h):
     rows=sorted((r for r in h.state.history if r['role']=='assistant' and datetime.fromisoformat(r['at'])>h.clock()-WINDOW),key=lambda r:r['at'],reverse=True)
     for row in rows:
         receipt=h.state.receipts.get(row['event']);claim=h.state.claims.get(row['event'])
         action=h.state.actions.get(claim.action_key) if claim else None
-        if not receipt or receipt.result.status!='recorded' or not action or action.status!='completed' or action.result!=receipt.result:continue
+        if not receipt or receipt.result.status!='recorded' or not action or action.status!='completed' or not recorded_result_matches(action.result,receipt.result):continue
         if action.kind not in {'add_transactions','catalog_expense'}:continue
         dates={e['date'] for e in action.payload['entries']}
         return {'date':dates.pop(),'confirmed_event':row['event']} if len(dates)==1 else None
     return None
+
+def recorded_expenses(h):
+    """Latest delivered completed expense facts, separate from editable work.
+
+    Source refs help interpret a current add-again request. They never supply
+    current intent, a live pending target or permission to reuse confirmation.
+    """
+    rows=sorted((r for r in h.state.history if r['role']=='assistant' and datetime.fromisoformat(r['at'])>h.clock()-WINDOW),key=lambda r:r['at'],reverse=True)
+    sources={r['source_ref'] for r in h.state.history if r['role']=='user' and datetime.fromisoformat(r['at'])>h.clock()-WINDOW}
+    for row in rows:
+        receipt=h.state.receipts.get(row['event']);claim=h.state.claims.get(row['event'])
+        action=h.state.actions.get(claim.action_key) if claim else None
+        if not receipt or receipt.expires_at<=h.clock() or receipt.result.status!='recorded' or not action or action.status!='completed' or not recorded_result_matches(action.result,receipt.result) or action.kind not in {'add_transactions','catalog_expense'}:continue
+        if getattr(h,'production',False):
+            reply=h.state.replies.get(row['event'])
+            if h.state.event_workbooks.get(row['event'])!=storage_scope(h.sheets) or not reply or reply.status!='sent' or reply.content_hash!=message_hash(rendered_message(receipt.result)):continue
+        draft=h.state.drafts.get(action.metadata.get('draft_ref'))
+        if not draft or draft.get('owner_id')!=h.settings.owner_id or draft.get('status')!='recorded' or h._payload(draft)!=action.payload:return []
+        return [{**{k:deepcopy(e[k]) for k in ['item','amount','date','note']},
+            'field_sources':{k:[ref for ref in e.get('fact_sources',{}).get(k,[]) if ref in sources] for k in ['item','amount','date','note']},
+            'state':'recorded','editable_as_pending':False,'financial_write_authorized':False} for e in draft['entries']]
+    return []
+
+def reuse_expense_fields(h,entry):
+    """Resolve selected fact references, never old consent or a pending row.
+
+    Null without a field citation remains missing. A citation can copy only
+    one unique, delivered completed payment fact, still revalidated by the
+    ordinary owner-source/occurrence/catalog/date checks during preparation.
+    """
+    fields=entry.field_sources
+    wanted=[field for field in ['item','amount'] if getattr(entry,field) is None and fields and getattr(fields,field)]
+    if not wanted or h._current['source_ref'] not in entry.source_refs:return entry
+    h._owner_sources(list(dict.fromkeys([*entry.source_refs,*(ref for refs in fields.model_dump().values() for ref in refs)])))
+    candidates=[]
+    for fact in recorded_expenses(h):
+        if not all(set(getattr(fields,field))<=set(fact['field_sources'][field]) for field in wanted):continue
+        if 'item' not in wanted and entry.item and h._taxonomy().catalog.identity(entry.item).canonical!=h._taxonomy().catalog.identity(fact['item']).canonical:continue
+        if h._current['source_ref'] in {ref for refs in fact['field_sources'].values() for ref in refs}:continue
+        candidates.append(fact)
+    if len(candidates)!=1:return entry
+    return entry.model_copy(update={field:candidates[0][field] for field in wanted})
 
 def date_targets(h):
     value=confirmed_date(h)
@@ -93,7 +144,7 @@ def action(ref,version,token,op,label):
 
 def actions(h,d):
     nonce=d['review']['nonce']
-    return [action(d['draft_ref'],d['version'],nonce,'save','บันทึก'),action(d['draft_ref'],d['version'],nonce,'cancel','ยกเลิกร่างนี้')]
+    return [action(d['draft_ref'],d['version'],nonce,'save','บันทึก'),action(d['draft_ref'],d['version'],nonce,'cancel','ยกเลิกรายการนี้')]
 
 def delivered(h,payload):
     for event,receipt in h.state.receipts.items():
@@ -110,10 +161,10 @@ def delivered(h,payload):
 
 def postback(h,payload):
     parts=payload.split('|')
-    if len(parts)!=5 or parts[0]!='h2':return Result('stale','ปุ่มนี้ใช้ไม่ได้แล้ว กรุณาตรวจร่างล่าสุด')
+    if len(parts)!=5 or parts[0]!='h2':return Result('stale','ปุ่มนี้ใช้ไม่ได้แล้ว กรุณาตรวจสอบรายการล่าสุด')
     _,ref,version,token,op=parts
     try:version=int(version)
-    except ValueError:return Result('stale','ปุ่มนี้ใช้ไม่ได้แล้ว กรุณาตรวจร่างล่าสุด')
+    except ValueError:return Result('stale','ปุ่มนี้ใช้ไม่ได้แล้ว กรุณาตรวจสอบรายการล่าสุด')
     try:d=h._draft(ref)
     except (ValueError,KeyError):
         # A consumed owner-delivered control is not an undo instruction.
@@ -125,16 +176,16 @@ def postback(h,payload):
                 actions=[a for a in h.state.actions.values() if a.metadata.get('draft_ref')==ref and a.status=='completed' and a.result and a.result.status=='recorded']
                 if actions:
                     rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {e['date']}" for e in d['entries'])
-                    return Result('stale','รายการนี้บันทึกไปแล้ว\n'+rows+('\nการยกเลิกร่างไม่ลบรายการที่บันทึกแล้ว' if op=='cancel' else '\nไม่ได้บันทึกซ้ำ'),{'resolved_outcome':'recorded','financial_effects':0})
+                    return Result('stale','รายการนี้บันทึกไปแล้ว\n'+rows+('\nการยกเลิกนี้ไม่ลบรายจ่ายที่บันทึกแล้ว' if op=='cancel' else '\nไม่ได้บันทึกซ้ำ'),{'resolved_outcome':'recorded','financial_effects':0})
             for receipt in h.state.receipts.values():
                 cancelled=receipt.result.data.get('tool_result',{}).get('cancelled_draft') if receipt.result.status=='cancelled' else None
                 if cancelled and cancelled.get('draft_ref')==ref and cancelled.get('owner_id')==h.settings.owner_id and cancelled.get('version')==version:
-                    return Result('stale','ร่างนี้ถูกยกเลิกแล้ว จึงไม่ได้บันทึกจากปุ่มนี้',{'resolved_outcome':'cancelled','financial_effects':0})
-        return Result('stale','ร่างนี้หมดอายุหรือเปลี่ยนแล้ว')
-    if d['version']!=version or not delivered(h,payload):return Result('stale','ปุ่มนี้ไม่ตรงกับร่างที่ส่งให้ตรวจล่าสุด')
-    if datetime.fromisoformat(h._current['at'])<=datetime.fromisoformat(d['updated_at']):return Result('stale','การเลือกนี้เกิดก่อนร่างล่าสุด')
+                    return Result('stale','รายการนี้ถูกยกเลิกแล้ว จึงไม่ได้บันทึกจากปุ่มนี้',{'resolved_outcome':'cancelled','financial_effects':0})
+        return Result('stale','รายการนี้หมดอายุหรือเปลี่ยนแล้ว')
+    if d['version']!=version or not delivered(h,payload):return Result('stale','ปุ่มนี้ไม่ตรงกับรายการที่ส่งให้ตรวจล่าสุด')
+    if datetime.fromisoformat(h._current['at'])<=datetime.fromisoformat(d['updated_at']):return Result('stale','การเลือกนี้เกิดก่อนรายการล่าสุด')
     if op=='select':
-        if token!=h._view(d)['fingerprint'][:16]:return Result('stale','ร่างนี้เปลี่ยนแล้ว')
+        if token!=h._view(d)['fingerprint'][:16]:return Result('stale','รายการนี้เปลี่ยนแล้ว')
         return h._result(review(h,d))
     if op not in {'save','cancel'} or not d.get('review') or token!=d['review']['nonce']:
         return Result('stale','ปุ่มนี้ไม่ตรงกับการตรวจข้อมูลล่าสุด')
@@ -199,10 +250,10 @@ def control(h,args):
 
 def result(h,output):
     status=output.get('status')
-    if status=='cancelled':return Result('cancelled','ยกเลิกร่าง '+', '.join(display_item(v) for v in output['items'])+' แล้ว ยังไม่มีการลบรายการที่บันทึกไว้',{'tool_result':output})
-    if status=='no_pending':return Result('no_pending','ไม่มีร่างที่ค้างอยู่',{'tool_result':output})
+    if status=='cancelled':return Result('cancelled','ยกเลิกรายการ '+', '.join(display_item(v) for v in output['items'])+' แล้ว ยังไม่มีการลบรายการที่บันทึกไว้',{'tool_result':output})
+    if status=='no_pending':return Result('no_pending','ไม่มีรายการที่รอบันทึก',{'tool_result':output})
     if status=='choose_draft':
         targets=output['targets'];buttons=[action(t['draft_ref'],t['draft_version'],t['token'],'select',str(i+1)+'. '+', '.join(display_item(v) for v in t['items'])[:16]) for i,t in enumerate(targets)]
-        text='ต้องการร่างไหนครับ?\n'+'\n'.join(str(i+1)+'. '+', '.join(display_item(v) for v in t['items']) for i,t in enumerate(targets))
+        text='ต้องการตรวจสอบรายการชุดไหนครับ?\n'+'\n'.join(str(i+1)+'. '+', '.join(display_item(v) for v in t['items']) for i,t in enumerate(targets))
         return Result('clarification',text,{'tool_result':output,'line_message':render_actions(text,buttons)})
     return None

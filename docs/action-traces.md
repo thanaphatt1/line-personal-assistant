@@ -1,5 +1,9 @@
 # Turn and action traces
 
+Terminal records also include per-phase timings, call counts, fallback counts
+and explicit replay markers. See [performance and conversation quality](performance.md)
+for the local p50/p95 summarizer, measurement boundaries and scaling behavior.
+
 The hosted raw-history assistant emits bounded JSON lines to stdout. Cloud Run
 can retain these in its existing Cloud Logging destination; no new database,
 credentials, background job or business-state migration is required. Local
@@ -16,9 +20,19 @@ Each attempt can show:
 - Planner, rolling-history-summary and reply-realization model requests and
   outcomes, with cached attempts distinguished. Provider request and response
   bodies are excluded.
+- Failed planner calls include a fixed `failure_kind` (for example timeout,
+  transport failure, rate limit, invalid response or unavailable) and, when
+  known, the provider HTTP status. Exception prose and provider bodies are
+  excluded. These diagnostics do not authorize a retry of an unknown request.
 - Tool name and call ref; hashed draft/entry/source refs, draft version, supplied
   field names, entry count and name-resolution step. Actual names, amounts,
   dates, notes, table values and physical provider coordinates are excluded.
+- Read-answer validation can emit `reply_validation` with a fixed validation
+  code and `repair_requested` status. Reply model records distinguish
+  `reply_attempt=0` from the one allowed repair (`1`). Rejected documents,
+  business values and detailed feedback are excluded from logs. Both attempts
+  contribute to model timings/call counts; `reply_fallback` records the final
+  fallback only when a valid answer cannot be produced.
 - Tool outcome, machine error code, known invalid/missing field paths, next
   required category field, diagnosed failure kind/next action and bounded
   before/after draft/action summaries.
@@ -33,7 +47,9 @@ The route marker distinguishes the raw-history workflow from a retained legacy
 fallback. Legacy fallback traces include the route and action checkpoints;
 their old planner's internal proposal steps are outside this instrumentation.
 
-At most 96 ordinary records and one terminal record are emitted per attempt.
+At most 96 ordinary records plus terminal records are emitted per attempt. A
+hosted webhook has an assistant terminal record and a webhook terminal record
+after delivery; direct assistant calls have only the assistant boundary.
 The terminal record reports dropped records and observed sink failures. A
 missing terminal record can mean abrupt process termination. Logging failures
 do not retry, authorize or block a business operation. Retention, availability,
@@ -98,3 +114,33 @@ receipt; operational logs retain only codes, failure kind, next action and
 hashed refs, not the names, amounts or explanation text. This adds no log
 reader to the bot, collection, credential, state migration or production
 configuration change.
+
+## Additional payments and saved corrections
+
+The planner distinguishes a new payment from a pending completion or a saved
+record correction using the current request and dialogue. After saving a
+payment, “add the same amount on September 27 too” creates a new reviewed
+proposal. “Correct the date of the saved payment” uses the saved-edit tools.
+Unrelated pending drafts remain background, rather than default patch targets.
+
+`recent_recorded_expenses` provides the latest completed, delivered payment
+facts and their original owner source refs within the conversation window.
+Recorded facts are not editable pending IDs or new consent. A realized reply
+can differ in wording from the core receipt; its bound core hash and identical
+business result must still match the completed action.
+
+Reusing a recorded source for a new expense requires a fresh current owner
+source and per-field original owner citations. Item/amount values can be
+supplied directly or copied by explicit field references when they select one
+unique verified recorded fact. A new requested date has its own evidence. Expired, cancelled,
+foreign, unfinished and fabricated evidence remain rejected; explicit current
+money cannot be replaced by an older amount. The server still shows a fresh
+review and requires a new owner confirmation before any write.
+
+New-draft null values without a selected field reference mean missing
+information. A field reference never chooses an unrelated pending record or
+implicitly reuses its date. Incomplete reuse returns field-specific planning feedback.
+Repair of a new-expense proposal stays in creation/temporal tools and cannot
+switch into patching an unrelated pending row to bypass a source failure.
+Existing catalog names use the same case/NFC/unique-spacing identity checks
+for pending item patches as for creation; arbitrary text fields remain literal.

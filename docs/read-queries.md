@@ -7,6 +7,14 @@ joins, conditional/nested calculations and window functions. Google Sheets and
 Firestore remain the business stores; SQLite is a temporary analysis engine.
 Simple typed reads and legacy combination tools remain available.
 
+For filtering, prefer a complete source read with expense `filter=null`,
+`view=list`, `continue_analysis=true`, followed by SQL predicates. Exclusion,
+boolean combinations and nested conditions use the same SQL engine as other
+queries. The legacy expense source filter implements positive equality only;
+it must never stand in for “ไม่รวม” or “ยกเว้น”. A delivered SQL analysis keeps
+its source period and logical plan as context for follow-ups, while each new
+turn still reads fresh records.
+
 Examples include daily expense totals with cumulative spending,
 income joined to people, or shopping records filtered through another table.
 These use registered schemas rather than a function for each table/question.

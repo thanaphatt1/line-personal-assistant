@@ -186,9 +186,9 @@ class DraftPatchAssistant(ToolLoopAssistant):
             pending.payload.update(patch_schema=VERSION, ready=False)
             pending.payload.pop('preview_digest',None); pending.token=secrets.token_hex(4)
             if re.fullmatch(self.confirmation,text,re.I):
-                if stamp <= pending.source_timestamp: return Result('stale','คำตอบนี้เกิดก่อนร่างล่าสุด')
+                if stamp <= pending.source_timestamp: return Result('stale','คำตอบนี้เกิดก่อนรายการล่าสุด')
                 pending.source_timestamp=stamp
-                return self._show(pending,self._taxonomy(),'กรุณาตรวจสอบร่างรุ่นนี้ก่อนยืนยันอีกครั้ง')
+                return self._show(pending,self._taxonomy(),'กรุณาตรวจสอบรายการล่าสุดก่อนยืนยันอีกครั้ง')
         return super()._route(text,event_id,stamp,occurred_at)
 
     def _show(self, pending, taxonomy, prefix=''):
@@ -209,7 +209,7 @@ class DraftPatchAssistant(ToolLoopAssistant):
             pending.source_timestamp=self._patch_stamp; pending.token=secrets.token_hex(4)
             result=self._show(pending,taxonomy,'ข้อมูลที่เสนอไม่ผ่านการตรวจสอบ กรุณาระบุข้อมูลที่ต้องการแก้')
         else:
-            question='ยังสร้างร่างไม่ได้ กรุณาส่งชื่อรายการ จำนวนเงิน และข้อมูลที่ต้องการเพิ่ม หรือพิมพ์ ยกเลิก'
+            question='ยังเตรียมรายการไม่ได้ กรุณาส่งชื่อรายการ จำนวนเงิน และข้อมูลที่ต้องการเพิ่ม หรือพิมพ์ ยกเลิก'
             if pending and pending.kind=='tool_source': pending.payload['loop_context']={'awaiting':None,'question':question}
             result=Result('clarification',question)
         return {'ok':False,'error':{'code':code}},result

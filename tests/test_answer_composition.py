@@ -128,13 +128,14 @@ def test_single_day_signed_reply_uses_date_once_and_replay_is_exact_without_new_
     assert len(api.model_bodies)==before and not api.google.sheet_writes and not api.calendar.posts
 
 
-def test_invalid_composition_uses_compact_single_day_fallback_and_does_not_retry():
+def test_invalid_composition_uses_compact_fallback_after_one_rejected_repair():
     api=VoiceHosted();seed(api,[('2026-10-15','ชา',20),('2026-10-15','ขนม',30)])
     api.voice=lambda body:generated(body,document(paragraph('{{f1}} ใช้ไป 999 บาท')))
     result,_=turn(api,'เมื่อวานจ่ายอะไรไปบ้าง',plan(start='2026-10-15',listing=True))
     assert result.data['response_realization']['reason']=='invalid_output'
     assert result.message.count('15 ต.ค. 2026')==1 and '50.00 บาท' in result.message and '999' not in result.message
-    assert len(api.voice_bodies)==1 and not api.google.sheet_writes
+    assert len(api.voice_bodies)==2 and not api.google.sheet_writes
+    assert result.data['response_realization']['repair_count']==1
 
 
 def test_calendar_group_heading_keeps_original_spanning_time_and_all_day_range():

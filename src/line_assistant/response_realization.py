@@ -1,10 +1,12 @@
-"""One optional, budgeted Luna realization of immutable server facts.
+"""Optional, budgeted Luna realization of immutable server facts.
 
 The model composes speech and fact references, never tools or business values.
 Completed reads use free prose/layout over linked display cells. Write and
 incomplete replies use neutral language outside facts. Diagnosed enrollment
 failures permit a short explanatory sentence; status and the
 next question are still inserted by the server, never rewritten by the model.
+Completed read documents can repair a received validation failure once within
+the same deadline, with a separate durable reservation and unchanged facts.
 """
 from copy import deepcopy
 from contextvars import copy_context
@@ -27,12 +29,12 @@ NEUTRAL=('ครับ','ค่ะ','นะ','คะ','ผม','ขอ','รบ�
     'ตรวจ','เช็ก','ทบทวน','สะดวก','อยาก','ทราบ','ให้','เป็น','แบบ','ไหน','เท่าไร','กี่โมง','ดี','ไหม','บ้าง','ต่อ','มา','ข้อมูล','หาก','กัน','ขอบคุณ','กรุณา','อภัย')
 QUERY_WORDS=('ช่วง','เฉพาะ','รายจ่าย','ใช้ไป','ใช้','ยอด','ยอดรวม','รวม','ทั้งหมด','จาก','จำนวน','มี','พบ','ใน','สำหรับ','รวมเป็น','รวมแล้ว','หมวด','ดังนี้','ต่อไปนี้')
 def speech_words(outcome,query=False):
-    extra={'preview':('ร่าง','พร้อม','ตรวจสอบ','แล้ว'),
+    extra={'preview':('รายการ','พร้อม','ตรวจสอบ','แล้ว'),
         'created':('สร้าง','เพิ่ม','ครบ','แล้ว','สำเร็จ','เรียบร้อย'),
         'recorded':('บันทึก','ครบ','แล้ว','สำเร็จ','เรียบร้อย'),
-        'cancelled':('ยกเลิก','ร่าง','แล้ว'),
-        'clarification':('ยัง','ต้อง','ตรวจสอบ','ร่าง','เพิ่ม'),
-        'stale':('ยัง','ต้อง','ตรวจสอบ','ร่าง','ยืนยัน','ใหม่','ชุด','นัด','ล่าสุด')}.get(outcome,())
+        'cancelled':('ยกเลิก','รายการ','แล้ว'),
+        'clarification':('ยัง','ต้อง','ตรวจสอบ','รายการ','เพิ่ม'),
+        'stale':('ยัง','ต้อง','ตรวจสอบ','รายการ','ยืนยัน','ใหม่','ชุด','นัด','ล่าสุด')}.get(outcome,())
     return (*NEUTRAL,*extra,*QUERY_WORDS) if query else (*NEUTRAL,*extra)
 INSTRUCTIONS=answer_composition.INSTRUCTIONS+(
     'Realize a concise natural Thai reply from immutable server facts and relevant conversation context. '
@@ -74,7 +76,7 @@ INSTRUCTIONS+=selection.INSTRUCTIONS
 def encoded(value):return json.dumps(value,ensure_ascii=False,separators=(',',':')).encode()
 def identity(result):return hashlib.sha256(encoded({'status':result.status,'message':result.message,'data':result.data})).hexdigest()
 def context_text(value):
-    value=re.sub(r'\b(?:calset_|cal_|draft_)[a-f0-9]{20}\b','[ร่างที่เลือก]',value)
+    value=re.sub(r'\b(?:calset_|cal_|draft_)[a-f0-9]{20}\b','[รายการที่เลือก]',value)
     return re.sub(r'\b[a-f0-9]{16}\b','[ข้อมูลยืนยัน]',value)
 
 def speech_pattern(outcome,query=False):
@@ -85,7 +87,7 @@ def query_options(key,ids):
             'total':['ใช้ไป ','รายจ่ายรวม ','รวม '],
             'count':['จาก ','รวม '] if 'total' in ids else ['มี ','พบ '],
             'reason':['']}.get(key,[''])
-    after=['ครับ','นะครับ'] if key=='count' else [' '] if key in {'period','filter','total'} else ['']
+    after=['ครับ','นะครับ'] if key=='count' else [' '] if key in {'period','filter','selection','total'} else ['']
     return before,after
 
 
@@ -143,6 +145,7 @@ def instant(value):
 
 def facts_for(host,result):
     data=result.data
+    if data.get('clarification_question'):return {'ask0':data['clarification_question']}
     feedback=(data.get('tool_result') or {}).get('validation_feedback')
     if feedback:return deepcopy(feedback['facts'])
     if data.get('query_facts'):return {k:deepcopy(v) for k,v in data['query_facts'].items() if not k.startswith('row')}
@@ -192,15 +195,15 @@ def facts_for(host,result):
             price_question=PreviousPrices.prompt(output)
             if price_question:return {'status':price_question,**({'ask_catalog':output['catalog_question']} if output.get('catalog_question') else {})}
         if entries and output.get('ok') and result.status in {'preview','clarification'} and not output.get('item_enrollment') and not any(e.get('mapping') for e in entries):
-            facts['status']=(f'ร่างรายจ่ายมี {len(entries)} รายการ พร้อมให้ตรวจสอบครับ' if result.status=='preview' else
-                             f'ร่างรายจ่ายมี {len(entries)} รายการ ยังต้องเติมหรือตรวจข้อมูลครับ')
+            facts['status']=(f'มีรายจ่าย {len(entries)} รายการ รอให้ตรวจสอบก่อนบันทึกครับ' if result.status=='preview' else
+                             f'มีรายจ่าย {len(entries)} รายการที่ยังต้องเติมหรือตรวจข้อมูลครับ')
             for i,e in enumerate(entries,1):
                 facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {e.get('amount') or 'ยังไม่ระบุจำนวน'} บาท\nวันที่ {e.get('date') or 'ยังไม่ระบุ'}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
             if result.status=='preview':
                 for i,e in enumerate(entries,1):
                     prior=e.get('previous_price')
                     if prior and prior['state']=='accepted':facts[f'price_basis{i}']=f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {prior['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}"
-                facts['instruction']='ตรวจรายการ จำนวนเงิน และวันที่ ถ้าถูกต้องยืนยันร่างนี้ทางข้อความได้ครับ'
+                facts['instruction']='ตรวจรายการ จำนวนเงิน และวันที่ ถ้าถูกต้องตอบยืนยันทางข้อความได้ครับ'
                 if any(e.get('mapping') for e in entries):facts['catalog_change']='การยืนยันนี้จะเพิ่มชื่อใหม่ใน Database ตามหมวดที่แสดงด้วย'
             else:
                 if output.get('catalog_question'):
@@ -240,7 +243,8 @@ def body_for(host,result):
         # The old rendered rows are fallback only. They are not supplied as
         # fixed strings or automatically appended to a composed read answer.
         payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
-        payload.update(answer_document=True,answer_facts=answer)
+        payload.update(answer_document=True,answer_facts=answer,
+                       read_evidence=answer_composition.evidence(result.data.get('tool_result') or {}))
     feedback=(result.data.get('tool_result') or {}).get('validation_feedback')
     if feedback:
         payload['validation_feedback']={k:deepcopy(feedback[k]) for k in ('version','tool','codes','kind','invalid_fields','required_fields','next_action')}
@@ -269,8 +273,11 @@ def validate_body(body):
         p=json.loads(body['input'][0]['content'])
         if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
         if p.get('answer_document'):
-            return (set(body)==keys and set(p)=={'outcome','current_owner_text','relevant_context','answer_document','answer_facts'}
+            expected={'outcome','current_owner_text','relevant_context','answer_document','answer_facts','read_evidence'}
+            return (set(body)==keys and set(p) in (expected,expected|{'answer_repair'})
                 and p['answer_document'] is True and p['outcome'] in {'answer','summary'} and answer_composition.valid_view(p['answer_facts'])
+                and isinstance(p['read_evidence'],dict)
+                and ('answer_repair' not in p or answer_composition.valid_repair(p['answer_repair'],p['answer_facts']))
                 and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
                 and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'}
                 and body['max_output_tokens']==answer_composition.MAX_OUTPUT
@@ -319,7 +326,13 @@ def parse(value,body):
     document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
     if payload.get('calendar_selection'):return selection.parse(document,payload)
     if payload.get('validation_reply'):return parse_validation(document,payload)
-    if payload.get('answer_document'):return answer_composition.render(document,payload['answer_facts'])
+    if payload.get('answer_document'):
+        try:return answer_composition.render(document,payload['answer_facts'])
+        except answer_composition.AnswerError as error:
+            # Only a fully received, usage-checked final JSON document is
+            # eligible for feedback. Transport/envelope failures never retry.
+            error.document=deepcopy(document)
+            raise
     facts=payload['facts']
     if payload.get('query_reply'):
         if set(document)!={'opening','parts'} or document['opening']!='' or not isinstance(document['parts'],dict) or set(document['parts'])!=set(facts):raise ValueError('query_parts')
@@ -374,16 +387,70 @@ def apply(result,text,metadata):
         else:data['line_message']={'type':'text','text':text}
     return Result(result.status,text,data)
 
+def _attempt(host,event,key,body,finish_by,number):
+    """One reserved attempt. Unknown outcomes are terminal, never retried."""
+    from .action_trace import emit,ref,code
+    if not _inflight.acquire(blocking=False):return {'status':'fallback','reason':'inflight'},False
+    claim=host.state.claims[event]
+    host.state.claims.setdefault(key,Claim(claim.fingerprint,claim.expires_at))
+    try:cached=host.guard.reserve(key,body)
+    except BudgetBlocked:
+        _inflight.release();return {'status':'fallback','reason':'quota'},False
+    except Exception:
+        _inflight.release();return {'status':'fallback','reason':'reservation'},False
+    emit('model_request',role='reply',run_ref=ref(key),cached=cached is not None,reply_attempt=number)
+    if cached is None:
+        # Durable reservation/lease RPCs consume the same foreground time.
+        # Recheck after them, before transmission, without refunding a reserve.
+        from .pilot_http import remaining_rpc_seconds
+        timeout=finish_by-monotonic();remaining=remaining_rpc_seconds()
+        if remaining is not None:timeout=min(timeout,remaining-2)
+        if timeout<0.05:
+            _inflight.release();cached={'status':'fallback','reason':'deadline'}
+            host.guard.complete(key,cached)
+            emit('model_result',role='reply',run_ref=ref(key),status='fallback',reason='deadline',reply_attempt=number)
+            return cached,True
+        queue=Queue(maxsize=1);context=copy_context()
+        def worker():
+            try:
+                try:outcome=('received',host.port.request('POST','/v1/responses',body=body))
+                except Exception:outcome=('failure',None)
+            finally:_inflight.release()
+            # Release before waking the caller: a received invalid document
+            # may immediately start its repair. Provider I/O has ended here.
+            queue.put(outcome)
+        try:Thread(target=lambda:context.run(worker),daemon=True,name='bounded-response-realization').start()
+        except Exception:
+            _inflight.release();host.guard.complete(key,{'status':'fallback','reason':'worker_start'})
+            return {'status':'fallback','reason':'worker_start'},True
+        try:status,value=queue.get(timeout=timeout)
+        except Empty:status,value='timeout',None
+        try:cached={'status':'llm','text':parse(value,body)} if status=='received' else {'status':'fallback','reason':status}
+        except OverflowError:
+            host.guard.halt();cached={'status':'fallback','reason':'usage_bound'}
+        except answer_composition.AnswerError as error:
+            cached={'status':'fallback','reason':'invalid_output','validation_code':code(str(error))}
+            if str(error) in answer_composition.REPAIR_GUIDANCE and hasattr(error,'document'):
+                cached.update(rejected_document=error.document,validation_details=error.details)
+        except Exception:cached={'status':'fallback','reason':'invalid_output'}
+        host.guard.complete(key,cached)
+    else:_inflight.release()
+    emit('model_result',role='reply',run_ref=ref(key),status=code(cached.get('status')),
+         reason=code(cached['reason']) if 'reason' in cached else None,reply_attempt=number)
+    return cached,True
+
+
 def realize(host,event,result):
     from .action_trace import emit,ref,code
     if not getattr(host,'response_realization_enabled',False) or result.data.get('response_realization'):return result
     previous=host.state.receipts.get(event);reply=host.state.replies.get(event)
     if previous and previous.result.data.get('response_realization') and (reply and reply.status=='sent' or previous.result.data['response_realization'].get('core_hash')==identity(result)):return deepcopy(previous.result)
     if result.status in {'denied','ignored'} or result.status=='summary' and not result.data.get('read_query') or result.status=='answer' and not result.data.get('tool_result'):return result
-    started=monotonic();core_hash=identity(result)
+    started=monotonic();core_hash=identity(result);repair_count=0;repair_from=None
     def fallback(reason,validation_code=None):
         emit('reply_fallback',reason=code(reason),**({'validation_code':validation_code} if validation_code else {}))
         metadata={'status':'fallback','reason':reason,'core_hash':core_hash,'elapsed_ms':round((monotonic()-started)*1000)}
+        if repair_from:metadata.update(repair_count=repair_count,repair_from=repair_from)
         if validation_code:metadata['validation_code']=validation_code
         if selection.pending(result):return selection.fallback(result,metadata)
         return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
@@ -393,38 +460,23 @@ def realize(host,event,result):
     from .pilot_http import remaining_rpc_seconds
     deadline=(selection.TIMEOUT_SECONDS if selection.pending(result) else
               answer_composition.TIMEOUT_SECONDS if json.loads(body['input'][0]['content']).get('answer_document') else TIMEOUT_SECONDS)
-    remaining=remaining_rpc_seconds();timeout=min(deadline,remaining-2) if remaining is not None else deadline
-    if timeout<0.05:return fallback('deadline')
-    if not _inflight.acquire(blocking=False):return fallback('inflight')
-    key='realize01_'+hashlib.sha256(encoded([event])).hexdigest()[:40]
-    claim=host.state.claims[event];host.state.claims.setdefault(key,Claim(claim.fingerprint,claim.expires_at))
-    try:cached=host.guard.reserve(key,body)
-    except BudgetBlocked:
-        _inflight.release();return fallback('quota')
-    except Exception:
-        _inflight.release();return fallback('reservation')
-    emit('model_request',role='reply',run_ref=ref(key),cached=cached is not None)
-    if cached is None:
-        queue=Queue(maxsize=1);context=copy_context()
-        def worker():
-            try:queue.put(('received',host.port.request('POST','/v1/responses',body=body)))
-            except Exception:queue.put(('failure',None))
-            finally:_inflight.release()
-        try:Thread(target=lambda:context.run(worker),daemon=True,name='bounded-response-realization').start()
-        except Exception:
-            _inflight.release();host.guard.complete(key,{'status':'fallback','reason':'worker_start'});return fallback('worker_start')
-        try:status,value=queue.get(timeout=timeout)
-        except Empty:status,value='timeout',None
-        try:cached={'status':'llm','text':parse(value,body)} if status=='received' else {'status':'fallback','reason':status}
-        except OverflowError:
-            host.guard.halt();cached={'status':'fallback','reason':'usage_bound'}
-        except answer_composition.AnswerError as error:
-            cached={'status':'fallback','reason':'invalid_output','validation_code':code(str(error))}
-        except Exception:cached={'status':'fallback','reason':'invalid_output'}
-        host.guard.complete(key,cached)
-    else:_inflight.release()
-    emit('model_result',role='reply',run_ref=ref(key),status=code(cached.get('status')),
-         reason=code(cached['reason']) if 'reason' in cached else None)
-    if cached.get('status')!='llm':return fallback(cached.get('reason','unavailable'),cached.get('validation_code'))
-    try:return apply(result,cached['text'],{'status':'llm','core_hash':core_hash,'run_key':key,'elapsed_ms':round((monotonic()-started)*1000)})
-    except Exception:return fallback('render_bound')
+    finish_by=started+deadline
+    for number in range(2):
+        remaining=remaining_rpc_seconds();timeout=finish_by-monotonic()
+        if remaining is not None:timeout=min(timeout,remaining-2)
+        if timeout<0.05:return fallback('deadline',repair_from)
+        key='realize01_'+hashlib.sha256(encoded([event] if not number else [event,'answer_repair',number])).hexdigest()[:40]
+        cached,reserved=_attempt(host,event,key,body,finish_by,number)
+        if number and reserved:repair_count+=1
+        if cached.get('status')=='llm':
+            metadata={'status':'llm','core_hash':core_hash,'run_key':key,'elapsed_ms':round((monotonic()-started)*1000)}
+            if repair_from:metadata.update(repair_count=repair_count,repair_from=repair_from)
+            try:return apply(result,cached['text'],metadata)
+            except Exception:return fallback('render_bound')
+        if number or 'rejected_document' not in cached:
+            return fallback(cached.get('reason','unavailable'),cached.get('validation_code') or repair_from)
+        repair_from=cached['validation_code']
+        emit('reply_validation',validation_code=repair_from,status='repair_requested')
+        corrected=answer_composition.repair_body(body,cached)
+        if corrected is None or not validate_body(corrected):return fallback('repair_body_bound',repair_from)
+        body=corrected

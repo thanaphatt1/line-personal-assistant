@@ -76,6 +76,14 @@ class PilotHttp:
         return "PilotHttp(credentials=<redacted>, fixed_reviewed_target=True)"
 
     def _http(self, method, url, **kwargs):
+        from .action_trace import span
+        host=url.split('/')[2]
+        service={'sheets.googleapis.com':'sheets','firestore.googleapis.com':'firestore',
+                 'api.openai.com':'model','api.line.me':'line','www.googleapis.com':'calendar',
+                 'metadata.google.internal':'identity'}.get(host,'other')
+        with span('provider_'+service):return self._send_http(method,url,**kwargs)
+
+    def _send_http(self, method, url, **kwargs):
         timeout = take_rpc()
         if self.reply_check and method == "POST" and url == "https://api.line.me/v2/bot/message/reply":
             self.reply_check.current()
@@ -90,8 +98,10 @@ class PilotHttp:
         started = monotonic()
         try:
             response = self.client.request(method, url, timeout=timeout, **kwargs)
+        except httpx.TimeoutException:
+            raise OutcomeUnknown("Provider acknowledgement unavailable",reason='timeout') from None
         except httpx.HTTPError:
-            raise OutcomeUnknown("Provider acknowledgement unavailable") from None
+            raise OutcomeUnknown("Provider acknowledgement unavailable",reason='transport') from None
         category = log_line_response(response, round((monotonic() - started) * 1000)) if url == "https://api.line.me/v2/bot/message/reply" else None
         if not 200 <= response.status_code < 300:
             code = None
@@ -100,7 +110,7 @@ class PilotHttp:
             raise ApiError(response.status_code, code, category=category) from None
         response_limit = 950000 if self.config.state_codec_enabled and url.startswith('https://firestore.googleapis.com/') else 512 * 1024
         if len(response.content) > response_limit:
-            raise OutcomeUnknown("Provider response exceeded pilot bound")
+            raise OutcomeUnknown("Provider response exceeded pilot bound",reason='response_too_large')
         return response
 
     def google_token(self, purpose):
@@ -137,7 +147,7 @@ class PilotHttp:
                 raise ValueError
             return value
         except ValueError:
-            raise OutcomeUnknown("Invalid provider JSON acknowledgement") from None
+            raise OutcomeUnknown("Invalid provider JSON acknowledgement",reason='invalid_response') from None
 
     def allowed(self, service, method, path, body, params):
         if self.config.reply_check and self.config.reply_check.authorized:

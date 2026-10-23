@@ -46,14 +46,14 @@ class ProductionHistoryAssistant(HistoryFirstAssistant,ExpenseAssistant):
         active=[d for d in self.state.drafts.values() if d['status']!='recorded']
         if not self.history_enabled:
             if active and (re.match(r'^(?:แก้|เปลี่ยน|ล้าง|บันทึก|ยืนยัน)',text) or any(d['draft_ref'] in text for d in active)):
-                lines=['กรุณายืนยันด้วยคำสั่งของร่าง หรือยกเลิกร่างก่อนเริ่มใหม่']
+                lines=['กรุณายืนยันด้วยคำสั่งของรายการ หรือยกเลิกรายการก่อนเริ่มใหม่']
                 for d in active:
                     if d['review']:lines.append('ยืนยัน '+d['draft_ref']+' '+d['review']['nonce'])
                     lines.append('ยกเลิก '+d['draft_ref'])
                 return Result('clarification','\n'.join(lines))
             return self._legacy_route(text,event,stamp,at)
         if not self.table_flow.enabled and not self.saved_edits.enabled and not active and not calendar_active and re.match(r'^(?:แก้|เปลี่ยน|ล้าง)',text):
-            return Result('clarification','ไม่พบร่างที่ยังแก้ไขได้ กรุณาระบุรายการใหม่หากต้องการเพิ่มรายจ่าย')
+            return Result('clarification','ไม่พบรายจ่ายที่รอแก้ไข กรุณาระบุรายการใหม่หากต้องการเพิ่มรายจ่าย')
         return super()._route(text,event,stamp,at)
     def _result(self,output,model_text=''):
         result=super()._result(output,model_text)

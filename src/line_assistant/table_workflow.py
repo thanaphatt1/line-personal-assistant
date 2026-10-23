@@ -216,7 +216,10 @@ class TableWorkflow:
             if name == 'list_tables': return {**base, 'ok': True, 'tables': self.registry.catalog(), 'continue_model': True}
             table, store = self.registry.get(p.table_id)
             if name == 'describe_table':
-                return {**base, 'ok': True, 'schema': table.model_dump(exclude_none=True), 'continue_model': True}
+                capabilities=(store.capabilities() if callable(getattr(store,'capabilities',None)) else
+                    {'strategy':'complete_snapshot_then_local_query','display_limit_is_scan_limit':False})
+                return {**base, 'ok': True, 'schema': table.model_dump(exclude_none=True),
+                        'storage_capabilities':capabilities,'continue_model': True}
             if name == 'query_table':
                 if p.for_change and (p.continue_analysis or self.h._query_analysis_active):raise TableError('read_only_analysis')
                 output = self.read(p)

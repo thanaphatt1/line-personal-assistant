@@ -317,6 +317,12 @@ class SheetsApi:
 
     def saved_entries(self, start, end):
         """Complete bounded read of the existing expense inputs; no append path."""
+        from .read_cache import read
+        # Validate the complete source once; each window still filters all rows.
+        records=read(('expense_snapshot',id(self)),self._saved_snapshot)
+        return [r for r in records if start.isoformat()<=r['date']<=end.isoformat()]
+
+    def _saved_snapshot(self):
         grid = self.metadata()[self.target.expense_tab]["properties"]["gridProperties"]
         if (type(grid.get("rowCount")) is not int or not 1 <= grid["rowCount"] <= self.target.max_rows
                 or type(grid.get("columnCount")) is not int or grid["columnCount"] < 4):
@@ -338,7 +344,7 @@ class SheetsApi:
                 if not amount.is_finite() or amount <= 0 or amount.quantize(Decimal('.01')) != amount:raise ValueError()
             except (ValueError, OverflowError, InvalidOperation):
                 raise NotReady("Expense date or amount cannot be decoded") from None
-            if start <= day <= end:result.append({'date': day.isoformat(), 'item': row[1], 'amount': f'{amount:.2f}', 'note': row[3]})
+            result.append({'date': day.isoformat(), 'item': row[1], 'amount': f'{amount:.2f}', 'note': row[3]})
         return result
 
     def _identified_rows(self):

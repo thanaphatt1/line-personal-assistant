@@ -19,6 +19,7 @@ def offline(monkeypatch):
 def test_plain_confirmation_binds_presented_version_without_model_and_replay_is_once(text):
     h=Harness();preview=h.prepare('ค่ากระดาษ 228')
     assert 'พิมพ์ ยืนยัน' in preview.message and 'draft_' not in preview.message
+    assert 'ร่าง' not in preview.message
     event=h.event(text);calls=len(h.port.requests)
     result=h.service.handle(event)
     assert result.status=='recorded' and len(h.sheets.entries)==1 and len(h.port.requests)==calls
@@ -30,7 +31,7 @@ def test_plain_confirmation_binds_presented_version_without_model_and_replay_is_
 def test_plain_confirmation_needs_disambiguation_with_multiple_pending_drafts():
     h=Harness();h.prepare('ค่ากระดาษ 228');second=h.prepare('กาแฟ 50',item='กาแฟ',amount=50)
     calls=len(h.port.requests);r=h.send('ยืนยัน')
-    assert r.status=='clarification' and 'หลายร่าง' in r.message and not h.sheets.entries
+    assert r.status=='clarification' and 'หลายชุดที่รอบันทึก' in r.message and 'ร่าง' not in r.message and not h.sheets.entries
     assert len(h.port.requests)==calls
     assert h.send(second.data['confirm_command']).status=='recorded' and len(h.sheets.entries)==1
 

@@ -102,7 +102,7 @@ def clarification(h,output):
         question+='\nเลือกชื่อก่อนครับ แล้วจะตรวจยอดที่เคยบันทึกให้ ยังไม่ได้บันทึกรายจ่าย'
     rows='\n'.join(f"{e['item'] or '(ยังไม่ระบุชื่อ)'} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in output['entries'])
     enhanced={**output,'catalog_matches':offered,'catalog_query':label,'catalog_entry_ref':selected['entry_ref'],'catalog_question':question}
-    return enhanced,'ร่างที่ยังไม่บันทึก:\n'+rows+'\n'+question
+    return enhanced,'รายจ่ายที่ยังไม่ได้บันทึก:\n'+rows+'\n'+question
 
 
 def focused_choice(h,d,entry):

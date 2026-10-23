@@ -1,5 +1,10 @@
 # Metadata-defined tables and Calendar
 
+Generic Firestore reads can filter supported predicates at the provider before
+local analysis; Sheets uses complete-grid reads with request-local reuse. See
+[performance and conversation quality](performance.md) for supported types,
+snapshot completeness, cache freshness and unchanged mutation checks.
+
 The history runtime has two source abstractions: **tables** for structured
 records and **Calendar** for appointments/time intervals. People, income, tasks
 and shopping lists share the same table tools. Date and amount are optional

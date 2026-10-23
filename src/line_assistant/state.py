@@ -141,6 +141,8 @@ class MemoryState:
 
     def before_effect(self):
         """Lease-backed implementations fence the state holder immediately before I/O."""
+        from .read_cache import invalidate
+        invalidate()
 
     def expire(self, now: datetime):
         self.recent_turns = [turn for turn in self.recent_turns

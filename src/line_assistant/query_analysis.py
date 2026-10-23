@@ -13,7 +13,7 @@ from .history_context import digest
 from .model_api import object_schema
 from .state import Claim,Result
 
-READ_TOOLS={'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change'}
+READ_TOOLS={'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change'}
 
 def unverified_claim(text):
     # Output-claim check only, never an owner intent/date/keyword router.
@@ -56,9 +56,10 @@ def definitions():
 def remember(host,output,at,step):
     from .read_queries import result as render_query
     from . import calendar_inference,response_realization
-    if output.get('table_query'):
-        from .table_workflow import render
-        result=render(output)
+    if output.get('read_failure'):result=render(output)
+    elif output.get('table_query'):
+        from .table_workflow import render as render_table
+        result=render_table(output)
     else:result=render_query(output,at)
     if calendar_inference.pending(result):
         key='analysis01_'+digest([host._active_event_id,step])[:40]
@@ -129,15 +130,17 @@ def finish(host,args):
     except (ValueError,TypeError,KeyError):return fail('invalid_query_refs','ยังอ้างอิงผลค้นหาที่อ่านจริงไม่ครบครับ กรุณาระบุสิ่งที่ต้องการค้นอีกครั้ง')
     at=datetime.fromisoformat(host._current['at'])
     from .table_workflow import render as render_table
-    reports=[render(row) if row.get('relational_query') else render_table(row) if row.get('table_query') else render_query(row,at) for row in selected]
+    reports=[render(row) if row.get('relational_query') or row.get('read_failure') else render_table(row) if row.get('table_query') else render_query(row,at) for row in selected]
     scopes=[{k:deepcopy(v) for k,v in row['scope'].items() if k not in {'workbook','calendar','calendar_read_ids_hash','continue_analysis'}} for row in selected]
     common={'query_analysis':True,'ok':True,'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
             'query_refs':p.query_refs,'scopes':scopes,'operation':p.operation,'complete':all(row['complete'] for row in selected)}
     expenses=[row for row in selected if row['domain']=='expense']
     reusable=[row for row in expenses if row['scope'].get('start') and row['scope'].get('end')]
-    if len(reusable)==1:common['followup_scope']=deepcopy(reusable[0]['scope'])
-    elif len(selected)==1 and selected[0]['scope'].get('start') and selected[0]['scope'].get('end'):
-        common['followup_scope']=deepcopy(selected[0]['scope'])
+    failed_member=any(row.get('read_failure') for row in selected)
+    if not failed_member and len(reusable)==1:common['followup_scope']=deepcopy(reusable[0]['scope'])
+    elif not failed_member and len(selected)==1:
+        scope=selected[0].get('followup_scope') or selected[0]['scope']
+        if scope.get('start') and scope.get('end'):common['followup_scope']=deepcopy(scope)
     if p.operation=='report':
         # Counts, units and incomplete-read qualifiers remain original facts.
         message='\n\n'.join(report.message for report in reports)

@@ -63,6 +63,7 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
             entry['properties']['item_text']={'type':['string','null'],'description':'Literal full owner item name when item proposes a different real Database name (for example a typo). Copy the original mention; never replace source evidence with the proposed spelling. Null when unchanged.'}
             entry['required'].append('item_text')
             entry['properties']['item']['description']='Full original owner item label, preserving all words and internal spaces, or a proposed real Database name. Supply item_text for spelling differences; uncertain names ask for a choice before review. Never split trailing name words into note or invent a catalog identity.'
+            entry['properties']['amount']['description']='Supply the actual positive amount from owner evidence. For a referenced recorded payment only, null with explicit field_sources.amount copies its unique verified amount. Null without that citation means missing.'
             entry['properties']['note']['description']='Null unless the owner explicitly supplies or clears a หมายเหตุ/note field outside the item name. Preserve the full literal note value; never treat trailing item words as a note. Null retains an existing note.'
             for field in ['category','subcategory','date','date_context']:
                 entry['properties'].pop(field,None)
@@ -74,7 +75,7 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
                 'description':'Optional owner source refs per changed field across messages; null or an empty field list uses source_refs. Unchanged fields retain certified provenance. Never consent.'}
             entry['required'].append('field_sources')
             entry['properties']['date_text']['description']='Literal owner date expression; server resolves it using cited originals and Bangkok time. Null keeps an existing date. Do not generate an ISO or a context mode.'
-            t['description']='Prepare requested expense changes; matching is included. Send only touched entries and original source refs. Null fields retain facts. For dates send date_text or an offered date_ref, never both; server normalizes. No empty updates. Never writes.'
+            t['description']='Prepare requested expenses; matching is included. NEW draft: supply item/amount, or explicitly cite their field_sources to copy unique verified recorded facts; include current source_ref. Null without a selected fact means missing. Existing draft updates retain null fields. For dates send date_text or an offered date_ref, never both; server normalizes. Never writes.'
         if t['name']=='prepare_item_enrollment':
             steps=['show_choices']
             if any(r['step']=='choose_existing_or_new' for r in pending):steps+=['begin_new_item','use_existing_item','choose_category']

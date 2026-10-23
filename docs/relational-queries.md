@@ -6,6 +6,19 @@ operations remain useful for simple direct reads; broader questions
 can compose SELECT, CTEs, joins, EXISTS, CASE, HAVING, UNION, subqueries and
 window functions without adding a handler for each question or table.
 
+Filtering also uses SQL as the primary path. Read the full requested expense
+period with `filter=null`, `view=list`, `continue_analysis=true`, then express
+the conditions in `WHERE`. The retained legacy source filter is **positive
+equality only**; passing an item there selects just that item. It cannot
+implement exclusions or boolean combinations. No separate exclusion action or
+list of natural-language keyword handlers is needed. The model chooses SQL
+predicates such as `!=`, `NOT IN`, `NOT LIKE`, `AND`, `OR` and subqueries.
+For example, excluding a known device purchase can use
+`WHERE lower(item) != lower('Tablet Aurora')`. A total and its payment count
+must use the same filtered relation; a displayed list can use window totals
+over that relation before display truncation. Empty `SUM` is NULL in SQLite;
+`COALESCE(SUM(amount),'0')` can express a verified empty total.
+
 1. The planner reads necessary configured sources with
    `continue_analysis=true`. Expense reads use `view=list` for raw rows.
 2. `relations_catalog` exposes current-request query references, SQL table
@@ -30,6 +43,15 @@ read displayed grouped summaries. Missing rows or unselected columns require
 a new read. Incomplete or ambiguous source selections cannot establish totals.
 Calendar date spans are clipped to the period actually read. Truncated event
 details cannot determine membership through SQL filters. Expense records have
+raw `item` plus `canonical_item`, `category` and `subcategory` from verified
+current catalog identity/mappings. A mapping column missing for any input row
+appears in `unavailable_fields`: the authorizer rejects reading that column,
+including a negative predicate that would otherwise silently drop NULL rows.
+Raw item/date/amount predicates remain available without guessing categories.
+The model can repair its query or disclose missing mappings; a failed mapped
+query cannot be replaced by an unconditional total.
+
+Expense records have
 snapshot-only identity; equal purchases must not be deduplicated by value.
 SQL has ordinary bag/join semantics: the model must choose the intended
 join, overlapping-read and coverage semantics. Execution verifies sources
@@ -54,6 +76,15 @@ scalar/aggregate/window functions. Provider identifiers, record versions,
 filesystem paths and credentials are never SQL bindings. No SQL can change a
 provider, create a review, confirm, grant access or escape the read-only loop.
 Mutation workflows retain their separate review and consent requirements.
+
+A delivered SQL result based on one unambiguous source scope retains that
+period and its executed logical SQL as follow-up context. Derived results
+carry the original source scope too. Several distinct periods/sources do not
+invent a single previous period. On a new turn, records and query references
+are never reused: the planner must read fresh data and rebuild the intended
+conditions against its new relation names. A new general question clears old
+conditions. A complaint about selecting an excluded item is a correction to
+the earlier intent, not consent to select only that item.
 
 Resource bounds on VM work/time, expression size and result bytes return a
 failure instead of a partial total. A failed query can be repaired against

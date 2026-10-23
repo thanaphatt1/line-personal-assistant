@@ -165,6 +165,31 @@ def parse_response(value,*,max_input_tokens=MAX_INPUT_TOKENS_BOUND,allowed_tools
     if len(text)>3000 or (not calls and not text.strip()):raise ValueError('missing_answer')
     return {'call':calls[0] if calls else None,'text':text}
 
+def planner_failure(error):
+    """Fixed diagnostics only: never copy provider bodies or exception prose."""
+    import httpx
+    from .transport import ApiError,OutcomeUnknown
+    kind='unavailable';status=None
+    if isinstance(error,httpx.TimeoutException) or isinstance(error,TimeoutError):kind='timeout'
+    elif isinstance(error,OutcomeUnknown):kind=error.reason or 'outcome_unknown'
+    elif isinstance(error,ApiError):
+        status=error.status
+        kind='rate_limited' if status==429 else 'provider_error' if status>=500 else 'provider_rejected'
+    elif isinstance(error,httpx.HTTPError):kind='transport'
+    elif isinstance(error,ValueError):kind='invalid_response'
+    return {'kind':kind,**({'http_status':status} if status is not None else {})}
+
+
+def planner_failure_message(detail):
+    return {'timeout':'โมเดลตอบไม่ทันครับ กรุณาลองอีกครั้ง',
+        'transport':'ติดต่อโมเดลไม่สำเร็จครับ กรุณาลองอีกครั้ง',
+        'rate_limited':'โมเดลรับคำขอเกินขีดจำกัดชั่วคราวครับ กรุณาลองอีกครั้ง',
+        'provider_error':'บริการโมเดลขัดข้องชั่วคราวครับ กรุณาลองอีกครั้ง',
+        'invalid_response':'คำตอบจากโมเดลไม่ผ่านการตรวจสอบครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
+        'response_too_large':'คำตอบจากโมเดลเกินขนาดที่ระบบรับได้ครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
+        'usage_bound':'การใช้โมเดลรอบนี้เกินขีดจำกัดที่กำหนดครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
+        }.get(detail.get('kind'),'เรียกใช้โมเดลไม่สำเร็จในรอบนี้ครับ กรุณาลองอีกครั้ง')
+
 def success_claim(text):
     # Completion claims are controlled outputs, not a broad ban on discussing
     # words such as "บันทึก". Natural-language coverage remains a live-test need.
@@ -256,7 +281,8 @@ class HistoryFirstAssistant(Assistant):
         token=RAW_SOURCE.set((event.get('webhookEventId'),original))
         try:
             from .action_trace import turn,code
-            with turn(self,event) as operational_trace:
+            from .read_cache import scope
+            with turn(self,event) as operational_trace,scope():
                 result=super().handle(event)
                 if self.raw_history_enabled and not getattr(self,'production',False):
                     self.state.mark_history_delivered(event.get('webhookEventId'),result,at=self.clock())
@@ -543,18 +569,18 @@ class HistoryFirstAssistant(Assistant):
     def _contextual_confirm(self,*,after_read=False):
         active=[d for d in self.state.drafts.values() if d['status']!='recorded']
         if len(active)!=1:
-            return Result('clarification','มีหลายร่างที่ค้างอยู่ กรุณาระบุรายการที่ต้องการตรวจสอบก่อนยืนยัน' if active
-                          else 'ไม่พบร่างที่รอยืนยัน กรุณาระบุรายจ่ายใหม่')
+            return Result('clarification','มีหลายชุดที่รอบันทึก กรุณาระบุรายการที่ต้องการตรวจสอบก่อนยืนยัน' if active
+                          else 'ไม่พบรายจ่ายที่รอยืนยัน กรุณาระบุรายจ่ายใหม่')
         d=active[0]
         try:self._draft(d['draft_ref'])
-        except (ValueError,KeyError):return Result('stale','ร่างหรือข้อมูลที่ผ่านการตรวจสอบเปลี่ยนแล้ว')
+        except (ValueError,KeyError):return Result('stale','รายการหรือข้อมูลที่ผ่านการตรวจสอบเปลี่ยนแล้ว')
         _,shown=self._presented_result();review=d.get('review')
         if after_read and shown and shown.status!='preview':shown=self._read_confirmable_preview()
         command='ยืนยัน '+d['draft_ref']+' '+review['nonce'] if review else None
         if (d['status']!='review' or not command or not shown or shown.status!='preview'
             or shown.data.get('confirm_command')!=command
             or shown.data.get('tool_result',{}).get('draft_version')!=d['version']):
-            return Result('clarification','กรุณาตรวจสอบร่างล่าสุดให้ครบก่อนพิมพ์ ยืนยัน')
+            return Result('clarification','กรุณาตรวจสอบรายการล่าสุดให้ครบก่อนพิมพ์ ยืนยัน')
         return self._confirm(d['draft_ref'],review['nonce'])
 
     def _continuation_date(self,units,old):
@@ -573,7 +599,7 @@ class HistoryFirstAssistant(Assistant):
         claim=self.state.claims.get(row['event']) if row else None
         action=self.state.actions.get(claim.action_key) if claim else None
         if (not shown or shown.status!='recorded' or not action or action.status!='completed'
-            or action.kind not in {'add_transactions','catalog_expense'} or action.result!=shown):
+            or action.kind not in {'add_transactions','catalog_expense'} or not semantic.recorded_result_matches(action.result,shown)):
             return {'issue':'continuation_date_required'}
         dates={e['date'] for e in action.payload['entries']}
         if len(dates)!=1:return {'issue':'continuation_date_required'}
@@ -880,7 +906,10 @@ class HistoryFirstAssistant(Assistant):
                 amount_units=self._field_units(value,sources,item,old,'amount',units)
                 if self.raw_history_enabled and not old and item and self._has_item(command_text(self._current['text']),item):
                     current_units=[v for v in units if v[2]==self._current['source_ref']]
-                    if current_units:amount_units=[v for v in amount_units if v[2]==self._current['source_ref']]
+                    from .expense_evidence import occurrences
+                    if current_units and (not (value.field_sources and value.field_sources.amount)
+                        or occurrences(self._current,item,catalog=tax.catalog,interpreted=True)):
+                        amount_units=current_units
                 for source,at,ref in amount_units:
                     if patch is None and old and ref!=self._current['source_ref'] and (not self.semantic_enabled or at<=self._fact_time(old,'amount')):continue
                     note=section(source,item);clean=command_text(source)
@@ -976,6 +1005,8 @@ class HistoryFirstAssistant(Assistant):
         if guard and (not self.semantic_enabled or guard=='negated'):return {'ok':False,'error':'owner_no_write'}
         # Validation must not clear a live review before a replacement exists.
         old=deepcopy(self._draft(p.draft_ref)) if p.draft_ref else None
+        if self.raw_history_enabled and not old:
+            p=p.model_copy(update={'entries':[semantic.reuse_expense_fields(self,e) for e in p.entries]})
         if self.raw_history_enabled and not old and any(all(getattr(e,k) in {None,''} for k in ['item','amount','date','date_text','note']) for e in p.entries):
             return {'ok':False,'error':'expense_facts_missing','clarification_required':True,'next_tool':'prepare_expenses',
                 'available_drafts':self._workflow(),
@@ -1029,8 +1060,12 @@ class HistoryFirstAssistant(Assistant):
                                 raise ValueError('expense_batch_incomplete')
             amount_sources=[]
             for e,rows in zip(p.entries,source_lists):
+                all_rows=rows
                 if e.field_sources and e.field_sources.amount:rows=[r for r in rows if r['source_ref'] in e.field_sources.amount]
-                if not old and e.item and self._has_item(command_text(self._current['text']),e.item):rows=[r for r in rows if r['source_ref']==self._current['source_ref']]
+                if not old and e.item and self._has_item(command_text(self._current['text']),e.item):
+                    from .expense_evidence import occurrences
+                    if not (e.field_sources and e.field_sources.amount) or occurrences(self._current,e.item,catalog=self._taxonomy().catalog,interpreted=True):
+                        rows=[r for r in all_rows if r['source_ref']==self._current['source_ref']]
                 amount_sources.append(rows)
             if not old:
                 from .expense_evidence import expand_counted_entries
@@ -1043,10 +1078,32 @@ class HistoryFirstAssistant(Assistant):
         names=[e.item for e in p.entries if e.item]
         if not self.raw_history_enabled and not old and len(names)!=len(set(names)):return {'ok':False,'error':'ambiguous_duplicate_items','clarification_required':True}
         self._pair_items=tuple(identity(name,self._taxonomy().catalog) for name in names) if self.raw_history_enabled else tuple(names)
-        refs={r for e in p.entries for r in e.source_refs}
+        refs={r for e in p.entries for r in [*e.source_refs,
+            *([] if e.field_sources is None else [r for values in e.field_sources.model_dump().values() for r in values])]}
         if not old:
             overlap=[d for d in self.state.drafts.values() if refs & {r for e in d['entries'] for r in e['source_refs']}]
-            if overlap:return {'ok':False,'error':'ambiguous_or_recorded_reference','clarification_required':True}
+            if overlap:
+                # A NEW request may reuse facts from a recorded payment. The
+                # planner selects that intent, but must cite each reused field
+                # and a fresh current request. Old consent is never inherited.
+                recorded_only=self.raw_history_enabled and all(d['status']=='recorded' for d in overlap)
+                reusable=recorded_only
+                reused={r for d in overlap for e in d['entries'] for r in e['source_refs']}
+                missing_copy=[]
+                for index,e in enumerate(p.entries):
+                    evidence=set(e.source_refs)|({r for values in e.field_sources.model_dump().values() for r in values} if e.field_sources else set())
+                    if evidence & reused:
+                        fresh=self._current['source_ref'] in e.source_refs and self._current['source_ref'] not in reused
+                        if recorded_only and fresh:
+                            for field in ['item','amount']:
+                                if getattr(e,field) is None:missing_copy.append(f'entries[{index}].{field}')
+                                if not e.field_sources or not getattr(e.field_sources,field):missing_copy.append(f'entries[{index}].field_sources.{field}')
+                        reusable=reusable and fresh and bool(e.field_sources and e.field_sources.item and e.field_sources.amount)
+                if missing_copy:
+                    from .tool_errors import recovery
+                    return {'ok':False,'error':'reused_expense_fields_required','missing_fields':missing_copy,
+                        'recovery':recovery(kind='assistant_arguments',required=missing_copy,tools=['prepare_expenses','resolve_temporal'])}
+                if not reusable:return {'ok':False,'error':'ambiguous_or_recorded_reference','clarification_required':True}
             if sum(d['status']!='recorded' for d in self.state.drafts.values())>=MAX_DRAFTS:return {'ok':False,'error':'open_work_limit'}
         if old and not self.raw_history_enabled and len(p.entries)!=len(old['entries']):return {'ok':False,'error':'complete_snapshot_required'}
         supplied=None
@@ -1182,6 +1239,9 @@ class HistoryFirstAssistant(Assistant):
     def _tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='query_sources':
+                from .read_batch import execute
+                return execute(self,args)
             if self.raw_history_enabled and name=='resolve_temporal':
                 from .temporal import execute
                 return execute(self,args)
@@ -1298,7 +1358,7 @@ class HistoryFirstAssistant(Assistant):
 
     def _result(self,tool_output,model_text=''):
         if tool_output and tool_output.get('ok') and tool_output.get('status')=='pending_unchanged':
-            return Result('answer','ข้อมูลในร่างตรงตามที่ขออยู่แล้วครับ',{'tool_result':deepcopy(tool_output)})
+            return Result('answer','ข้อมูลรายการตรงตามที่ขออยู่แล้วครับ',{'tool_result':deepcopy(tool_output)})
         if tool_output and tool_output.get('temporal_resolution'):
             if not tool_output.get('ok'):return Result('clarification',tool_output.get('message','ยังตีความวันเวลานี้ให้ชัดเจนไม่ได้ครับ'),{'tool_result':deepcopy(tool_output)})
             parts=[str(tool_output[k]) for k in ['date','time','duration_text'] if tool_output.get(k)]
@@ -1356,11 +1416,11 @@ class HistoryFirstAssistant(Assistant):
             explanation=message(tool_output)
             if explanation:return Result('clarification',explanation,{'tool_result':tool_output})
             if tool_output.get('status')=='invalid_request':
-                return Result('clarification','ยังไม่ได้เปลี่ยนร่าง ระบบตีความส่วนที่ต้องแก้ไขไม่ครบ',{'tool_result':tool_output})
+                return Result('clarification','ยังไม่ได้แก้ไขรายการ ระบบตีความส่วนที่ต้องแก้ไขไม่ครบ',{'tool_result':tool_output})
             if tool_output.get('error')=='category_fields_belong_to_item_resolution':
-                return Result('clarification','ยังไม่ได้เปลี่ยนร่าง กรุณาเลือกหมวดของชื่อใหม่จากตัวเลือกใน Database ก่อน แล้วตรวจสอบยอดอีกครั้ง',{'tool_result':tool_output})
+                return Result('clarification','ยังไม่ได้แก้ไขรายการ กรุณาเลือกหมวดของชื่อใหม่จากตัวเลือกใน Database ก่อน แล้วตรวจสอบยอดอีกครั้ง',{'tool_result':tool_output})
             if tool_output.get('error')=='expense_facts_missing':
-                return Result('clarification','ยังไม่ได้สร้างร่าง เพราะยังไม่มีข้อเท็จจริงของรายการที่ผ่านการตรวจสอบ',{'tool_result':tool_output})
+                return Result('clarification','ยังไม่ได้เตรียมรายการ เพราะยังไม่มีข้อเท็จจริงของรายการที่ผ่านการตรวจสอบ',{'tool_result':tool_output})
             if tool_output.get('ok') and tool_output.get('status')=='taxonomy_choices':
                 labels=' / '.join(c['label'] for c in tool_output['category_choices'])
                 return Result('answer','หมวดที่มีใน Database:\n'+labels+'\nยังไม่ได้เลือกหมวดหรือบันทึกรายการ',{'tool_result':tool_output})
@@ -1374,7 +1434,7 @@ class HistoryFirstAssistant(Assistant):
                 rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or 'ยังไม่ระบุ'}" for e in tool_output['entries'])
                 narrative=tool_output.get('history_summary','')
                 if narrative and not success_claim(narrative):rows+='\nสรุปบทสนทนา:\n'+narrative
-                return Result('answer',('ร่างที่ยังไม่บันทึก:\n'+rows if tool_output['entries'] else 'ไม่มีร่างรายจ่ายที่ค้างอยู่'+('\nสรุปบทสนทนา:\n'+narrative if narrative and not success_claim(narrative) else '')),{'tool_result':tool_output})
+                return Result('answer',('รายจ่ายที่ยังไม่ได้บันทึก:\n'+rows if tool_output['entries'] else 'ไม่มีรายจ่ายที่รอบันทึก'+('\nสรุปบทสนทนา:\n'+narrative if narrative and not success_claim(narrative) else '')),{'tool_result':tool_output})
             if tool_output.get('ok') and len(tool_output.get('drafts',[]))==1:
                 view=tool_output['drafts'][0];pending=[r for r in view.get('item_resolutions',[]) if r['step']!='resolved']
                 if len(pending)==1:
@@ -1421,8 +1481,8 @@ class HistoryFirstAssistant(Assistant):
                 quotes=list(dict.fromkeys(e.get('source_quote','') for e in d['entries'] if e.get('source_quote')))
                 if quotes:rows+='\nต้นทาง: '+' / '.join(quotes)
             active=sum(v['status']!='recorded' for v in self.state.drafts.values())
-            instruction='พิมพ์ ยืนยัน เพื่อบันทึกรายการที่แสดงนี้' if active==1 else 'มีหลายร่าง กรุณาใช้คำสั่งของร่างนี้: '+command
-            if self.semantic_enabled:instruction='ต้องการให้บันทึกตามร่างนี้ไหมครับ? ตอบทางข้อความหรือใช้ปุ่มได้'
+            instruction='พิมพ์ ยืนยัน เพื่อบันทึกรายการที่แสดงนี้' if active==1 else 'มีหลายชุดที่รอบันทึก กรุณาใช้คำสั่งของรายการชุดนี้: '+command
+            if self.semantic_enabled:instruction='บันทึกตามนี้เลยไหมครับ? ตอบทางข้อความหรือใช้ปุ่มได้'
             if any(e['mapping'] for e in d['entries']):instruction+='\nการยืนยันจะเพิ่มชื่อใหม่ใน Database และบันทึกรายจ่ายที่แสดง'
             if self.raw_history_enabled and any(e['mapping'] for e in d['entries']):
                 instruction='หมวดสำหรับชื่อใหม่เป็นข้อเสนอที่ต้องตรวจสอบ\n'+instruction
@@ -1457,8 +1517,8 @@ class HistoryFirstAssistant(Assistant):
                          if not matches else 'พบตัวเลือกใน Database:\n'+'\n'.join(v.get('item') or v.get('category','') for v in matches)+'\nต้องการใช้ตัวเลือกใดครับ?')
             elif 'drafts' in tool_output:
                 drafts=tool_output['drafts']
-                message=('ร่างที่ค้างอยู่:\n'+'\n'.join(', '.join(semantic.display_item(e.get('item')) for e in d['entries']) for d in drafts)+'\nต้องการตรวจสอบรายการใดครับ?'
-                         if drafts else 'ไม่มีร่างรายจ่ายที่ค้างอยู่')
+                message=('รายการที่รอบันทึก:\n'+'\n'.join(', '.join(semantic.display_item(e.get('item')) for e in d['entries']) for d in drafts)+'\nต้องการตรวจสอบรายการใดครับ?'
+                         if drafts else 'ไม่มีรายจ่ายที่รอบันทึก')
             else:message='ยังไม่ได้บันทึกรายจ่าย กรุณาระบุข้อมูลเพิ่มเติม'
             kind='summary' if tool_output.get('status')=='summary' else 'answer' if 'drafts' in tool_output or 'matches' in tool_output else 'clarification'
             return Result(kind,message,{'tool_result':tool_output})
@@ -1475,7 +1535,7 @@ class HistoryFirstAssistant(Assistant):
                 action.status='uncertain';self.state.checkpoint();return self._uncertain(key)
             try:self.previous_prices.check_action(action)
             except Exception:
-                action.status='completed';action.result=Result('stale','ราคาเดิมหรือการตั้งค่าเปลี่ยนแล้ว ยังไม่ได้บันทึก กรุณาระบุยอดและตรวจร่างใหม่')
+                action.status='completed';action.result=Result('stale','ราคาเดิมหรือการตั้งค่าเปลี่ยนแล้ว ยังไม่ได้บันทึก กรุณาระบุยอดและตรวจสอบรายการใหม่')
                 self.state.checkpoint();return deepcopy(action.result)
         if action.metadata.get('historical_classification'):return self.historical_categories.resume(key)
         if action.metadata.get('provisional_mapping'):return self.provisional_categories.resume(key)
@@ -1529,18 +1589,18 @@ class HistoryFirstAssistant(Assistant):
 
     def _confirm(self,ref,nonce):
         try:self._draft(ref)
-        except (ValueError,KeyError):return Result('stale','ร่างหรือข้อมูลที่ผ่านการตรวจสอบเปลี่ยนแล้ว')
+        except (ValueError,KeyError):return Result('stale','รายการหรือข้อมูลที่ผ่านการตรวจสอบเปลี่ยนแล้ว')
         d=self.state.drafts.get(ref);review=d.get('review') if d else None
-        if not d or not review or d['status']!='review' or not hmac.compare_digest(nonce,review['nonce']):return Result('stale','ร่างหรือการยืนยันนี้หมดอายุ/เปลี่ยนแล้ว')
-        if int(datetime.fromisoformat(review['at']).timestamp()*1000)>=self._patch_stamp:return Result('stale','คำยืนยันเกิดก่อนร่างล่าสุด')
+        if not d or not review or d['status']!='review' or not hmac.compare_digest(nonce,review['nonce']):return Result('stale','รายการหรือการยืนยันนี้หมดอายุ/เปลี่ยนแล้ว')
+        if int(datetime.fromisoformat(review['at']).timestamp()*1000)>=self._patch_stamp:return Result('stale','คำยืนยันเกิดก่อนรายการล่าสุด')
         payload=self._payload(d);catalog=digest([[r.item,r.category,r.subcategory] for r in self._taxonomy().rows])
         if self.sheets is not self.bound_sheets or digest(payload)!=review['payload_hash'] or catalog!=review['catalog_hash']:
-            d['review']=None;return Result('stale','ข้อมูลหรือ Database เปลี่ยน กรุณาตรวจสอบร่างอีกครั้ง')
+            d['review']=None;return Result('stale','ข้อมูลหรือ Database เปลี่ยน กรุณาตรวจสอบรายการอีกครั้ง')
         blocked=self._blocked_action()
         if blocked:return self._uncertain(blocked)
         try:price_bases=self.previous_prices.bases(d)
         except Exception:
-            d['review']=None;return Result('stale','ข้อมูลราคาเดิมเปลี่ยนหรือใช้ไม่ได้แล้ว ยังไม่ได้บันทึก กรุณาระบุยอดใหม่หรือยกเลิกร่าง')
+            d['review']=None;return Result('stale','ข้อมูลราคาเดิมเปลี่ยนหรือใช้ไม่ได้แล้ว ยังไม่ได้บันทึก กรุณาระบุยอดใหม่หรือยกเลิกรายการ')
         key=self._key(ref,'catalog_expense' if 'catalog' in payload else 'add_transactions')
         return self._execute(key,'catalog_expense' if 'catalog' in payload else 'add_transactions',payload,ref,
                              {'raw_items':[e['item'] for e in d['entries']],'draft_ref':ref,'draft_expires_at':d['expires_at'],
@@ -1569,6 +1629,8 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
+        from .clarifications import compact
+        result=compact(self,result)
         if result.data.get('domain')=='table' or result.data.get('query_analysis'):
             # Completed reads share the optional answer composer. Table
             # mutations and incomplete analysis retain their full core reply.
@@ -1598,7 +1660,7 @@ class HistoryFirstAssistant(Assistant):
         self.table_flow.candidates={}
         self.table_flow.selection_sets={}
         self.provisional_categories.current_basis=None
-        shown_text='เลือกการทำงานกับร่างผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|')) else text
+        shown_text='เลือกการทำงานกับรายการผ่านปุ่ม' if self.semantic_enabled and self._active_event_kind=='postback' and text.startswith(('h2|','c1|','c2|')) else text
         if self.raw_history_enabled:
             from .raw_history import RAW_SOURCE
             original=RAW_SOURCE.get()
@@ -1644,11 +1706,11 @@ class HistoryFirstAssistant(Assistant):
             if blocked:return self._finish(event,at,self._uncertain(blocked))
             if self.raw_history_enabled:
                 d=self.state.drafts.get(cancel[1])
-                if d and d['status']=='recorded':return self._finish(event,at,Result('stale','รายการนี้บันทึกไปแล้ว การยกเลิกร่างไม่ลบรายการที่บันทึกแล้ว'))
+                if d and d['status']=='recorded':return self._finish(event,at,Result('stale','รายการนี้บันทึกไปแล้ว การยกเลิกนี้ไม่ลบรายจ่ายที่บันทึกแล้ว'))
                 if d:return self._finish(event,at,self._result(semantic.cancel(self,self._draft(cancel[1]))))
             d=self.state.drafts.pop(cancel[1],None)
             self.state.draft_proofs.pop(cancel[1],None)
-            return self._finish(event,at,Result('cancelled' if d else 'no_pending','ยกเลิกร่างที่ระบุแล้ว' if d else 'ไม่พบร่างนี้'))
+            return self._finish(event,at,Result('cancelled' if d else 'no_pending','ยกเลิกรายการที่ระบุแล้ว' if d else 'ไม่พบรายการที่รอบันทึกนี้'))
         if self.semantic_enabled and not self.raw_history_enabled:
             # Any model-interpreted turn may be a correction. Keep facts, but
             # revoke old write buttons until a fresh reviewed payload is shown.
@@ -1709,6 +1771,8 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request+=self.provisional_categories.definitions()
                     definitions_for_request+=self.historical_categories.definitions()
                     definitions_for_request+=self.table_flow.definitions()
+                    from .read_batch import definition as batch_definition
+                    definitions_for_request.append(batch_definition(definitions_for_request))
                     from .temporal import definitions as temporal_definitions,context as temporal_context
                     definitions_for_request+=temporal_definitions()
                     from .pending_records import views as pending_views,definitions as pending_definitions,planner_tools
@@ -1724,7 +1788,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**temporal_context(self),**relation_context(self),'pending_records':pending})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -1758,15 +1822,17 @@ class HistoryFirstAssistant(Assistant):
                 emit('model_request',role='planner',run_ref=ref(key),cached=saved is not None)
                 if saved is None:
                     try:saved=parse_response(self.port.request('POST','/v1/responses',body=request),max_input_tokens=stats['token_upper_bound'] if self.raw_history_enabled else MAX_INPUT_TOKENS_BOUND,allowed_tools={t['name'] for t in request['tools']} if self.raw_history_enabled else None,max_output_tokens=request['max_output_tokens'])
-                    except OverflowError:self.guard.halt();saved={'failure':'usage_bound'}
-                    except Exception:saved={'failure':'model_unavailable'}
+                    except OverflowError:self.guard.halt();saved={'failure':'usage_bound','diagnostic':{'kind':'usage_bound'}}
+                    except Exception as error:saved={'failure':'model_unavailable','diagnostic':planner_failure(error)}
                     self.guard.complete(key,saved)
                 emit('model_result',role='planner',run_ref=ref(key),status=code(saved.get('failure','completed')),
+                     **({'failure_kind':code(saved['diagnostic']['kind']),**({'http_status':saved['diagnostic']['http_status']} if 'http_status' in saved['diagnostic'] else {})} if saved.get('diagnostic') else {}),
                      call_ref=ref((saved.get('call') or {}).get('call_id')),
                      tool=code((saved.get('call') or {}).get('name')) if saved.get('call') else None)
                 if saved.get('failure'):
                     if previous and previous[1].get('repair_feedback'):return self._finish(event,at,self._result(last))
-                    return self._finish(event,at,Result('model_unavailable','ยังตอบรอบนี้ไม่ได้ครับ'))
+                    detail=saved.get('diagnostic',{'kind':'unavailable'})
+                    return self._finish(event,at,Result('model_unavailable',planner_failure_message(detail),{'model_failure':deepcopy(detail)}))
                 call=saved['call']
                 if call is None:
                     if last and last.get('temporal_resolution') and last.get('ok'):
@@ -1786,7 +1852,7 @@ class HistoryFirstAssistant(Assistant):
                     return self._finish(event,at,self._result(last,saved['text']))
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
-                if self.raw_history_enabled and call['name'] in {'lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
+                if self.raw_history_enabled and call['name'] in {'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
                     signature=digest([call['name'],json.loads(call['arguments'])])
                     if signature in seen_reads:
                         return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
@@ -1799,6 +1865,8 @@ class HistoryFirstAssistant(Assistant):
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
                 if last.get('ok'):repair_allowed=None
+                if last.get('read_batch'):
+                    self._query_analysis_active=True;previous=(call,last);continue
                 if self.raw_history_enabled:
                     from .query_followups import repair
                     corrected=repair(self,last)

@@ -64,6 +64,11 @@ class LineReplyApi:
             raise ValueError("LINE transport required")
         self.client = client
 
+    def loading(self, owner_id):
+        from .loading import OWNER,PATH
+        if OWNER.get()!=owner_id:raise ValueError('Verified owner loading scope required')
+        return self.client.request('POST',PATH,body={'chatId':owner_id,'loadingSeconds':20})
+
     def send(self, reply_token, text):
         if not isinstance(reply_token, str) or not reply_token or len(reply_token) > 1000:
             raise ValueError("Fresh webhook reply token required")

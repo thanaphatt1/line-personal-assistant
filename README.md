@@ -36,6 +36,7 @@ Additional guides cover:
 
 - [Pending-record patches](docs/pending-records.md) and [temporal plans/tool recovery](docs/temporal-plans.md).
 - [Capability and data coverage](docs/data-inventory.md), [read examples](docs/read-queries.md) and [behavior](docs/behavior.md).
+- [Performance and conversation quality](docs/performance.md): phase timings, batched reads, loading status, focused clarification and indexed Firestore reads.
 - Optional expense workflows: [provisional categories](docs/provisional-categories.md), [historical category review](docs/historical-categories.md) and [previous saved amounts](docs/previous-expense-prices.md). Proposed mappings remain distinct from confirmed records and final write consent.
 
 This README describes the current source. Feature activation depends on configuration; a GitHub source push and a production deployment are separate actions.

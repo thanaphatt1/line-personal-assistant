@@ -12,7 +12,7 @@ from typing import Literal
 from urllib.parse import quote
 
 from pydantic import Field, model_validator
-from .tables import Strict, Table, Registry, TableError, validate_values,validate_routing
+from .tables import Strict, Table, Registry, TableError, validate_values,validate_routing,normalize,predicate
 from .history_context import digest
 from .transport import ApiError, NotReady, LiveDisabled, OutcomeUnknown, WriteBlocked
 
@@ -212,6 +212,80 @@ class FirestoreTableStore(BoundStore):
         self.collection = self.database + '/documents/' + self.binding.collection_path
         self.proofs = self.database + '/documents/assistant_table_operations/' + digest([self.owner_id, self.collection]) + '/operations'
 
+    def capabilities(self):
+        return {'strategy':'indexed_filter_then_local_residual','pushdown':['eq','gt','gte','lt','lte'],
+                'range_types':['date','integer'],'decimal_comparison':'local_exact',
+                'snapshot':'read_only_transaction','display_limit_is_scan_limit':False}
+
+    def scan_filtered(self, table, filters):
+        # One supported predicate needs only a single-field index. Keep ALL
+        # predicates, aggregation, projection and sorting in the local executor.
+        selected=None
+        for f in filters:
+            if f.field=='id' or len(f.values)!=1 or f.values[0] is None:continue
+            column=table.column(f.field)
+            if (f.op=='eq' and column.type in {'text','enum','reference','date','integer','boolean'}
+                    or f.op in {'gt','gte','lt','lte'} and column.type in {'date','integer'}):
+                selected=(column,f);break
+        if selected is None:
+            from .read_cache import read
+            return read(('table_full_scan',id(self),digest(table.model_dump())),lambda:self.scan(table))
+        column,f=selected;wanted=normalize(column,f.values[0])
+        response=self.request('POST','/v1/'+self.database+'/documents:beginTransaction',body={'options':{'readOnly':{}}})
+        token=response.get('transaction')
+        if not isinstance(token,str) or not re.fullmatch(r'[A-Za-z0-9_+/=-]{1,4096}',token):raise NotReady('Invalid table read transaction')
+        try:return self._filtered(table,column,f,wanted,token)
+        finally:
+            try:self.request('POST','/v1/'+self.database+'/documents:rollback',body={'transaction':token})
+            except Exception:pass
+
+    def _filtered(self, table, column, f, wanted, token):
+        from .action_trace import emit
+        parent,collection=self.collection.rsplit('/',1)
+        name=column.storage_name or column.name
+        field=name if re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',name) else '`'+name.replace('\\','\\\\').replace('`','\\`')+'`'
+        operation={'eq':'EQUAL','gt':'GREATER_THAN','gte':'GREATER_THAN_OR_EQUAL','lt':'LESS_THAN','lte':'LESS_THAN_OR_EQUAL'}[f.op]
+        order=([{'field':{'fieldPath':field},'direction':'ASCENDING'}] if f.op!='eq' else [])
+        order+=[{'field':{'fieldPath':'__name__'},'direction':'ASCENDING'}]
+        base={'from':[{'collectionId':collection}],
+              'where':{'fieldFilter':{'field':{'fieldPath':field},'op':operation,'value':encode(wanted)}},'orderBy':order}
+        records=[];seen=set();cursor=None;size=0;previous_key=None
+        while True:
+            limit=min(100,self.binding.max_records+1-len(records))
+            query={**base,'limit':limit}
+            if cursor:query['startAt']={'values':cursor,'before':False}
+            response=self.request('POST','/v1/'+parent+':runQuery',body={'structuredQuery':query,'transaction':token})
+            if not isinstance(response,list) or any(not isinstance(v,dict) or 'error' in v for v in response):raise NotReady('Invalid filtered table page')
+            size+=len(json.dumps(response,ensure_ascii=False).encode())
+            if size>MAX_BYTES:raise NotReady('Complete filtered snapshot exceeds configured capacity')
+            documents=[v['document'] for v in response if 'document' in v]
+            if len(documents)>limit:raise NotReady('Filtered page exceeds requested limit')
+            for document in documents:
+                row=self._record(table,document)
+                if row['id'] in seen or not predicate(table,f)(dict(id=row['id'],**row['values'])):raise NotReady('Invalid filtered table cursor or predicate')
+                key=(row['values'][column.name],row['id']) if f.op!='eq' else (row['id'],)
+                if previous_key is not None and key<=previous_key:raise NotReady('Filtered table cursor did not advance')
+                previous_key=key
+                seen.add(row['id']);records.append(row)
+                if len(records)>self.binding.max_records:raise NotReady('Incomplete filtered table snapshot')
+            if len(documents)<limit:
+                emit('source_read',backend='firestore',strategy='indexed_filter',record_count=len(records))
+                return records
+            last=documents[-1]
+            cursor=([last['fields'][name]] if f.op!='eq' else [])+[{'referenceValue':last['name']}]
+
+    def _record(self, table, document):
+        if not isinstance(document,dict):raise NotReady('Invalid table document')
+        name=document.get('name','')
+        if not isinstance(name,str):raise NotReady('Invalid table document identity')
+        identifier=name.removeprefix(self.collection+'/')
+        if (name!=self.collection+'/'+identifier or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',identifier)
+                or not isinstance(document.get('updateTime'),str) or not document['updateTime']):raise NotReady('Invalid table document identity')
+        fields=document.get('fields',{});expected={c.storage_name or c.name for c in table.columns}
+        if not isinstance(fields,dict) or set(fields)-expected:raise NotReady('Table document schema changed')
+        values={c.name:decode(fields[c.storage_name or c.name]) if (c.storage_name or c.name) in fields else None for c in table.columns}
+        return {'id':identifier,'version':document['updateTime'],'values':validate_values(table,values)}
+
     def scan(self, table):
         response=self.request('POST','/v1/'+self.database+'/documents:beginTransaction',body={'options':{'readOnly':{}}})
         token=response.get('transaction')
@@ -223,6 +297,7 @@ class FirestoreTableStore(BoundStore):
 
     def _scan(self, table, token):
         records, seen, cursor, size = [], set(), None, 0
+        identifiers=set()
         while True:
             params = {'pageSize': min(100, self.binding.max_records + 1),'transaction':token}
             if cursor: params['pageToken'] = cursor
@@ -232,16 +307,9 @@ class FirestoreTableStore(BoundStore):
             size += len(json.dumps(response, ensure_ascii=False).encode())
             if size > MAX_BYTES: raise NotReady('Complete table snapshot exceeds configured capacity')
             for document in documents:
-                name = document.get('name', '')
-                identifier = name.removeprefix(self.collection + '/')
-                if (name != self.collection + '/' + identifier or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', identifier)
-                        or not document.get('updateTime') or any(r['id'] == identifier for r in records)):
-                    raise NotReady('Invalid table document identity')
-                fields = document.get('fields', {})
-                expected = {c.storage_name or c.name for c in table.columns}
-                if set(fields) - expected: raise NotReady('Table document schema changed')
-                values = {c.name: decode(fields[c.storage_name or c.name]) if (c.storage_name or c.name) in fields else None for c in table.columns}
-                records.append({'id': identifier, 'version': document['updateTime'], 'values': validate_values(table, values)})
+                record=self._record(table,document)
+                if record['id'] in identifiers:raise NotReady('Duplicate table document identity')
+                identifiers.add(record['id']);records.append(record)
                 if len(records) > self.binding.max_records: raise NotReady('Incomplete table snapshot')
             cursor = response.get('nextPageToken')
             if not cursor: return records
@@ -310,7 +378,7 @@ class LegacyExpenseTableStore:
 def include_expenses(registry, expense_store):
     if not registry.tables:return registry
     from .tables import Column
-    table=Table(id='expenses',label='รายจ่ายส่วนตัว',description='บันทึกรายจ่ายส่วนตัวเดิม อ่านเป็น table ได้ การเพิ่มหรือแก้ใช้เครื่องมือร่างรายจ่ายเดิมเพื่อรักษาหมวดและการยืนยัน',
+    table=Table(id='expenses',label='รายจ่ายส่วนตัว',description='บันทึกรายจ่ายส่วนตัวเดิม อ่านเป็น table ได้ การเพิ่มหรือแก้ใช้ขั้นตอนเตรียมรายจ่ายเดิมเพื่อรักษาหมวดและการยืนยัน',
         aliases=['รายจ่าย','ค่าใช้จ่าย'],operations=['query'],columns=[
             Column(name='date',label='วันที่',type='date',required=True),Column(name='item',label='รายการ',type='text',required=True),
             Column(name='amount',label='จำนวนเงิน',type='decimal',required=True,unit='THB'),Column(name='note',label='หมายเหตุ',type='text')])

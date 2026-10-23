@@ -62,8 +62,8 @@ def definitions():
               'source_refs': {'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}}
     return [
         {'type':'function','name':'query_expenses','strict':True,
-         'description':'Read complete saved expenses; filter, group and sort BEFORE limiting displayed rows. For ใช้ไรเยอะสุด group_by=item, order_by=amount, descending=true, view=list; for largest individual payments group_by=none. For expenses on days of an activity, FIRST query_calendar with continue_analysis=true and the activity as filter_text, THEN pass its query_ref in calendar_query_refs (never use an activity as an expense category). Follow-ups reuse verified scope with date_mode=previous. Exact catalog filters only; no writes or income/balance.',
-         'parameters':object_schema({**common,'filter':{'anyOf':[{'type':'null'},object_schema({'kind':{'type':'string','enum':['item','category','subcategory']},'value':{'type':'string'}})]},
+         'description':'Read complete saved expenses. For filtering/analysis prefer FULL period filter=null, view=list, continue_analysis=true THEN query_relations SQL. Legacy filter means equality/INCLUSION ONLY; it CANNOT exclude, negate or combine conditions. Never use it for ไม่รวม/ยกเว้น. Simple unfiltered totals/listing may answer directly. Legacy grouping/sorting runs before display limits. For expenses on activity dates FIRST query_calendar with continue_analysis=true, THEN pass its query_ref in calendar_query_refs; never use an activity as an expense category. Follow-ups reuse verified dates with date_mode=previous. No writes or income/balance.',
+         'parameters':object_schema({**common,'filter':{'description':'Legacy exact positive equality only. Prefer null with continue_analysis=true and apply all requested conditions in query_relations SQL. A non-null filter selects ONLY the label; it never means excluding it.','anyOf':[{'type':'null'},object_schema({'kind':{'type':'string','enum':['item','category','subcategory']},'value':{'type':'string'}})]},
              'view':{'type':'string','enum':['total','list']},'measure':{'type':'string','enum':['expense','income','balance']},
              'group_by':{'type':'string','enum':['none','item','date','category','subcategory'],'description':'none=individual payments; item/date/category/subcategory=SUM amounts and COUNT payments per group. Unknown category mappings fail honestly.'},
              'order_by':{'type':'string','enum':['date','amount','count','label'],'description':'Sort the FULL result before top limit. amount is numeric; count requires groups. date requires individual rows or date groups.'},
@@ -105,6 +105,8 @@ def context(host):
     except Exception:catalog = {'complete':False,'items':[],'categories':[],'subcategories':[]}
     return {'previous_query':{k:deepcopy(v) for k,v in scope.items() if k not in {'workbook','calendar','calendar_read_ids_hash'}} if scope else None,
             'query_capabilities':{'expense_group_by':['item','date','category','subcategory'],
+                'filtering':{'primary':'query_relations SQL WHERE over full source reads; arbitrary supported boolean predicates',
+                    'legacy_expense_filter':'positive equality ONLY, never exclusion; use null when reading SQL inputs'},
                 'expense_order_by':['date','amount','count','label'],'top_rows':20,'sort_before_limit':True,
                 'calendar_date_join':'complete current-request Calendar query refs; unions Bangkok dates; all spending on those dates, not causal event costs',
                 'relational_analysis':'query_relations executes read-only SQL over complete observed snapshots; no provider SQL or writes',
@@ -403,10 +405,12 @@ def facts(output, at):
         return values
     scope=output['scope'];values={'period':period_label(scope,at)}
     if scope['domain']=='expense':
-        if scope.get('filter'):values['filter']=label_text(next(iter(scope['filter'].values())))
+        # A bare label lets prose turn inclusion into exclusion. Supply the
+        # actual complete condition as an indivisible display fact instead.
+        if scope.get('filter'):values['selection']='เฉพาะ '+label_text(next(iter(scope['filter'].values())))
         if scope.get('calendar_basis'):
             basis=scope['calendar_basis'];activity=' / '.join(label_text(c) for c in basis['criteria'])
-            values['filter']='วันที่มีนัดที่เข้าข่าย '+activity+(' และ '+values['filter'] if 'filter' in values else '')
+            values['selection']='เฉพาะวันที่มีนัดที่เข้าข่าย '+activity+(' และ '+values['selection'] if 'selection' in values else '')
         values.update(total=output['expense']+' บาท',count=str(output['count'])+' รายการ')
         if scope.get('calendar_basis'):
             values['row_basis']=f"จับคู่ได้ {len(basis['dates'])} วัน จาก {basis['event_count']} นัด: "+(', '.join(day_label(d) for d in basis['dates']) or 'ไม่พบวันที่เข้าข่าย')
@@ -450,7 +454,7 @@ def result(output, at):
     values=facts(output,at)
     if not output['complete'] and not output.get('calendar_selection'):message='\n'.join(v for k,v in values.items() if not k.startswith('row') and k!='truncation')
     elif output['domain']=='expense':
-        message=values['period']+(' เฉพาะ '+values['filter'] if 'filter' in values else '')+f" ใช้ไป {values['total']} จาก {values['count']}ครับ"
+        message=values['period']+(' '+values['selection'] if 'selection' in values else '')+f" ใช้ไป {values['total']} จาก {values['count']}ครับ"
     else:message=values['period']+(' มีนัดที่เข้าข่าย '+values['filter'] if 'filter' in values else ' มี')+f" {values['count']}ครับ"
     message+=''.join('\n'+v for k,v in values.items() if k.startswith('row') or k in {'truncation','upcoming','uncertainty','uncertainty_limit'})
     data={'domain':output['domain'],'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,

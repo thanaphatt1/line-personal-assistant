@@ -68,6 +68,29 @@ class EmulatorPort:
         return response.json()
 
 
+def test_emulator_generic_table_indexed_date_range_exact_decimal_and_pagination():
+    from line_assistant.table_storage import FirestoreTableStore,Binding,encode
+    from line_assistant.tables import Table,Column,Registry,Query,Predicate,query
+    port=EmulatorPort(ENDPOINT)
+    try:
+        table=Table(id='visits',label='Visits',description='Synthetic emulator table',columns=[
+            Column(name='day',label='Day',type='date',required=True),
+            Column(name='amount',label='Amount',type='decimal',required=True)])
+        storage=FirestoreTableStore(port,Binding(backend='firestore',collection_path='visits_'+uuid.uuid4().hex),
+                                   owner_id='synthetic-owner',project_id=PROJECT)
+        writes=[]
+        for index in range(105):
+            writes.append({'update':{'name':storage.collection+f'/row{index:04d}',
+                'fields':{'day':encode('2026-10-21'),'amount':encode('0.10')}}})
+        writes.append({'update':{'name':storage.collection+'/outside','fields':{'day':encode('2026-10-20'),'amount':encode('99.00')}}})
+        port.request('POST','/v1/'+storage.database+'/documents:commit',body={'writes':writes})
+        result=query(Registry([table],{'visits':storage}),Query(table_id='visits',
+            filters=[Predicate(field='day',op='gte',values=['2026-10-21'])],
+            aggregates=[{'op':'sum','field':'amount','alias':'total'}],limit=1,source_refs=['synthetic']))
+        assert result['complete'] and result['count']==105 and result['rows']==[{'total':'10.50'}]
+    finally:port.client.close()
+
+
 @pytest.fixture
 def store():
     port = EmulatorPort(ENDPOINT)
