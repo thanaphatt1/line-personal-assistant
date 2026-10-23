@@ -7,7 +7,7 @@ from line_assistant import response_realization as voice
 from line_assistant.action_trace import outcome
 from line_assistant.history_context import HistoryState
 from line_assistant.history_persistence import history_snapshot,restore_history
-from line_assistant.validation_explanations import message
+from line_assistant.validation_explanations import enrich,message
 from test_catalog_followup_focus import pending,enroll
 from test_catalog_names_v09 import harness
 from test_history_first import response
@@ -75,6 +75,59 @@ def test_unknown_failure_does_not_invent_evidence_mismatch_or_an_input_correctio
     text=message({'ok':False,'error':'unexpected_internal_condition'})
     assert 'ยังบอกไม่ได้ว่าคุณต้องแก้ข้อมูลส่วนไหน' in text
     assert 'จับคู่หลักฐาน' not in text
+
+
+@pytest.mark.parametrize('details,kind,recovery_kind',[
+    (['entries[0].item_source','entries[0].amount_source'],'model_arguments','assistant_arguments'),
+    (['entries[0].future_expense_date'],'validation','owner_input'),
+    (['entries[0].item_source','entries[0].unexpected_internal_condition'],'unclassified','unavailable'),
+    ([],'unclassified','unavailable'),
+])
+def test_invalid_fields_envelope_uses_specific_diagnostics_without_hiding_unknowns(details,kind,recovery_kind):
+    h=harness()
+    call={'name':'prepare_expenses','arguments':json.dumps({'draft_ref':None})}
+    result=enrich(h.service,call,{'ok':False,'error':'invalid_fields','invalid_fields':details})
+    assert result['validation_feedback']['kind']==kind
+    assert result['recovery']['kind']==recovery_kind
+    assert result['recovery']['write_authorized'] is False
+    assert result['recovery']['provider_retry_allowed'] is False
+    if details:assert 'invalid_fields' not in result['validation_feedback']['codes']
+
+
+@pytest.mark.parametrize('failure',['wrong_message','blank_fields'])
+@pytest.mark.parametrize('pending_other',[False,True])
+def test_referenced_batch_repairs_provenance_before_asking_owner_to_repeat(failure,pending_other):
+    from test_catalog_names_v09 import entry,prepare
+    from test_raw_history import context
+
+    names=[('RailA',41),('MetroB',13),('RideC',27)]
+    h=harness(tuple(name for name,_ in names))
+    if pending_other:prepare(h,'ของใช้ทดลอง 29 บาท',[entry(item='ของใช้ทดลอง',amount=29)])
+    before=deepcopy(h.state.drafts)
+    original='วันนี้ RailA 41 MetroB 13 RideC 27'
+    failed=prepare(h,original,[entry(item=None,amount=amount) for _,amount in names])
+    assert failed.data['tool_result']['error']=='expense_batch_incomplete'
+
+    def proposal(body,repair=False):
+        c=context(body)
+        source=next(r['source_ref'] for r in c['history'] if r['role']=='user' and r['text']==original)
+        refs=[c['current_source_ref'],source] if repair else [c['current_source_ref']]
+        values=[entry(item=name,amount=amount,date_text='วันนี้',source_refs=refs) for name,amount in names]
+        if not repair and failure=='blank_fields':
+            values=[entry(item=None,amount=None,date_text='วันนี้',source_refs=[c['current_source_ref'],source],
+                field_sources={'item':[source],'amount':[source],'date':[source],'note':[]})]
+        if repair:
+            output=json.loads(body['input'][-1]['output'])
+            assert output['validation_feedback']['kind']=='model_arguments'
+            assert output['repair_feedback']['allowed_tools']==['prepare_expenses','resolve_temporal']
+            assert 'invalid_fields' not in output['validation_feedback']['codes']
+        return response(name='prepare_expenses',args={'draft_ref':None,'draft_version':None,'entries':values})
+
+    result=h.send('จดรายการข้างบนให้หน่อย',proposal,lambda body:proposal(body,repair=True))
+    assert result.status=='preview',result
+    assert [(r['item'],r['amount']) for r in result.data['tool_result']['entries']]==[(name,str(amount)) for name,amount in names]
+    assert all(h.state.drafts[ref]==draft for ref,draft in before.items())
+    assert not h.sheets.entries and not h.state.actions
 
 
 def test_schema_error_retains_typed_fields_without_echoing_raw_input_or_exception_prose():

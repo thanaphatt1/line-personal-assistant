@@ -20,6 +20,8 @@ REASONS={
  'subcategory_not_in_selected_category':'หมวดย่อยที่ส่งไปไม่อยู่ในหมวดหลักที่เลือกครับ',
  'invalid_tool_arguments':'ผมส่งข้อมูลให้เครื่องมือผิดรูปแบบ จึงยังทำขั้นตอนนี้ต่อไม่ได้ครับ',
  'source_not_in_visible_context':'ผมอ้างอิงข้อความต้นทางไม่ตรงกับประวัติที่ระบบให้ใช้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'field_source_unavailable':'ผมอ้างแหล่งข้อมูลของบางฟิลด์ไม่ตรงกับข้อความที่ใช้ตรวจสอบได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'field_source_not_owner_fact':'ผมจับคู่ชื่อ ยอด หรือวันที่กับข้อความต้นทางที่อ้างไว้ไม่ได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
  'category_fields_belong_to_item_resolution':'ผมส่งหมวดผ่านขั้นตอนแก้ข้อมูลรายจ่าย ซึ่งต้องใช้ขั้นตอนเลือกหมวดแยกกัน จึงยังไม่เปลี่ยนข้อมูลครับ',
  'count_amount_mismatch':'จำนวนเที่ยว/ขาที่ระบุไม่ตรงกับจำนวนยอดเงิน จึงยังไม่สร้างรายการบันทึก',
  'count_price_basis_ambiguous':'ระบุหลายเที่ยว/ขาแต่มีเงินเพียงยอดเดียว ยอดนี้เป็นยอดรวม หรือราคาต่อเที่ยว/ขาครับ?',
@@ -47,7 +49,8 @@ ENROLLMENT_ERRORS={'new_item_requires_category_clarification','category_step_not
  'subcategory_step_not_ready','category_not_offered','subcategory_not_in_selected_category','new_item_already_started'}
 MODEL_ERRORS=ENROLLMENT_ERRORS|{'invalid_tool_arguments','amount_occurrence_missing_or_reused',
  'expense_batch_incomplete','reused_expense_fields_required','amount_source','item_source','full_item_name_required','note_source',
- 'date_text_source','date_source','source_not_in_visible_context','category_fields_belong_to_item_resolution'}
+ 'date_text_source','date_source','source_not_in_visible_context','field_source_unavailable',
+ 'field_source_not_owner_fact','category_fields_belong_to_item_resolution'}
 
 
 def enrich(h,call,output):
@@ -114,8 +117,11 @@ def codes(output):
   values += [str(v).split('.')[-1] for key in ('invalid_fields','validation_issues') for v in output.get(key,[])]
  values += [v.get('issue') for v in output.get('date_details',[]) if isinstance(v,dict)]
  values += [v.get('date_issue') for v in output.get('entries',[]) if isinstance(v,dict)]
- return list(dict.fromkeys(v for v in values if isinstance(v,str) and re.fullmatch(r'[a-z_]+',v)
+ result=list(dict.fromkeys(v for v in values if isinstance(v,str) and re.fullmatch(r'[a-z_]+',v)
                             and (v in REASONS or output.get('ok') is False or output.get('validation_issues'))))
+ # The envelope is not another unknown cause when field diagnostics exist.
+ # Unknown details still remain unknown; genuine owner-input errors stay so.
+ return result[1:] if result and result[0]=='invalid_fields' and len(result)>1 else result
 
 def message(output):
  if isinstance(output,dict) and output.get('validation_feedback'):

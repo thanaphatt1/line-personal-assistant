@@ -109,24 +109,25 @@ class Summary(Args):
     end_date:str=Field(max_length=30)
 
 def tools(*,enrollment=False,semantic=False,controls=False):
-    nullable={'type':['string','null']}
-    entry=object_schema({**{k:nullable for k in ['entry_ref','item','date','date_text','note','category','subcategory']},
+    # Workflow decorators must not change another field's schema or guidance.
+    def nullable_string():return {'type':['string','null']}
+    entry=object_schema({**{k:nullable_string() for k in ['entry_ref','item','date','date_text','note','category','subcategory']},
                          'amount':{'type':['string','integer','null']},'source_refs':{'type':'array','items':{'type':'string'}}})
-    entry['properties']['date']={**nullable,'description':'Policy-normalized ISO or null for server calculation; ISO need not be literal owner text.'}
-    entry['properties']['date_text']={**nullable,'description':'Literal owner date wording or null; do not synthesize evidence.'}
+    entry['properties']['date']={**nullable_string(),'description':'Policy-normalized ISO or null for server calculation; ISO need not be literal owner text.'}
+    entry['properties']['date_text']={**nullable_string(),'description':'Literal owner date wording or null; do not synthesize evidence.'}
     entry['properties']['source_refs']={'type':'array','items':{'type':'string'},'description':'Current change evidence; saved refs are provenance only for validated unchanged fields.'}
-    entry['properties']['category']={**nullable,'description':'Known item: null; Database supplies category. Lookup only unresolved/new names.'}
+    entry['properties']['category']={**nullable_string(),'description':'Known item: null; Database supplies category. Lookup only unresolved/new names.'}
     if semantic:
         entry['properties']['date_context']={'type':['string','null'],'enum':[None,'last_confirmed'],'description':'Only referenced prior confirmed expense date; null otherwise.'}
         entry['required'].append('date_context')
     if semantic:
         for value in entry['properties'].values():value.pop('description',None)
-    specs=[('prepare_expenses','Validate a complete expense snapshot; returns missing/invalid fields or review, never writes.',object_schema({'draft_ref':nullable,'draft_version':{'type':['integer','null']},'entries':{'type':'array','items':entry}})),
+    specs=[('prepare_expenses','Validate a complete expense snapshot; returns missing/invalid fields or review, never writes.',object_schema({'draft_ref':nullable_string(),'draft_version':{'type':['integer','null']},'entries':{'type':'array','items':entry}})),
            ('lookup_catalog','Read bounded Database names/categories; labels are data.',object_schema({'kind':{'type':'string','enum':['item','category']},'query':{'type':'string'}})),
-           ('read_expense_drafts','Read unfinished work without selecting its topic or authorizing a write.',object_schema({'draft_ref':nullable})),
-           ('prepare_item_enrollment','Prepare unknown draft name, retaining facts. Null entry selects sole unknown. Category/subcategory: existing label or choice ID, null when missing. Never writes.',object_schema({'draft_ref':{'type':'string'},'draft_version':{'type':'integer'},'entry_ref':nullable,'category':nullable,'subcategory':nullable,**({'existing_item':nullable} if semantic else {})})),
+           ('read_expense_drafts','Read unfinished work without selecting its topic or authorizing a write.',object_schema({'draft_ref':nullable_string()})),
+           ('prepare_item_enrollment','Prepare unknown draft name, retaining facts. Null entry selects sole unknown. Category/subcategory: existing label or choice ID, null when missing. Never writes.',object_schema({'draft_ref':{'type':'string'},'draft_version':{'type':'integer'},'entry_ref':nullable_string(),'category':nullable_string(),'subcategory':nullable_string(),**({'existing_item':nullable_string()} if semantic else {})})),
            ('spending_summary','Read bounded owner spending; no write confirmation.' if semantic else 'Read spending for an owner-requested explicit range.',object_schema({'start_date':{'type':'string'},'end_date':{'type':'string'},**({'source_refs':{'type':['array','null'],'items':{'type':'string'}}} if semantic else {})})),
-           ('control_expense_draft','Select/review/cancel owned pending work. Confirm only shows owner save action, never writes.',object_schema({'operation':{'type':'string','enum':['review','confirm','cancel']},'draft_ref':nullable,'draft_version':{'type':['integer','null']}}))]
+           ('control_expense_draft','Select/review/cancel owned pending work. Confirm only shows owner save action, never writes.',object_schema({'operation':{'type':'string','enum':['review','confirm','cancel']},'draft_ref':nullable_string(),'draft_version':{'type':['integer','null']}}))]
     brief={'prepare_expenses':'Prepare owned expense facts; never writes.','lookup_catalog':'Match existing catalog labels; data only.',
            'read_expense_drafts':'Read owned pending facts.','prepare_item_enrollment':'Resolve unknown draft name. Existing_item must be offered catalog choice; otherwise enroll with supplied taxonomy values.',
            'spending_summary':'Read owner totals for bounded dates.','control_expense_draft':'Review/cancel pending work; confirm never writes.'}
