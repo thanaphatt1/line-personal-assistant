@@ -1,7 +1,7 @@
 """Owner-scoped semantic preparation/read tools; model calls cannot grant writes."""
 from .expense_storage import storage_scope
 from copy import deepcopy
-from datetime import datetime
+from datetime import date,datetime
 from decimal import Decimal
 from types import SimpleNamespace
 import secrets,re
@@ -124,7 +124,30 @@ def date_targets(h):
             or not receipt or reply.content_hash!=message_hash(rendered_message(receipt.result))):value=None
     result=[{'date_ref':'date_'+digest([h.settings.owner_id,getattr(getattr(h.sheets,'target',None),'spreadsheet_id',None),value])[:20],**value}] if value else []
     result += [{'date_ref':ref,'date':proof['values']['date'],'temporal':True} for ref,proof in getattr(h,'_temporal_values',{}).items() if proof['values']['date']]
+    asked=previous_question_date(h)
+    if asked:result.append(asked)
     return result
+
+def previous_question_date(h):
+    """The single day of the immediately preceding delivered read, offered for interpretation only."""
+    if not getattr(h,'raw_history_enabled',False) or not getattr(h,'_current',None):return None
+    from .read_queries import previous_scope
+    from .language import BANGKOK
+    scope=previous_scope(h)
+    rows=[r for r in h.state.history if r['role']=='assistant' and r['event']!=h._active_event_id]
+    latest=max(rows,key=lambda r:datetime.fromisoformat(r['at']),default=None)
+    receipt=h.state.receipts.get(latest['event']) if latest else None
+    if not receipt or receipt.expires_at<=h.clock():return None
+    checked=receipt.result.data.get('tool_result') or {}
+    if checked.get('status')=='already_recorded':
+        # A conditional add that found the payment answered a question about
+        # that date, exactly like a read of it.
+        days={m['date'] for m in checked.get('existing',[])}
+        day=days.pop() if len(days)==1 else None
+    else:day=scope['start'] if scope and scope.get('start')==scope.get('end') and receipt.result.data.get('read_query')==scope else None
+    if not day or date.fromisoformat(day)>h.clock().astimezone(BANGKOK).date():return None
+    return {'date_ref':'date_'+digest([h.settings.owner_id,'previous_question',latest['event'],day])[:20],
+            'date':day,'previous_question':True}
 
 def inspect_drafts(h,ref=None):
     drafts=[h._draft(k) for k,d in h.state.drafts.items() if d['status']!='recorded' and (ref is None or k==ref)]
@@ -178,7 +201,8 @@ def postback(h,payload):
             if d and d['status']=='recorded' and d['version']==version and d.get('owner_id')==h.settings.owner_id and proof and proof.get('fingerprint')==draft_fingerprint(d):
                 actions=[a for a in h.state.actions.values() if a.metadata.get('draft_ref')==ref and a.status=='completed' and a.result and a.result.status=='recorded']
                 if actions:
-                    rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {e['date']}" for e in d['entries'])
+                    from .reply_display import day
+                    rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {day(e['date'])}" for e in d['entries'])
                     return Result('stale','รายการนี้บันทึกไปแล้ว\n'+rows+('\nการยกเลิกนี้ไม่ลบรายจ่ายที่บันทึกแล้ว' if op=='cancel' else '\nไม่ได้บันทึกซ้ำ'),{'resolved_outcome':'recorded','financial_effects':0})
             for receipt in h.state.receipts.values():
                 cancelled=receipt.result.data.get('tool_result',{}).get('cancelled_draft') if receipt.result.status=='cancelled' else None

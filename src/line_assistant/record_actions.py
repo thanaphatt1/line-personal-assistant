@@ -36,8 +36,24 @@ class RecordActions:
         value['seal']=digest(value)
         operations=['amount','date','source',*(['delete'] if self.h.saved_edits.delete_enabled else [])]
         actions=[self.button(op,value,'*' if len(records)>1 else '0') for op in operations]
+        offer=self.alias_offer(action) if result.status=='recorded' else None
+        if offer:actions.append(offer)
         self.h.state.owner_features_used=True
         return Result(result.status,result.message,{**result.data,'record_actions':value,'line_message':render_actions(result.message,actions)})
+    def alias_offer(self,action):
+        """Suggest remembering a chosen spelling. The button only sends owner text; the alias review still decides."""
+        aliases=getattr(self.h,'catalog_aliases',None)
+        draft=self.h.state.drafts.get(action.metadata.get('draft_ref'))
+        if not aliases or not aliases.enabled or not draft:return None
+        try:catalog=self.h._taxonomy().catalog
+        except Exception:return None
+        from .catalog import normalized
+        for entry in draft['entries']:
+            chosen=entry.get('item_resolution')
+            if not chosen or normalized(chosen['from'])==normalized(chosen['to']) or catalog.identity(chosen['from']).canonical:continue
+            text=f"จำว่า {chosen['from']} คือ {chosen['to']}"
+            if len(text)<=300:return {'type':'message','label':utf16_limit('จำชื่อ '+chosen['from'],20),'text':text}
+        return None
     def button(self,operation,value,index,*,label=None):
         return {'type':'postback','label':utf16_limit(label or LABELS[operation],20),
             'displayText':utf16_limit(label or LABELS[operation],100),
@@ -89,14 +105,16 @@ class RecordActions:
                 return self.h.saved_edits.result(output)
             result=self.h.saved_edits.result(output)
             question='ต้องการเปลี่ยนยอดเป็นเท่าไรครับ?' if operation=='amount' else 'ต้องการเปลี่ยนเป็นวันที่เท่าไรครับ?'
-            message=f"{record['item']} — {record['amount']} บาท วันที่ {record['date']}\n"+question
+            from .reply_display import day
+            message=f"{record['item']} — {record['amount']} บาท วันที่ {day(record['date'])}\n"+question
             return Result('clarification',message,{**result.data,'record_action_focus':operation})
         except (ValueError,Conflict,NotFound,ApiError,NotReady,WriteBlocked):
             # Buttons never fall through to the LLM as fabricated owner facts.
             return Result('stale','ยังเปิดรายการนี้ไม่ได้ครับ รายการหรือปุ่มอาจเปลี่ยนหรือหมดอายุ กรุณาค้นหารายการล่าสุดอีกครั้ง')
     def source(self,record):
         sheets=self.h.sheets
-        message=f"ต้นทางของ {record['item']} — {record['amount']} บาท วันที่ {record['date']}"
+        from .reply_display import day
+        message=f"ต้นทางของ {record['item']} — {record['amount']} บาท วันที่ {day(record['date'])}"
         if getattr(sheets,'backend',None)=='firestore':
             message+='\nฐานข้อมูลรายจ่าย '+sheets.target.dataset_id+'\nรหัสรายการ: '+record['id']
             url='https://console.cloud.google.com/firestore/databases?project='+quote(sheets.target.project_id,safe='')

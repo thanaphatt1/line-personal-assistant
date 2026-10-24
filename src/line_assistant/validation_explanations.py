@@ -6,6 +6,7 @@ without selecting a category, changing a draft or authorizing a write.
 """
 from copy import deepcopy
 import json,re
+from .reply_display import day_or
 
 REASONS={
  'owner_no_write':'ต้องการเปลี่ยนรายการไหนและเปลี่ยนอะไรครับ?',
@@ -135,7 +136,7 @@ def message(output):
  if not values:return None
  rows=''
  if 'ambiguous_date_scope' in values or output.get('validation_issues'):
-  rows='\n'+'\n'.join(f"{e.get('item') or '?'} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or '(รอเลือกขอบเขต)'}" for e in output.get('entries',[]))
+  rows='\n'+'\n'.join(f"{e.get('item') or '?'} {e.get('amount') or '?'} บาท วันที่ {day_or(e.get('date'),'(รอเลือกขอบเขต)')}" for e in output.get('entries',[]))
  if output.get('validation_issues'):
   labels={'item':'ชื่อรายการ','amount':'จำนวนเงิน','date':'วันที่','day':'วัน','month':'เดือน'}
   missing=list(dict.fromkeys(labels.get(str(f).split('.')[-1],'ข้อมูลรายการ') for f in output.get('missing_fields',[])))

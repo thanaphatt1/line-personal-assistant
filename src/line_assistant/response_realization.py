@@ -19,6 +19,7 @@ from .state import Claim,Result
 from .model_api import MODEL_ID,BudgetBlocked
 from .language import BANGKOK
 from . import answer_composition, operation_composition
+from .reply_display import day_or
 
 MAX_OUTPUT=768
 MAX_BODY_BYTES=24000
@@ -201,7 +202,7 @@ def facts_for(host,result):
             facts['status']=(f'มีรายจ่าย {len(entries)} รายการ รอให้ตรวจสอบก่อนบันทึกครับ' if result.status=='preview' else
                              f'มีรายจ่าย {len(entries)} รายการที่ยังต้องเติมหรือตรวจข้อมูลครับ')
             for i,e in enumerate(entries,1):
-                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {e.get('amount') or 'ยังไม่ระบุจำนวน'} บาท\nวันที่ {e.get('date') or 'ยังไม่ระบุ'}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
+                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {e.get('amount') or 'ยังไม่ระบุจำนวน'} บาท\nวันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
             if result.status=='preview':
                 for i,e in enumerate(entries,1):
                     prior=e.get('previous_price')

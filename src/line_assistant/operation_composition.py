@@ -85,6 +85,7 @@ def expenses(result):
         for field,(_,value,kind,unit) in zip(view.records[-1]['fields'].values(),cells):
             if kind!='date':field['display']=str(value)+(' '+unit if unit else '')
     if not recorded:
+        for notice in data.get('review_notices',[]):view.fact(notice,'หมายเหตุ')
         if any(e.get('mapping') for e in entries):
             view.fact('การยืนยันจะเพิ่มชื่อใหม่ตามหมวดที่เสนอและบันทึกรายจ่ายด้วยครับ','catalog_change')
         view.fact('ถ้าถูกต้อง ตอบ “ยืนยัน” หรือกดปุ่มบันทึกได้เลยครับ','instruction')

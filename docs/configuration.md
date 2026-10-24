@@ -143,6 +143,7 @@ required versus generated fields, catalog relationships and Firestore storage.
 | `PILOT_SAVED_EXPENSE_DELETE_ENABLED` | `false` | Saved expense edits/concurrency policy; separate reviewed one-record removal |
 | `PILOT_CATALOG_ALIASES_ENABLED` | `false` | History/state/raw journal; owner-confirmed catalog vocabulary |
 | `PILOT_RECORD_ACTIONS_ENABLED` | `false` | Saved expense edits; delivered save/edit buttons with stable IDs |
+| `PILOT_NAME_MATCHING_ENABLED` | `false` | History/state/raw journal; one budgeted model suggestion of existing names for an unknown expense wording |
 | `PILOT_TABLE_REGISTRY_JSON` | empty | History/state; JSON schemas and explicit existing storage bindings; see [tables](tables.md) |
 
 Historical permanent saves also require the separate mapping flag and

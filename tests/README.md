@@ -31,6 +31,17 @@ reviews and receipts use readable dates through bound operation documents and
 fallbacks, that evidence mismatches return to the planner, and that failure copy
 states no effect without internal terms.
 
+The [entry checks](test_entry_checks.py) cover same-day duplicate notices,
+conditional `only_if_absent` preparation (present, absent and unreadable records),
+the previous-question date and its immediacy limit, visible default dates and
+the receipt's alias offer through the separate alias review.
+
+The [name matching contracts](test_name_matching.py) check enum-only candidate
+requests, strict parsing, fallback on low confidence/outage/invalid output, no
+request for known names or a disabled flag, replay without a second request, the
+signed production reservation gate, typed save confirmation and the false
+success-claim regression.
+
 The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
 missing-field questions, interruption, compound rename/category corrections,
 short continuations and one final save. [Batch reads](test_read_batch.py) compare

@@ -164,7 +164,7 @@ def test_signed_unknown_add_on_keeps_previous_date_and_explains_new_name_fallbac
         assert api.create(client,'เมื่อวานค่ากระดาษ 228').status=='preview'
         assert api.send_text(client,'ยืนยัน')[0].status=='recorded'
         result,_=api.send_text(client,'ขนมทดลอง 60 ด้วย',prepare,response(name='lookup_catalog',args={'kind':'item','query':'ขนมทดลอง'}))
-        assert result.status=='clarification' and '2026-10-12' in result.message and 'ร่างเดิม' not in result.message and 'เพิ่มรายการใหม่' not in result.message
+        assert result.status=='clarification' and '12 ต.ค. 2026' in result.message and 'ร่างเดิม' not in result.message and 'เพิ่มรายการใหม่' not in result.message
         assert 'ขนมทดลอง 60' in result.message and not result.message.startswith('{')
         assert api.google.sheet_writes==1
 

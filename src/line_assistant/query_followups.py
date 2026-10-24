@@ -99,9 +99,9 @@ def context(host):
 
 def annotate(host, result):
     """Persist only candidates the grounded response actually presents."""
-    if result.data.get('tool_result', {}).get('query_followup_result'):
+    output = result.data.get('tool_result') or {}
+    if output.get('query_followup_result'):
         return result
-    output = result.data.get('tool_result', {})
     reads = getattr(host, '_query_reads', {})
     rows = [reads[ref] for ref in output.get('query_refs', []) if ref in reads] if output.get('query_analysis') else [output]
     calendars = [r for r in rows if r.get('domain') == 'calendar' and r.get('source_complete')

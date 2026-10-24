@@ -24,6 +24,29 @@ and [table setup](tables.md).
 
 `กาแฟ 35 บาท และรถเมล์ 20 บาท เมื่อวาน` prepares two entries. The assistant resolves existing Database names, asks for missing or ambiguous facts and presents the full date and amounts before saving. New names require an explicit existing/new choice and owner-supplied category/subcategory; the model cannot infer a category from the name.
 
+Before consent, an expense review states verified context from saved records and
+dates: an identical payment already saved on that date (`บันทึกไว้แล้ว: …`), the
+same name with another amount, `ไม่ได้ระบุวัน จึงใช้วันนี้ (…)`, a reused
+confirmed date, or `ใช้วันที่ … ตามที่ถามก่อนหน้า`. The last applies when the
+planner cites the single day of the immediately preceding delivered read, such as
+`เพิ่มอีกอันนึงเป็นรถตู้ 32 บาท` right after asking about yesterday. A conditional
+request such as `เมื่อวานมีค่ารถตู้ 30 บาทหรือยัง ถ้าไม่มีเพิ่มให้หน่อย` sets
+`only_if_absent`: the server compares saved records with the same date, catalog
+identity and amount. A match prepares nothing and says so; otherwise the review
+says the check found none. If saved records cannot be read, nothing is prepared.
+
+With `PILOT_NAME_MATCHING_ENABLED`, a wording with no exact, alias or spacing
+match gets one budgeted, tool-less model request. Its schema enumerates only real
+Database names; up to three high/medium-confidence names feed the existing
+`ชื่อ เซเว่น หมายถึง seven ใช่ไหมครับ หรือเป็นรายการใหม่?` choice. Each candidate
+keeps a confidence and short reason in the private model record. A timeout,
+quota stop or invalid output keeps the previous new-name question. Typing the
+save button label (`บันทึก`) after the latest review confirms like the button.
+
+When the owner chooses an existing Database name for a different spelling, the
+saved receipt offers a button that sends `จำว่า <spelling> คือ <name>`. That only
+starts the existing alias review; nothing is remembered without its confirmation.
+
 `สรุปเมื่อวาน` is a read request. It does not create a save button. A reply such as a changed amount updates only the selected pending entry. Topic changes do not cancel a draft.
 
 The established expense ledger does not handle income/transfers. Those require

@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED','PILOT_STATE_RECORDS_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_NAME_MATCHING_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED','PILOT_STATE_RECORDS_ENABLED'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -47,6 +47,7 @@ class HistoryConfig:
     catalog_aliases_enabled: bool=False
     record_actions_enabled: bool=False
     state_records_enabled: bool=False
+    name_matching_enabled: bool=False
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -112,7 +113,10 @@ class HistoryConfig:
             raise ConfigError('Owner record features require explicit history/state flags')
         if extras[0]=='true' and expense!='true':raise ConfigError('Expense removal requires saved edits and the reviewed writer policy')
         if extras[2]=='true' and expense!='true':raise ConfigError('Record buttons require saved expense editing')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras),records=='true')
+        names=values.get('PILOT_NAME_MATCHING_ENABLED','false')
+        if names not in {'true','false'} or names=='true' and (h!='true' or s!='true'):
+            raise ConfigError('Name matching requires explicit history/state opt-in')
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras),records=='true',names=='true')
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
@@ -186,6 +190,16 @@ class HistoryHttp(PilotHttp):
                     if key in self.model_attempted_events:raise LiveDisabled('Response realization already attempted')
                     self.model_attempted_events.add(key);return
             raise LiveDisabled('No owner-bound realization reservation')
+        from . import name_matching
+        if (self.config.name_matching_enabled and service=='model' and method=='POST' and path=='/v1/responses'
+            and params is None and isinstance(body,dict) and body.get('instructions')==name_matching.INSTRUCTIONS):
+            if not name_matching.validate_body(body) or self.state is None or not self.state.holder:raise LiveDisabled('Unbound name matching')
+            fingerprint=hashlib.sha256(json.dumps(body,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+            for key,run in self.state.model_runs.items():
+                if key.startswith(name_matching.PREFIX) and run.status=='reserved' and run.fingerprint==fingerprint and key in self.state.claims:
+                    if key in self.model_attempted_events:raise LiveDisabled('Name matching already attempted')
+                    self.model_attempted_events.add(key);return
+            raise LiveDisabled('No owner-bound name-matching reservation')
         if service=='calendar':
             from .calendar_transport import authorize
             return authorize(self,method,path,body,params)
@@ -274,7 +288,8 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
                             max_calls_month=config.max_calls_month,clock=http.clock,enforce_usage_limits=config.usage_gates_enabled)
     if raw_history_enabled:
         from .response_realization import INSTRUCTIONS as VOICE_INSTRUCTIONS
-        guard.reservation_calculator=lambda body:raw.reservation(body) if body.get('instructions') in {raw.request_instructions(getattr(state,'raw_tool_definitions',None) or [],calendar=config.calendar_enabled),raw.SUMMARY_INSTRUCTIONS,VOICE_INSTRUCTIONS} else RESERVATION_MICRO_USD
+        from .name_matching import INSTRUCTIONS as NAME_INSTRUCTIONS
+        guard.reservation_calculator=lambda body:raw.reservation(body) if body.get('instructions') in {raw.request_instructions(getattr(state,'raw_tool_definitions',None) or [],calendar=config.calendar_enabled),raw.SUMMARY_INSTRUCTIONS,VOICE_INSTRUCTIONS,NAME_INSTRUCTIONS} else RESERVATION_MICRO_USD
     legacy=ConversationAssistant(settings,sheets,DisabledCalendar(),ItemCatalog([],{}),state=state,clock=clock,expense_label='ในฐานข้อมูลรายจ่าย' if config.expense_backend=='firestore' else 'ในชีตจริง')
     legacy.production=True;legacy.planner=IntentPlanner(PilotPort(http,'model'),guard,lambda:legacy._active_event_id)
     from .calendar_provider import CalendarCreationApi
@@ -300,6 +315,7 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     from .table_workflow import TableWorkflow
     assistant.table_flow=TableWorkflow(assistant,table_registry)
     assistant.response_realization_enabled=config.response_realization_enabled
+    assistant.name_matching_enabled=config.name_matching_enabled and raw_history_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)
     replies=BoundedReplies(LineReplyApi(PilotPort(http,'line')),assistant)
     app=create_app(assistant,replies,inspection_mode=False,event_limit=5,body_limit=16384,app_mode='owner_expenses')

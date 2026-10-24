@@ -75,9 +75,8 @@ def definitions():
          'parameters':object_schema({**common,'upcoming':{'type':'boolean','description':'True only for next/upcoming appointment intent; false for an explicit day, week, month or year scope.'},'filter_text':{'type':['string','null'],'description':'Literal appointment subject/type/condition from a cited owner message; server classifies fetched events semantically. Null only when no filter requested.'}})}]
 
 
-def context(host):
-    """Trusted scope and bounded catalog data for model interpretation, not rules."""
-    scope=None
+def previous_scope(host):
+    """Latest delivered, still-valid read scope; interpretation context only."""
     # Read focus may survive a clarification/chat turn. This is intentionally
     # separate from _presented_result: write consent still uses the latest reply.
     for row in sorted(host.state.history,key=lambda r:datetime.fromisoformat(r['at']),reverse=True):
@@ -96,7 +95,12 @@ def context(host):
             if (not row.get('delivery_verified') or not reply or reply.status!='sent'
                 or reply.content_hash!=semantic_tools.message_hash(semantic_tools.rendered_message(receipt.result))
                 or host.state.event_workbooks.get(row['event'])!=storage_scope(host.sheets)):continue
-        scope=candidate;break
+        return candidate
+    return None
+
+def context(host):
+    """Trusted scope and bounded catalog data for model interpretation, not rules."""
+    scope=previous_scope(host)
     try:
         tax = host._taxonomy()
         catalog = {'complete':True,'items':[r.item for r in tax.rows],

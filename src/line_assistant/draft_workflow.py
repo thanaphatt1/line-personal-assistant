@@ -71,8 +71,11 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
             for field in ['category','subcategory','date','date_context']:
                 entry['properties'].pop(field,None)
                 if field in entry['required']:entry['required'].remove(field)
-            entry['properties']['date_ref']={'type':['string','null'],'enum':[None,*[v['date_ref'] for v in date_references]]}
+            entry['properties']['date_ref']={'type':['string','null'],'enum':[None,*[v['date_ref'] for v in date_references]],
+                'description':'Optional date_references ref when the owner means that date, such as another payment on the day just asked about (previous_question) or the last confirmed expense. Null uses explicit owner date wording or today.'}
             entry['required'].append('date_ref')
+            p['only_if_absent']={'type':'boolean','description':'True when the owner asks to add a payment only if it is not already recorded (check first, then add). The server compares saved records with the same date, catalog item and amount and prepares nothing when one exists. Use it directly for such requests instead of reading first. Never writes.'}
+            t['parameters']['required'].append('only_if_absent')
             fields=object_schema({name:{'type':'array','items':{'type':'string'},'maxItems':16} for name in ['item','amount','date','note']})
             entry['properties']['field_sources']={'anyOf':[{'type':'null'},fields],
                 'description':'Optional original OWNER refs for individual fields when their evidence comes from different messages. Null uses the entry source_refs for verification. These refs locate evidence; they do not fill missing values except explicitly selected verified recorded facts.'}

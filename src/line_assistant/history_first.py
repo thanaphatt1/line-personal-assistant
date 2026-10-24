@@ -17,7 +17,8 @@ from .conversation_evidence import command_text,category_choice,grounded_item
 from .domain_notes import section,CLEAR,LABEL as NOTE_LABEL
 from .draft_patch import MONTH_WORDS
 from .history_context import HistoryState,WINDOW,MAX_DRAFTS,digest,source_ref,build_request,draft_fingerprint
-from .history_dates import resolve as policy_date,cues as date_cues
+from .history_dates import resolve as policy_date,cues as date_cues,POLICY as DATE_POLICY
+from .reply_display import day_or
 from .history_persistence import LocalHistoryState
 from .history_integration import FirestoreHistoryState
 from .sheets_api import SheetsApi
@@ -90,6 +91,7 @@ class Prepare(Args):
     draft_ref:str|None=Field(default=None,max_length=40)
     draft_version:int|None=Field(default=None,ge=1)
     entries:list[ExpenseData]=Field(default_factory=list,max_length=5)
+    only_if_absent:bool=False
 
 class Lookup(Args):
     kind:str
@@ -876,6 +878,12 @@ class HistoryFirstAssistant(Assistant):
                 if date.fromisoformat(calculated)>self.clock().astimezone(BANGKOK).date():date_issue='future_expense_date'
             elif value.date_text or literal_date or value.date or value.date_context:
                 invalid.append('conflicting_date_reference')
+            elif target.get('previous_question'):
+                # The planner reads "another one" style references; the review
+                # states this date source before any consent.
+                calculated=target['date'];parts={};date_issue=None
+                date_basis={**date_basis,'policy':'previous-question-date-v01','explicit_parts':{},'defaulted_parts':{},
+                            'date_ref':target['date_ref'],'referenced_date':calculated}
             elif not re.search(r'วัน(?:ที่)?(?:เดียว|เดิม|นั้น)|วันที่[^\n]{0,30}(?:ก่อน|เดิม)|รายการก่อน|ครั้งก่อน|เมื่อกี้|เมื่อครู่|ก่อนหน้า',self._current['text']):
                 invalid.append('date_reference_not_requested')
             else:
@@ -899,7 +907,7 @@ class HistoryFirstAssistant(Assistant):
                             'confirmed_event':continuation['confirmed_event']}
         if value.date_text and not scope_issues and not any(value.date_text in s for s,_,_ in date_units):invalid.append('date_text_source')
         if date_answer:date_basis.update(original_owner_text=self._current['text'],normalization='bound-day-answer-v01')
-        if not date_units and date_basis.get('policy') not in {'verified-date-reference-v01','verified-date-context-v01','bangkok-date-continuation-v01'}:calculated=old['date'] if old else None
+        if not date_units and date_basis.get('policy') not in {'verified-date-reference-v01','verified-date-context-v01','bangkok-date-continuation-v01','previous-question-date-v01'}:calculated=old['date'] if old else None
         month_question=date_issue=='missing_month_for_future_day'
         if date_issue and date_issue not in {'missing_day','missing_month_for_future_day','continuation_date_required','ambiguous_date_scope'}:invalid.append(date_issue)
         if old and old['date'] and calculated is None and not month_question:invalid.append('date_incomplete_or_invalid')
@@ -996,6 +1004,13 @@ class HistoryFirstAssistant(Assistant):
                 missing=[f for f in missing if f not in {'item_resolution','existing_or_new','subcategory'}]
                 if normalized(item)!=normalized(shown_item):name_metadata['item_resolution']={'from':item,'to':shown_item}
             elif name_plan.get('candidates'):name_metadata['name_candidates']=name_plan['candidates']
+            elif (getattr(self,'name_matching_enabled',False) and not (old and same_item) and shown_item==item
+                  and not tax.catalog.identity(item).canonical):
+                # Narrow suggestion step for a genuinely unknown wording. The
+                # owner still chooses an existing name or a new item.
+                from .name_matching import candidates
+                found=candidates(self,item,tax)
+                if found:name_metadata['name_candidates']=found
             if old and same_item and old.get('item_resolution') and 'item_resolution' not in name_metadata:name_metadata['item_resolution']=deepcopy(old['item_resolution'])
             if old and same_item and old.get('name_candidates') and shown_item==item:name_metadata.setdefault('name_candidates',deepcopy(old['name_candidates']))
         return {'entry_ref':old['entry_ref'] if old else 'entry_'+digest([self._active_event_id,index])[:20],
@@ -1222,6 +1237,19 @@ class HistoryFirstAssistant(Assistant):
                            'date_details':[{'entry':i,'normalized_date':e['date'],'parts':{**e['date_basis'].get('defaulted_parts',{}),**e['date_basis'].get('explicit_parts',{})},'issue':e['date_issue']} for i,e in enumerate(entries) if e['date_issue']]}
         if old and not self.raw_history_enabled and any(e['item'] is None or e['amount'] is None for e in entries):
             return {'ok':False,'error':'complete_snapshot_required','missing_fields':missing,'invalid_fields':[]}
+        checked=None
+        if p.only_if_absent and self.raw_history_enabled and not old and not missing:
+            # The model reads the condition; the server decides presence from
+            # saved records. No draft exists unless every payment is absent.
+            try:matches=self._saved_matches(entries)
+            except Exception:
+                return {'ok':False,'error':'duplicate_check_unavailable','clarification_required':True,'financial_write_authorized':False}
+            present=[m for m in matches if m['same_amount']]
+            if present:
+                found={m['entry_ref'] for m in present}
+                return {'ok':True,'status':'already_recorded','read_only':True,'financial_write_authorized':False,'existing':present,
+                        'absent':[{k:e[k] for k in ('item','amount','date')} for e in entries if e['entry_ref'] not in found]}
+            checked=[{k:e[k] for k in ('item','amount','date')} for e in entries]
         ref=p.draft_ref or 'draft_'+digest(self._active_event_id)[:20]
         expiry=min([datetime.fromisoformat(r['at'])+WINDOW for r in sources]+([datetime.fromisoformat(old['expires_at'])] if old else [self.clock()+WINDOW]))
         d={'draft_ref':ref,'owner_id':self.settings.owner_id,'version':old['version']+1 if old else 1,
@@ -1237,7 +1265,50 @@ class HistoryFirstAssistant(Assistant):
         # do not expose a durable draft-without-receipt gap on this return path.
         if missing:self.state.checkpoint()
         return {'ok':True,'status':d['status'],'draft_ref':ref,'draft_version':d['version'],'entries':deepcopy(entries),'missing_fields':missing,
-                'invalid_fields':[],**({'validation_issues':retained_issues} if retained_issues else {}),'confirmation_required':not bool(missing)}
+                'invalid_fields':[],**({'validation_issues':retained_issues} if retained_issues else {}),
+                **({'absence_checked':checked} if checked else {}),'confirmation_required':not bool(missing)}
+
+    def _saved_matches(self,entries):
+        """Saved records with the same date and catalog identity; a review/consent aid, never a write."""
+        wanted=[e for e in entries if e.get('item') and e.get('date')]
+        if not wanted:return []
+        dates=sorted(e['date'] for e in wanted)
+        rows=self.sheets.saved_entries(date.fromisoformat(dates[0]),date.fromisoformat(dates[-1]))
+        catalog=self._taxonomy().catalog
+        def identity(name):
+            match=catalog.identity(name);return normalized(match.canonical or name)
+        result=[]
+        for e in wanted:
+            same=[r for r in rows if r['date']==e['date'] and identity(r['item'])==identity(e['item'])]
+            if not same:continue
+            exact=[r for r in same if e.get('amount') is not None and Decimal(str(r['amount']))==Decimal(str(e['amount']))]
+            result.append({'entry_ref':e.get('entry_ref'),'item':e['item'],'date':e['date'],
+                'amount':str(e['amount']) if e.get('amount') is not None else None,
+                'same_item':len(same),'same_amount':len(exact),'saved_amounts':[str(r['amount']) for r in same][:5]})
+        return result
+
+    def _review_notices(self,output):
+        """Verified context shown before consent: duplicates, absence checks and date sources."""
+        from .reply_display import day
+        notices=[]
+        for row in output.get('absence_checked') or []:
+            notices.append(f"ตรวจแล้ว ยังไม่มี {row['item']} {row['amount']} บาท วันที่ {day(row['date'])}")
+        if not output.get('absence_checked'):
+            try:matches=self._saved_matches(output.get('entries',[]))
+            except Exception:matches=[]
+            for m in matches:
+                if m['same_amount']:notices.append(f"บันทึกไว้แล้ว: {m['item']} {m['amount']} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)")
+                else:notices.append(f"วันเดียวกันมี {m['item']} บันทึกไว้แล้ว {m['same_item']} รายการ ({', '.join(m['saved_amounts'])} บาท)")
+        for e in output.get('entries',[]):
+            basis=e.get('date_basis') or {}
+            if not e.get('date'):continue
+            if basis.get('policy')=='previous-question-date-v01':text=f"ใช้วันที่ {day(e['date'])} ตามที่ถามก่อนหน้า"
+            elif basis.get('confirmed_event'):text='ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า'
+            elif basis.get('policy')==DATE_POLICY and not basis.get('explicit_parts') and basis.get('defaulted_parts',{}).get('day'):
+                text=f"ไม่ได้ระบุวัน จึงใช้วันนี้ ({day(e['date'])})"
+            else:continue
+            if text not in notices:notices.append(text)
+        return notices
 
     @staticmethod
     def _payload(d):
@@ -1385,6 +1456,14 @@ class HistoryFirstAssistant(Assistant):
     def _result(self,tool_output,model_text=''):
         if tool_output and tool_output.get('ok') and tool_output.get('status')=='pending_unchanged':
             return Result('answer','ข้อมูลรายการตรงตามที่ขออยู่แล้วครับ',{'tool_result':deepcopy(tool_output)})
+        if tool_output and tool_output.get('ok') and tool_output.get('status')=='already_recorded':
+            from .reply_display import day
+            lines=['มีอยู่แล้วครับ เลยยังไม่ได้เพิ่ม']+[f"บันทึกไว้แล้ว: {m['item']} {m['amount']} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)" for m in tool_output['existing']]
+            if tool_output.get('absent'):
+                lines.append('ยังไม่มี: '+', '.join(f"{a['item']} {a['amount']} บาท" for a in tool_output['absent'])+' ถ้าต้องการเพิ่ม บอกได้เลยครับ')
+            return Result('answer','\n'.join(lines),{'tool_result':deepcopy(tool_output)})
+        if tool_output and tool_output.get('error')=='duplicate_check_unavailable':
+            return Result('clarification','ยังตรวจไม่ได้ว่ามีรายการนี้บันทึกไว้แล้วหรือยัง จึงยังไม่ได้เพิ่มครับ ลองอีกครั้งได้ไหมครับ?',{'tool_result':deepcopy(tool_output)})
         if tool_output and tool_output.get('temporal_resolution'):
             if not tool_output.get('ok'):return Result('clarification',tool_output.get('message','ยังตีความวันเวลานี้ให้ชัดเจนไม่ได้ครับ'),{'tool_result':deepcopy(tool_output)})
             parts=[str(tool_output[k]) for k in ['date','time','duration_text'] if tool_output.get(k)]
@@ -1458,7 +1537,7 @@ class HistoryFirstAssistant(Assistant):
                     choice=clarification(self,{**tool_output,'draft_ref':d['draft_ref'],'draft_version':d['version'],
                         'entries':deepcopy(d['entries']),'missing_fields':deepcopy(d['missing_fields'])})
                     if choice:return Result('clarification',choice[1],{'tool_result':choice[0]})
-                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or 'ยังไม่ระบุ'}" for e in tool_output['entries'])
+                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}" for e in tool_output['entries'])
                 narrative=tool_output.get('history_summary','')
                 if narrative and not success_claim(narrative):rows+='\nสรุปบทสนทนา:\n'+narrative
                 return Result('answer',('รายจ่ายที่ยังไม่ได้บันทึก:\n'+rows if tool_output['entries'] else 'ไม่มีรายจ่ายที่รอบันทึก'+('\nสรุปบทสนทนา:\n'+narrative if narrative and not success_claim(narrative) else '')),{'tool_result':tool_output})
@@ -1516,28 +1595,29 @@ class HistoryFirstAssistant(Assistant):
             if any(e['mapping'] for e in d['entries']):instruction+='\nการยืนยันจะเพิ่มชื่อใหม่ใน Database และบันทึกรายจ่ายที่แสดง'
             if self.raw_history_enabled and any(e['mapping'] for e in d['entries']):
                 instruction='หมวดสำหรับชื่อใหม่เป็นข้อเสนอที่ต้องตรวจสอบ\n'+instruction
-            continued=any(e.get('date_basis',{}).get('confirmed_event') for e in d['entries'])
-            message=f'ตรวจสอบรายการ:\n{rows}\n'+('ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า\n' if continued else '')+instruction
+            if self.raw_history_enabled:notices=self._review_notices(tool_output)
+            else:notices=['ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า'] if any(e.get('date_basis',{}).get('confirmed_event') for e in d['entries']) else []
+            message=f'ตรวจสอบรายการ:\n{rows}\n'+''.join(v+'\n' for v in notices)+instruction
             prior=[e for e in d['entries'] if e.get('previous_price',{}).get('state')=='accepted']
             if prior:message+='\n'+'\n'.join(f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {e['previous_price']['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}" for e in prior)
-            data={'tool_result':tool_output,'confirm_command':command}
+            data={'tool_result':tool_output,'confirm_command':command,**({'review_notices':notices} if notices else {})}
             if self.semantic_enabled:data['line_message']=semantic.render_actions(message,semantic.actions(self,d))
             return Result('preview',message,data)
-        if success_claim(model_text):return Result('clarification','ยังไม่มีผลยืนยันการบันทึกจาก tool จึงยังไม่รายงานว่าบันทึกแล้ว',{'tool_result':tool_output})
+        if success_claim(model_text):return Result('clarification','ยังไม่ได้บันทึกครับ ถ้ามีรายการรอยืนยันอยู่ ตอบ “ยืนยัน” หรือกดปุ่มบันทึกได้เลยครับ',{'tool_result':tool_output} if tool_output else {})
         if tool_output and not tool_output.get('ok'):return Result('clarification',model_text or 'ข้อมูลยังไม่ผ่านการตรวจสอบ กรุณาระบุให้ชัดเจน',{'tool_result':tool_output})
         if tool_output and tool_output.get('status')=='needs_information':
             price_question=self.previous_prices.prompt(tool_output)
             if price_question:return Result('clarification',price_question,{'tool_result':tool_output})
             unresolved=[e for i,e in enumerate(tool_output['entries']) if any(f'entries[{i}].'+field in tool_output['missing_fields'] for field in ['item_resolution','existing_or_new'])]
             if unresolved and not model_text:
-                rows='\n'.join(f"{e['item']} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in unresolved)
+                rows='\n'.join(f"{e['item']} {e['amount'] or '?'} บาท วันที่ {day_or(e['date'],'ยังไม่ระบุ')}" for e in unresolved)
                 model_text='ยังไม่ได้บันทึก:\n'+rows+'\nชื่อนี้ตรงกับรายการเดิมใน Database หรือเป็นรายการใหม่ครับ?'
                 matches=tool_output.get('catalog_matches',[])
                 if matches:model_text+='\nชื่อใกล้เคียง: '+', '.join(v['item'] for v in matches if v.get('item'))
             labels={'item':'ชื่อรายการ','amount':'จำนวนเงิน','date':'วันที่','date.day':'วัน','date.month':'เดือน','category':'หมวด','subcategory':'หมวดย่อย','item_resolution':'ชื่อใน Database','existing_or_new':'ชื่อเดิมหรือรายการใหม่'}
             missing=[labels.get(re.sub(r'^entries\[\d+\]\.','',f),'ข้อมูลรายการ') for f in tool_output['missing_fields']]
             if self.raw_history_enabled and tool_output.get('validation_issues'):
-                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {e.get('date') or 'ยังตรวจสอบไม่ได้'}" for e in tool_output['entries'])
+                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {day_or(e.get('date'),'ยังตรวจสอบไม่ได้')}" for e in tool_output['entries'])
                 model_text='ยังไม่ได้บันทึก:\n'+rows+'\nขอเฉพาะข้อมูลที่ยังตรวจสอบไม่ได้: '+', '.join(dict.fromkeys(missing))
             return Result('clarification',model_text or 'ขอข้อมูลเพิ่ม: '+', '.join(dict.fromkeys(missing)),{'tool_result':tool_output})
         if not model_text and tool_output:
@@ -1733,7 +1813,8 @@ class HistoryFirstAssistant(Assistant):
             _,shown=self._presented_result()
             short=re.sub(r'(?:ครับ|ค่ะ|คะ)\s*$','',text).strip()
             short=''.join(short.split())
-            if shown and shown.status=='preview' and short in {'ใช่','โอเคบันทึกเลย'}:
+            # Typing the save button's own label is the same explicit owner action.
+            if shown and shown.status=='preview' and short in {'ใช่','โอเคบันทึกเลย','บันทึก','บันทึกเลย'}:
                 return self._finish(event,at,self._contextual_confirm())
             if short=='โอเคบันทึกเลย' and self._read_confirmable_preview():
                 return self._finish(event,at,self._contextual_confirm(after_read=True))
@@ -1770,7 +1851,7 @@ class HistoryFirstAssistant(Assistant):
         previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
         from .tool_repair import RepairLoop
         repairs=RepairLoop(self);repair_allowed=None
-        self._query_reads={};self._query_analysis_active=False;self._data_inventory={};self._last_inventory=None
+        self._query_reads={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
         for step in count():
             if not self.raw_history_enabled and step>=2:break
             try:
@@ -1975,7 +2056,7 @@ class HistoryFirstAssistant(Assistant):
                         output=self._enrollment_result(self._draft(view['draft_ref']),missing[0]['entry_ref'])
                         last={**output,'available_drafts':last['available_drafts'],
                               **({'name_question_resumed':True} if last.get('name_question_resumed') else {})}
-                if last.get('status') in {'review','choose_draft','cancelled','no_pending'} or self.raw_history_enabled and last.get('status') in {'draft_read','needs_information','invalid_request','stored_query'} or last.get('item_enrollment') or self.semantic_enabled and last.get('status')=='summary':
+                if last.get('status') in {'review','choose_draft','cancelled','no_pending'} or self.raw_history_enabled and last.get('status') in {'draft_read','needs_information','invalid_request','stored_query','already_recorded'} or last.get('item_enrollment') or self.semantic_enabled and last.get('status')=='summary':
                     self.phase_hook('history_review_pre_receipt',event)
                     return self._finish(event,at,self._result(last))
                 previous=(call,semantic.compact(last) if self.semantic_enabled else last)

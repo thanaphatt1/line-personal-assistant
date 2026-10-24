@@ -112,7 +112,7 @@ def test_failed_item_source_retains_independently_cited_date_and_amount():
     assert r.status=='clarification';e=h.draft()['entries'][0]
     assert (e['item'],e['amount'],e['date'])==(None,'56','2026-10-15')
     assert 'จำนวนเงิน' not in r.message and 'ไม่ต้องส่งประโยคเดิมซ้ำ' not in r.message
-    assert '56' in r.message and '2026-10-15' in r.message
+    assert '56' in r.message and '15 ต.ค. 2026' in r.message
 
 def test_internal_failure_cannot_echo_model_advice_to_repeat_the_same_sentence():
     h=harness()

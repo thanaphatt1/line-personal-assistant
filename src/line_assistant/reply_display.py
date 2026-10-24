@@ -8,6 +8,11 @@ def day(value):
     return f'{at.day} {MONTHS[at.month-1][1]} {at.year}'
 
 
+def day_or(value,missing):
+    """Thai display date for an optional ISO date; the fallback is shown verbatim."""
+    return day(value) if value else missing
+
+
 def clock(at):
     if at.microsecond:return at.strftime('%H:%M:%S.%f').rstrip('0')
     return at.strftime('%H:%M:%S' if at.second else '%H:%M')
