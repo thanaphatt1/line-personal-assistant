@@ -27,12 +27,13 @@ def definitions():
             'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})}]
 
 def context(host):
+    from .read_queries import MAX_EXPENSE_DAYS,MAX_QUERY_DAYS
     observations=deepcopy(getattr(host,'_data_inventory',{}))
     value={'data_sources':{
         'expense':{'scope':'configured expense dataset only','record_date_extent':'current_request_observation' if observations.get('expense',{}).get('status')=='verified' else 'unknown_until_inspected',
-            'query_window_days':367,'income':False,'balance':False},
+            'query_window_days':MAX_EXPENSE_DAYS,'income':False,'balance':False},
         'calendar':{'enabled':host.calendar_flow.enabled,'scope':'server-selected configured/shared calendars only',
-            'event_read_permission':'verified_per_actual_read','global_date_extent':'unknown','query_window_days':31},
+            'event_read_permission':'verified_per_actual_read','global_date_extent':'unknown','query_window_days':MAX_QUERY_DAYS},
         'external_search':False,'write_policy':'explicit new owner confirmation of a reviewed proposal; tool calls do not grant consent'},
         'data_source_observations':observations}
     flow=getattr(host,'table_flow',None)
@@ -92,7 +93,7 @@ def render(output):
     if output['source']=='capabilities':
         if 'query_expenses' in tools:lines.append('รายจ่าย: อ่านยอดและรายการ กรอง จัดกลุ่ม เรียงยอด และจับคู่กับวันที่จากปฏิทินได้')
         if 'query_calendar' in tools and output['data_sources']['calendar']['enabled']:lines.append('ปฏิทิน: อ่านนัดในช่วงวันที่และตีความเงื่อนไขกิจกรรมได้')
-        lines.append('อ่านรายจ่ายได้ครั้งละไม่เกิน 367 วัน และปฏิทินไม่เกิน 31 วัน ช่วงใหญ่กว่านี้แบ่งอ่านได้ภายในเวลาที่มี')
+        lines.append('อ่านรายจ่ายได้ครั้งละไม่เกิน 10 ปี และปฏิทินไม่เกิน 3 ปี')
         lines.append('เข้าถึงเฉพาะฐานข้อมูลและปฏิทินที่เชื่อมให้ระบบ สิทธิ์อ่านนัดต้องตรวจเมื่ออ่านจริง ยังไม่ใช่ทุกปฏิทินในอีเมล')
         lines.append('รายรับเพิ่มเติมขึ้นอยู่กับ table ที่เชื่อมไว้; รายจ่ายเดิมไม่มีข้อมูลยอดคงเหลือ' if output['data_sources'].get('tables') else 'ยังไม่มีข้อมูลรายรับหรือยอดคงเหลือ')
         lines.append('การสร้างหรือแก้ข้อมูลต้องผ่านการตรวจและยืนยันจากเจ้าของก่อน' if any(t.startswith('prepare_') for t in tools)

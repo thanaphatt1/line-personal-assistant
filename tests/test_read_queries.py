@@ -49,7 +49,7 @@ def test_typed_dates_are_explicit_not_reparsed_from_owner_words(start,end):
     assert r.data['tool_result']['complete']
 
 
-@pytest.mark.parametrize('start,end', [('2026-10-30','2026-10-01'),('invalid','2026-10-16'),('2569-10-16','2569-10-16'),('2026-01-01','2028-01-01'),('2026-02-31','2026-02-31')])
+@pytest.mark.parametrize('start,end', [('2026-10-30','2026-10-01'),('invalid','2026-10-16'),('2569-10-16','2569-10-16'),('2026-01-01','2037-01-01'),('2026-02-31','2026-02-31')])
 def test_bad_date_arguments_do_not_read_or_default(start,end,monkeypatch):
     h=Harness();monkeypatch.setattr(h.sheets,'saved_entries',lambda *a:pytest.fail('invalid query read'))
     r=h.send('ข้อความ',plan(start=start,end=end));assert r.status=='clarification'
@@ -115,7 +115,7 @@ def test_calendar_preserves_transparent_all_day_overlap_and_exclusive_end():
 
 
 def test_calendar_bounds_disabled_and_upcoming():
-    h=Harness();assert h.send('เกินหนึ่งเดือน',plan('calendar','2026-10-01','2026-11-01')).data['tool_result']['error_code']=='date_bounds'
+    h=Harness();assert h.send('เกินสามปี',plan('calendar','2026-10-01','2029-10-02')).data['tool_result']['error_code']=='date_bounds'
     h.provider.events={'past':event('past','2026-10-16T09:00:00+07:00','2026-10-16T10:00:00+07:00'),'current':event('current','2026-10-16T14:00:00+07:00','2026-10-16T16:00:00+07:00')}
     assert h.send('ถัดไป',plan('calendar','2026-10-16','2026-10-22',upcoming=True)).data['tool_result']['count']==1
     assert Harness(enabled=False).send('นัด',plan('calendar')).data['tool_result']['error_code']=='calendar_disabled'
@@ -169,7 +169,7 @@ def test_calendar_pagination_deduplication_and_incomplete_fail_closed():
     api = CalendarCreationApi(RestClient('calendar', httpx.MockTransport(request)), TARGET)
     start = datetime.fromisoformat('2026-10-17T00:00:00+07:00');end = start + timedelta(days=1)
     assert len(api.saved_events(start, end)) == 1 and calls[1]['pageToken'] == 'next'
-    assert calls[0]['timeZone'] == 'Asia/Bangkok' and calls[0]['maxResults'] == '20'
+    assert calls[0]['timeZone'] == 'Asia/Bangkok' and calls[0]['maxResults'] == '50'
     api.client = RestClient('calendar', httpx.MockTransport(lambda r: httpx.Response(200, json={'items': [], 'nextPageToken': 'same'})))
     with pytest.raises(NotReady):api.saved_events(start, end)
 

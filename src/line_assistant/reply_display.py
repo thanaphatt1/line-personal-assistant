@@ -13,6 +13,10 @@ def day_or(value,missing):
     return day(value) if value else missing
 
 
+def weekday_short(value):
+    return ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'][date.fromisoformat(value[:10]).weekday()]
+
+
 def clock(at):
     if at.microsecond:return at.strftime('%H:%M:%S.%f').rstrip('0')
     return at.strftime('%H:%M:%S' if at.second else '%H:%M')

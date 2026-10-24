@@ -47,6 +47,7 @@ READS = (
     'If an expense read has no stated period or recoverable prior scope, ask for the period. '
     'Distinguish totals by entity from individual transactions when grouping or ranking; execute supported analysis now. '
     'Read all data needed for the requested coverage and respect completeness and uncertainty in the results. '
+    'One requested period is one read, even when it spans months or years; batch only genuinely different periods or sources. '
     'Batch independent reads when their inputs are known; dependent reads wait for their source result. '
     'A request about spending on activity dates requires reading the relevant calendar events before selecting expenses on those dates. '
     'This measures spending on those dates, not proven costs caused by an event. '

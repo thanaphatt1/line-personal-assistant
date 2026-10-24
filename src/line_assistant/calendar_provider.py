@@ -17,8 +17,9 @@ from .transport import ApiError,OutcomeUnknown,WriteBlocked,NotReady
 CALENDAR_LIST_PATH='/calendar/v3/users/me/calendarList'
 CALENDAR_LIST_PARAMS={'maxResults':20,'minAccessRole':'reader','showHidden':'true','showDeleted':'false'}
 MAX_READ_CALENDARS=16
-MAX_QUERY_DAYS=31
-MAX_EVENT_PAGES=8
+MAX_QUERY_DAYS=1096
+MAX_EVENT_PAGES=20
+READ_PAGE_SIZE=50
 
 def additional_calendar_ids(identifiers,calendar_id):
     if (not isinstance(identifiers,(list,tuple)) or len(identifiers)>=MAX_READ_CALENDARS
@@ -158,7 +159,7 @@ class CalendarCreationApi:
     def saved_events(self,start,end,*,include_details=False,include_refs=False):
         """Read every selected calendar completely before returning an answer."""
         if start.utcoffset() is None or end.utcoffset() is None or not timedelta(0)<end-start<=timedelta(days=MAX_QUERY_DAYS):
-            raise NotReady('Calendar query requires an offset and at most31 days')
+            raise NotReady('Calendar query requires an offset and a bounded window')
         result={}
         for calendar_id in self.readable_calendars():
             for identity,row in self._saved_events(calendar_id,start,end,include_details=include_details):
@@ -172,12 +173,12 @@ class CalendarCreationApi:
         base='/calendar/v3/calendars/'+quote(calendar_id,safe='')+'/events'
         result={};page=None;seen=set()
         for _ in range(MAX_EVENT_PAGES):
-            params={'timeMin':start.isoformat(),'timeMax':end.isoformat(),'singleEvents':'true','orderBy':'startTime','timeZone':'Asia/Bangkok','maxResults':20}
+            params={'timeMin':start.isoformat(),'timeMax':end.isoformat(),'singleEvents':'true','orderBy':'startTime','timeZone':'Asia/Bangkok','maxResults':READ_PAGE_SIZE}
             if page:params['pageToken']=page
             value=self.client.request('GET',base,params=params)
             if not isinstance(value,dict):raise NotReady('Calendar page malformed')
             items=value.get('items',[] if value.get('kind')=='calendar#events' else None)
-            if not isinstance(items,list) or len(items)>20:raise NotReady('Calendar page malformed')
+            if not isinstance(items,list) or len(items)>READ_PAGE_SIZE:raise NotReady('Calendar page malformed')
             for event in items:
                 if not isinstance(event,dict):raise NotReady('Calendar event malformed')
                 if event.get('status')=='cancelled':continue

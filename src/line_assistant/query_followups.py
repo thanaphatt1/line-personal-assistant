@@ -14,6 +14,7 @@ from .expense_storage import storage_scope
 from .history_context import digest
 from .language import BANGKOK
 from .model_api import object_schema
+from .conversation_ui import render_actions, utf16_limit
 from .state import Result
 from .transport import ApiError, NotReady, OutcomeUnknown
 
@@ -23,7 +24,7 @@ NAME = 'resolve_activity_dates'
 class Resolve(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
     clarification_ref: str = Field(min_length=1, max_length=64)
-    candidate_refs: list[str] = Field(min_length=1, max_length=5)
+    candidate_refs: list[str] = Field(min_length=1, max_length=20)
     decision: Literal['confirm', 'exclude'] = 'confirm'
     selection_text: str = Field(min_length=1, max_length=200)
     source_refs: list[str] = Field(min_length=1, max_length=16)
@@ -37,7 +38,7 @@ def definitions(host):
              'description': 'Resolve the current owner affirmative or negative selection among pending_query appointments in its original period. confirm affirms only selected candidate_refs; exclude rejects only those refs. Other candidates remain unconfirmed. Copy literal CURRENT selection_text identifying the selection. Re-reads Calendar and computes expenses on confirmed dates. No business writes. Questions and unrelated new queries do not select candidates.',
              'parameters': object_schema({
                  'clarification_ref': {'type': 'string'},
-                 'candidate_refs': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 5},
+                 'candidate_refs': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 20},
                  'decision': {'type': 'string', 'enum': ['confirm', 'exclude']},
                  'selection_text': {'type': 'string'},
                  'source_refs': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 16}})}]
@@ -104,6 +105,8 @@ def annotate(host, result):
         return result
     reads = getattr(host, '_query_reads', {})
     rows = [reads[ref] for ref in output.get('query_refs', []) if ref in reads] if output.get('query_analysis') else [output]
+    from .read_queries import coalesce
+    rows = coalesce(rows)
     calendars = [r for r in rows if r.get('domain') == 'calendar' and r.get('source_complete')
                  and r.get('scope', {}).get('filter_text') and r.get('calendar_selection', {}).get('uncertain_count')]
     if len(calendars) != 1:
@@ -119,7 +122,8 @@ def annotate(host, result):
     now = datetime.fromisoformat(host._current['at'])
     pending = {'format': 'activity-read-followup-v1', 'owner': host.settings.owner_id,
                'ref': 'follow_' + digest([host.settings.owner_id, host._active_event_id, scope, candidates])[:20],
-               'question': host._current['text'], 'goal': 'expense' if any(r.get('domain') == 'expense' for r in rows) else 'activity',
+               'question': host._current['text'], 'goal': 'expense' if any(r.get('domain') == 'expense' for r in rows)
+                       or any(t.get('call', {}).get('name') == 'query_expenses' for t in getattr(host, 'trace', [])) else 'activity',
                'scope': deepcopy(scope), 'candidates': candidates, 'confirmed': deepcopy(confirmed),
                'unconfirmed_count': row['calendar_selection']['uncertain_count'],
                'expires_at': (now + timedelta(hours=24)).isoformat()}
@@ -132,13 +136,27 @@ def annotate(host, result):
                 {'invalid_arguments', 'date_required', 'incomplete_calendar_basis'})]
         message = '\n\n'.join(render_query(r, now).message for r in kept)
     from .read_queries import label_text, result as render_query
-    prompt = '\n\nนัดไหนเป็น' + label_text(scope['filter_text']) + 'ครับ? บอกวันที่หรือชื่อนัดได้เลย'
+    activity = label_text(scope['filter_text'])
+    titles = list(dict.fromkeys(e['title'] for e in candidates))
+    # One question per repeated title settles every occurrence at once. The
+    # buttons only send owner text; resolution still runs the typed tool.
+    if len(titles) == 1:
+        prompt = '\n\n' + label_text(titles[0]) + ' เป็น' + activity + 'ไหมครับ?'
+        actions = [{'type': 'message', 'label': 'ใช่', 'text': titles[0] + ' เป็น' + activity},
+                   {'type': 'message', 'label': 'ไม่ใช่', 'text': titles[0] + ' ไม่ใช่' + activity}]
+    else:
+        prompt = '\n\nนัดไหนเป็น' + activity + 'ครับ? ตอบชื่อนัดได้เลย'
+        actions = [{'type': 'message', 'label': utf16_limit(title, 20), 'text': title + ' เป็น' + activity} for title in titles[:3]]
+        actions.append({'type': 'message', 'label': 'ไม่ใช่ทั้งหมด', 'text': 'ไม่มีนัดไหนเป็น' + activity})
     if pending['goal'] == 'expense':
         prompt += ' แล้วผมจะรวมรายจ่ายของวันที่ยืนยันให้ครับ'
     message += prompt
     if len(message.encode('utf-16-le')) > 9000:
         message = render_query(row, now).message + prompt
-    return Result(result.status, message, {**result.data, 'read_followup': pending})
+    data = {**result.data, 'read_followup': pending}
+    try:data['line_message'] = render_actions(message, actions)
+    except ValueError:pass
+    return Result(result.status, message, data)
 
 
 def repair(host, output):
@@ -224,6 +242,16 @@ def execute(host, args):
         return (date.fromisoformat(e['end']) - timedelta(days=1)).isoformat() if e['all_day'] else (datetime.fromisoformat(e['end']).astimezone(BANGKOK) - timedelta(microseconds=1)).date().isoformat()
     a = max(scope['start'], min(first(e) for e in confirmed.values()))
     b = min(scope['end'], max(last(e) for e in confirmed.values()))
+    if pending['goal'] == 'activity':
+        # The original question was about the appointments themselves, so the
+        # answer is the confirmed occurrences, not spending on their dates.
+        remaining = [e for e in pending['candidates'] if e['candidate_ref'] not in p.candidate_refs]
+        pending.update(candidates=remaining, confirmed=[{k: e[k] for k in fields} for e in confirmed.values()],
+                       unconfirmed_count=pending['unconfirmed_count'] - len(chosen))
+        pending['ref'] = 'follow_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
+        events = sorted(confirmed.values(), key=lambda e: (e['start'], e['title']))
+        return {'query_followup_result': True, 'ok': True, 'complete': not pending['unconfirmed_count'], 'status': 'activity_confirmed',
+                'read_only': True, 'pending': pending, 'events': events, 'count': len(events)}
     ref = 'read_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
     host._query_reads[ref] = {'domain': 'calendar', 'complete': True, 'count': len(confirmed),
         'scope': {**scope, 'start': a, 'end': b}, 'analysis_records': list(confirmed.values())}
@@ -250,7 +278,18 @@ def render(output):
         'calendar_changed': 'นัดที่เลือกถูกเปลี่ยนหรือลบไปแล้วครับ โปรดค้นนัดในช่วงเดิมใหม่ก่อนรวมรายจ่าย',
         'expense_unavailable': 'ตรวจนัดที่ยืนยันแล้ว แต่อ่านรายจ่ายไม่ครบครับ จึงยังสรุปยอดไม่ได้'}
     pending = output.get('pending')
-    if output.get('status') == 'selection_updated':
+    if output.get('status') == 'activity_confirmed':
+        from .read_queries import label_text, uncertain_rows
+        from .reply_display import day
+        scope = pending['scope'];activity = label_text(scope['filter_text'])
+        message = (f"{activity} {output['count']} นัดครับ ({day(scope['start'])} ถึง {day(scope['end'])})\n"
+                   + '\n'.join(uncertain_rows(output['events'])))
+        if pending['unconfirmed_count']:
+            message += f"\nยังมีอีก {pending['unconfirmed_count']} นัดที่ยังไม่ได้ยืนยันครับ"
+            if pending['candidates']:message += '\n' + '\n'.join(uncertain_rows(pending['candidates']))
+        data = {'tool_result': {k: v for k, v in output.items() if k != 'pending'}}
+        status = 'clarification' if pending['unconfirmed_count'] else 'answer'
+    elif output.get('status') == 'selection_updated':
         message = 'ไม่นับนัดที่คุณระบุว่าไม่เข้าข่ายครับ:\n' + '\n'.join(calendar_rows(output['excluded'], pending['scope']))
         if pending['unconfirmed_count']:
             message += f"\nอีก {pending['unconfirmed_count']} นัดยังไม่ได้รับการยืนยัน จึงยังไม่นำมารวมรายจ่ายครับ"

@@ -221,8 +221,8 @@ event. Uncertain event membership, missing columns or incomplete inputs cannot
 be promoted to complete totals. A query failure cannot be replaced by the
 original different read result. Derived refs expire at the end of the turn.
 
-Source limits still apply: legacy expense reads cover up to367 dates; each
-Calendar read covers at most31 dates with bounded pagination/semantic inference.
+Source limits are capacity bounds, not period policy: expense reads cover up to
+10 years and one Calendar read up to 3 years with bounded pagination and grouped semantic inference.
 Configured table scans retain their capacity and snapshot contracts. A larger
 question can use several reads without a fixed turn-call ceiling. Separate
 external reads are not one cross-provider transaction. The planner must choose

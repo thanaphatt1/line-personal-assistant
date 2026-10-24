@@ -39,7 +39,8 @@ def test_model_sees_actual_tool_names_scope_and_unknown_extent_before_any_metada
         assert NAME in p['available_tools'] and 'execute_sql' not in p['available_tools']
         assert p['data_sources']['expense']['record_date_extent']=='unknown_until_inspected'
         assert p['data_sources']['calendar']['global_date_extent']=='unknown'
-        assert p['data_sources']['calendar']['query_window_days']==31
+        from line_assistant.read_queries import MAX_QUERY_DAYS
+        assert p['data_sources']['calendar']['query_window_days']==MAX_QUERY_DAYS
         assert not p['data_source_observations']
         return inspect('capabilities')(body)
     result,_=turn(api,'ตอนนี้ทำอะไรได้ เข้าถึงข้อมูลอะไรบ้าง',choose)

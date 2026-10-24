@@ -110,6 +110,9 @@ def finish(host,args):
         p=Finish.model_validate(args);host._owner_sources(p.source_refs)
         if host._current['source_ref'] not in p.source_refs or len(set(p.query_refs))!=len(p.query_refs):raise ValueError()
         selected=[host._query_reads[ref] for ref in p.query_refs]
+        if p.operation=='report':
+            from .read_queries import coalesce
+            selected=coalesce(selected)
     except (ValueError,TypeError,KeyError):return fail('invalid_query_refs','ยังอ้างอิงผลค้นหาที่อ่านจริงไม่ครบครับ กรุณาระบุสิ่งที่ต้องการค้นอีกครั้ง')
     at=datetime.fromisoformat(host._current['at'])
     from .table_workflow import render as render_table

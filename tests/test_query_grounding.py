@@ -76,10 +76,15 @@ def test_invalid_relative_offsets_cannot_expand_query(offset):
     assert r.data['tool_result']['error_code']=='invalid_arguments'
 
 
-def test_calendar_filter_must_come_from_cited_owner_wording():
-    api=VoiceHosted();r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='TA'))
-    assert r.status=='clarification' and r.data['tool_result']['error_code']=='invalid_arguments'
-    assert not r.data['tool_result']['complete'] and not api.calendar_requests
+@pytest.mark.parametrize('again',['repeat','ask'])
+def test_calendar_filter_must_come_from_cited_owner_wording(again):
+    api=VoiceHosted();seen=[]
+    def second(body):
+        seen.append(body);return plan('calendar',filter_text='TA')(body) if again=='repeat' else response(text='อยากดูนัดประเภทไหนครับ?')
+    r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='TA'),second)
+    returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
+    assert returned[-1]['repair_feedback']['error_code']=='filter_text_not_quoted'
+    assert r.status=='clarification' and not api.calendar_requests and not api.calendar.posts
 
 
 def test_referenced_records_preserve_every_appointment_without_copying_its_values():

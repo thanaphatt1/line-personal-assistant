@@ -78,10 +78,10 @@ def uncertain_report():
         finish(),
     )
     assert first.status == 'clarification'
-    assert 'ยังยืนยันจำนวนทั้งหมดไม่ได้' in first.message
+    assert 'ยังยืนยันไม่ได้' in first.message
     assert all(row['title'] in first.message for row in CASE['calendar_events'])
     assert 'ข้อมูลที่ใช้ค้นหายังไม่ชัดเจน' not in first.message
-    assert 'บอกวันที่หรือชื่อนัด' in first.message
+    assert 'เป็นคุมสอบไหมครับ?' in first.message or 'นัดไหนเป็นคุมสอบครับ?' in first.message
     assert first.data['read_followup']['goal'] == 'expense'
     assert first.data['read_query']['start'] == expected['month_start']
     assert first.data['read_query']['end'] == expected['month_end']
@@ -333,7 +333,9 @@ def test_two_confirmed_events_on_one_day_do_not_duplicate_expenses(uncertain_rep
     assert_read_only(api)
 
 
-def test_unshown_uncertain_candidates_require_a_fresh_read_and_cannot_be_guessed():
+def test_unshown_uncertain_candidates_require_a_fresh_read_and_cannot_be_guessed(monkeypatch):
+    from line_assistant import calendar_inference
+    monkeypatch.setattr(calendar_inference, 'MAX_UNCERTAIN', 5)  # more uncertain events than are shown
     api = SemanticHosted()
     api.now = datetime.fromisoformat(CASE['clock'])
     api.calendar.events = {

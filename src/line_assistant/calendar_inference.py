@@ -9,8 +9,10 @@ from datetime import date
 import json
 from .history_context import digest
 from .model_api import MODEL_ID,object_schema
+from .calendar_provider import MAX_QUERY_DAYS
 
-MAX_CANDIDATES=120
+MAX_CANDIDATES=120  # distinct title/detail groups, not occurrences
+MAX_UNCERTAIN=20
 MAX_BODY_BYTES=48000
 MAX_OUTPUT=2048
 TIMEOUT_SECONDS=8.0
@@ -25,6 +27,9 @@ INSTRUCTIONS=(
     'do not merely test whether the literal filter is a substring. Do not expand an ambiguous abbreviation without evidence. '
     'For example a TA question can match a clearly equivalent teaching-assistant session when the owner context establishes that meaning; '
     'an unrelated word containing TA is not evidence. Ambiguous titles, missing needed details or unclear meaning must be uncertain. '
+    'Use uncertain only when something in the event plausibly indicates the activity but its meaning or the owner role is unclear; '
+    'when nothing in the title/details relates to the activity, use exclude. '
+    'A reference can group several occurrences with identical title/details (occurrences, first start, last end); label the whole group. '
     'Activity-based spending uses this selection to find dates: interpret คุมสอบ using exam-supervision context, '
     'including EXAM, proctoring or invigilation titles/details when they indicate exam duty. Do not require the Thai word to appear. '
     'An explicitly personal/student exam is not supervision; if an EXAM-only title leaves the owner role unclear, mark uncertain. '
@@ -36,13 +41,26 @@ INSTRUCTIONS=(
 
 def encoded(value):return json.dumps(value,ensure_ascii=False,separators=(',',':')).encode()
 def pending(result):return bool(result.data.get('tool_result',{}).get('calendar_candidates'))
+def groups(events):
+    """Identical title/details share one semantic decision; each occurrence keeps its own dates."""
+    found={}
+    for index,event in enumerate(events):
+        key=encoded([event['title'],event.get('description',''),event.get('location',''),event['all_day'],event.get('details_truncated',False)])
+        found.setdefault(key,[]).append(index)
+    return list(found.values())
+
 def schema(refs):
     return object_schema({'decisions':object_schema({ref:{'type':'string','enum':LABELS} for ref in refs}),
                           'lead':{'type':'string','enum':LEADS}})
 
 def body_for(host,result,instructions):
     output=result.data['tool_result'];scope=output['scope']
-    events=[{'ref':'e'+str(i),**{k:deepcopy(v) for k,v in e.items() if k!='read_ref'}} for i,e in enumerate(output['calendar_candidates'],1)]
+    candidates=output['calendar_candidates'];events=[]
+    for i,members in enumerate(groups(candidates),1):
+        first=candidates[members[0]];last=candidates[members[-1]]
+        events.append({'ref':'e'+str(i),'title':first['title'],'start':first['start'],'end':last['end'],'all_day':first['all_day'],
+            'description':first.get('description',''),'location':first.get('location',''),'details_truncated':first.get('details_truncated',False),
+            'occurrences':len(members)})
     owner_context=[{'text':r['text'][:500]} for r in host.state.history if r['role']=='user'][-3:]
     payload={'calendar_selection':{'criteria':scope['filter_text'],'start':scope['start'],'end':scope['end'],'events':events},
              'current_owner_text':host._current.get('text',''),'owner_context':owner_context}
@@ -59,11 +77,12 @@ def validate_body(body,instructions):
             or body['input']!=[{'role':'user','content':body['input'][0]['content']}]
             or set(p)!={'calendar_selection','current_owner_text','owner_context'} or set(s)!={'criteria','start','end','events'}
             or not isinstance(s['criteria'],str) or not 1<=len(s['criteria'])<=200
-            or not 0<=(date.fromisoformat(s['end'])-date.fromisoformat(s['start'])).days<31
+            or not 0<=(date.fromisoformat(s['end'])-date.fromisoformat(s['start'])).days<MAX_QUERY_DAYS
             or not isinstance(events,list) or not 1<=len(events)<=MAX_CANDIDATES):return False
         for i,e in enumerate(events,1):
-            if (set(e)!={'ref','title','start','end','all_day','description','location','details_truncated'} or e['ref']!='e'+str(i)
-                or type(e['all_day']) is not bool or type(e['details_truncated']) is not bool):return False
+            if (set(e)!={'ref','title','start','end','all_day','description','location','details_truncated','occurrences'} or e['ref']!='e'+str(i)
+                or type(e['all_day']) is not bool or type(e['details_truncated']) is not bool
+                or type(e['occurrences']) is not int or not 1<=e['occurrences']<=10000):return False
             for field,limit in [('title',500),('description',1000),('location',500),('start',40),('end',40)]:
                 if not isinstance(e[field],str) or len(e[field])>limit:return False
         return (isinstance(p['current_owner_text'],str) and len(p['current_owner_text'])<=2000
@@ -88,15 +107,16 @@ def apply(result,document,metadata):
     from .read_queries import result as render,label_text,period_label
     from .state import Result
     from datetime import datetime
-    output=deepcopy(result.data['tool_result']);events=output.pop('calendar_candidates')
-    payload={'calendar_selection':{'events':[{'ref':'e'+str(i)} for i in range(1,len(events)+1)]}}
+    output=deepcopy(result.data['tool_result']);events=output.pop('calendar_candidates');grouped=groups(events)
+    payload={'calendar_selection':{'events':[{'ref':'e'+str(i)} for i in range(1,len(grouped)+1)]}}
     document=parse(document,payload)
-    selected={label:[e for i,e in enumerate(events,1) if document['decisions']['e'+str(i)]==label] for label in LABELS}
+    label={index:document['decisions']['e'+str(i)] for i,members in enumerate(grouped,1) for index in members}
+    selected={name:[e for i,e in enumerate(events) if label[i]==name] for name in LABELS}
     def rows(items):return [{k:e[k] for k in ['title','start','end','all_day','read_ref'] if k in e} for e in items]
     output.pop('error_code',None)
     output.update(ok=True,complete=not selected['uncertain'],outcome='clarification' if selected['uncertain'] else 'answer',
         events=rows(selected['match'][:20]),count=len(selected['match']),shown=min(20,len(selected['match'])),
-        uncertain_events=rows(selected['uncertain'][:5]),calendar_selection={
+        uncertain_events=rows(selected['uncertain'][:MAX_UNCERTAIN]),calendar_selection={
             'classification_complete':not selected['uncertain'],'examined_count':len(events),
             'uncertain_count':len(selected['uncertain']),'decisions':document['decisions'],'evidence_sha256':digest(events)})
     if output['scope'].get('continue_analysis'):output['analysis_records']=rows(selected['match'])
@@ -104,7 +124,8 @@ def apply(result,document,metadata):
     at=datetime.fromisoformat(result.data['calendar_selection_at'])
     final=render(output,at);facts=final.data['query_facts']
     qualifier='นัดที่เข้าข่ายชัดเจน ' if selected['uncertain'] else 'นัดที่เข้าข่าย '
-    header=period_label(output['scope'],at)+' '+document['lead']+qualifier+label_text(output['scope']['filter_text'])+' '+facts['count']+'ครับ'
+    if selected['uncertain'] and not selected['match']:header=final.message.split('\n',1)[0]
+    else:header=period_label(output['scope'],at)+' '+document['lead']+qualifier+label_text(output['scope']['filter_text'])+' '+facts['count']+'ครับ'
     suffix=final.message[len(final.message.split('\n',1)[0]):]
     message=header+suffix
     if len(message.encode('utf-16-le'))>9000:raise ValueError('Calendar answer exceeds reply bound')

@@ -42,6 +42,13 @@ request for known names or a disabled flag, replay without a second request, the
 signed production reservation gate, typed save confirmation and the false
 success-claim regression.
 
+The [calendar activity answers](test_calendar_activity_answers.py) check that a
+long activity question is one read with one decision per repeated title, that a
+zero-confirmed answer leads with grouped possible matches and one per-title
+question, that answering for a title settles every occurrence without a write,
+the multi-year window bound, month-split reads answered as one question, and
+that a paraphrased filter returns to the planner instead of ending the turn.
+
 The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
 missing-field questions, interruption, compound rename/category corrections,
 short continuations and one final save. [Batch reads](test_read_batch.py) compare
