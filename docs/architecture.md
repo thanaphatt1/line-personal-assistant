@@ -18,7 +18,7 @@ belong to the tool schemas.
 ```mermaid
 flowchart TD
     LINE[Signed owner request] --> Context[History, tools and schema metadata]
-    Context --> Plan[LLM selects sources and read scope]
+    Context --> Plan[LLM medium reasoning: sources and read scope]
     Plan --> Read[Typed source reads]
     Sheets[Google Sheets tables] --> Read
     Firestore[Firestore business collections] --> Read
@@ -51,7 +51,7 @@ filter/join/coverage semantics; see [SQL limits](relational-queries.md).
 ```mermaid
 flowchart LR
     Request[Signed owner request] --> Metadata[Configured schema and allowed operations]
-    Metadata --> Model[LLM proposes typed field changes]
+    Metadata --> Model[LLM medium reasoning: typed field proposals]
     Model --> Validate[Python validates sources, types and versions]
     Validate --> Review[Delivered before/after or creation review]
     Review --> Owner[New owner confirmation]
@@ -66,6 +66,13 @@ plans calculate dates/times from original owner evidence and verified bases.
 Unchanged fields retain their proofs. Tool-declared argument errors return the
 actual schema to the planner; repeated diagnostics stop. Preparation and SQL
 cannot grant consent or prove that an external write succeeded.
+
+Raw-history planning uses Luna `medium` with a shared reasoning/output allowance
+of 32,768 tokens; summaries and reply composition retain `none`. Reservation and
+response checks include reasoning in the output total. Planner HTTP may use up
+to 30 seconds within a 50-second owner RPC scope; other RPCs retain their existing
+limits. These are ceilings, not expected token usage or latency. No automatic
+retry follows an incomplete or uncertain model response.
 
 `main.py` checks the HMAC signature before parsing JSON/provider work.
 `history_cloud_run.py` binds the owner, service account, private source targets,
@@ -83,11 +90,11 @@ resource or grant access. The generic registry is empty by default.
 | Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
 | Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |
 | Pending patches, temporal calculations and repair | `pending_records`, `temporal`, `tool_errors`, `tool_repair` |
-| Expense drafts/catalog and storage | `draft_workflow`, `expense_sources`, `expense_evidence`, `catalog_names`, `sheets_api`, `firestore_expenses` |
+| Expense drafts/catalog and storage | `draft_workflow`, `pending_catalog`, `expense_sources`, `expense_evidence`, `catalog_names`, `sheets_api`, `firestore_expenses` |
 | Calendar drafts, batches and provider | `calendar_workflow`, `calendar_batches`, `calendar_provider` |
 | Saved-record changes | `saved_edits`, `expense_edits`, `calendar_reschedule` |
 | State, journal and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |
-| Grounded replies and LINE | `response_realization`, `answer_composition`, `line_api` |
+| Grounded replies and LINE | `response_realization`, `answer_composition`, `operation_composition`, `reply_display`, `line_api` |
 | Local mocks and compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
 
 Older entry points and serializers remain for compatibility and offline tests.

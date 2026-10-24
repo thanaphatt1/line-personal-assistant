@@ -50,6 +50,16 @@ category; normalization removes the redundant action, never adds facts or
 permissions. Multiple category/subcategory choices remain constrained by the
 actual catalog pairs.
 
+Catalog drift is revalidated during expense patch staging and fresh-review
+preparation. An unrelated name addition does not block completing an older
+pending record. The server rechecks every sibling's current identity and
+category pair while retaining names, amounts, dates, notes and original evidence.
+Removed names or category choices require resolution; a newly existing name no
+longer proposes duplicate enrollment. A replacement review gets a new version
+and nonce. Confirmation still checks the entire current catalog hash, so a
+further edit after that review invalidates its consent. Read-only views may
+describe refreshed choices without publishing a replacement draft or consent.
+
 With pending records present, creation tools expose null draft/batch references
 in the model schema; updates use the shared patch tool. Existing domain
 handlers remain available internally for compatible calls and their validation

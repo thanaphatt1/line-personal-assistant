@@ -108,6 +108,39 @@ def units(row,titles):
                 'slot_key':digest([row['source_ref'],0,len(text),occurrence])[:20]})
     return out
 
+def temporal_occurrences(host,source_units,edits):
+    """Allow separate verified dates within a single shared owner clause.
+
+    Occurrence count comes from distinct owned temporal proofs, not a guessed
+    language grammar or an arbitrary number of model proposals. Every child
+    retains the full original unit and its unique occurrence identity.
+    """
+    from .temporal import calendar_evidence
+    result=deepcopy(source_units);groups={}
+    for edit in edits:
+        if edit.draft_ref or not edit.title:continue
+        refs=[v for v in edit.temporal_refs if v.field=='date_text']
+        if len(refs)!=1:continue
+        row=calendar_evidence(host,{'date_text':refs[0].temporal_ref},edit.source_refs)['date_text']
+        groups.setdefault((row['source_ref'],edit.title),set()).add(row['value'])
+    for (source_ref,title),dates in groups.items():
+        if len(dates)<2:continue
+        row=host._owner_sources([source_ref])[0]
+        names={e.title for e in edits if source_ref in e.source_refs and e.title}
+        same=[u for u in result.values() if u['source_ref']==source_ref]
+        # One owner-written title and only temporal clauses can be shared.
+        # Never absorb another named/unknown event or drop explicit extra slots.
+        if names!={title} or row['text'].count(title)!=1 or not same or len(same)>len(dates):continue
+        if any(substantive(u['text'],[title]) for u in same):continue
+        for unit in same:result.pop(unit['slot_key'])
+        for occurrence in range(len(dates)):
+            unit={'source_ref':source_ref,'start':0,'end':len(row['text']),'text':row['text'],
+                'at':row['at'],'occurrence':occurrence}
+            unit['slot_key']=digest([source_ref,0,len(row['text']),occurrence])[:20]
+            result[unit['slot_key']]=unit
+    return result
+
+
 def sharing(row,field,value,titles):
     """A group marker binds its nearby fact, not every fact in the message."""
     if field=='title':return False

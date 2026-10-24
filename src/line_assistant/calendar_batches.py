@@ -4,7 +4,8 @@ from copy import deepcopy
 from datetime import datetime,timedelta
 import hmac,re,secrets
 from pydantic import Field
-from .calendar_workflow import Arguments,Edit,FIELDS,calculate,payload,payload_hash,fingerprint,literal_fact,literal_guard_text,NAMES
+from .calendar_workflow import Arguments,Edit,FIELDS,calculate,payload,payload_hash,fingerprint,literal_fact,literal_guard_text,NAMES,approximate_notices
+from .reply_display import appointment_text
 from .calendar_dates import bangkok_zone,event_date
 from .calendar_event_types import interval,date_label,clarification_fields,timing_question
 from . import calendar_sources as sources
@@ -183,6 +184,7 @@ class CalendarBatches:
             # Only actual new appointment content is discovered. A fact-only
             # followup updates existing slots and cannot fabricate a new event.
             for unit in sources.units(row,titles):unit_map[unit['slot_key']]=unit
+        if not old and not children:unit_map=sources.temporal_occurrences(self.h,unit_map,p.events)
         if not old:
             if restated:
                 # Explicitly adopted v12 drafts retain their IDs. Rebind only
@@ -337,7 +339,7 @@ class CalendarBatches:
             d.update(status='cancelled',review=None,version=d['version']+1,updated_at=self.h._current['at']);self.h.state.calendar_drafts[ref]=d;self.f.seal(d)
         b.update(version=b['version']+1,updated_at=self.h._current['at'],review=None);return self.review(b)
     def render(self,output):
-        b=self.get(output['batch_ref'],active=False);view=self.view(b);rows=[];questions=[]
+        b=self.get(output['batch_ref'],active=False);view=self.view(b);rows=[];questions=[];notices={}
         for d in view['events']:
             name=d['facts']['title'] or d['source_unit']['text'].strip()
             status={'recorded':'สร้างแล้ว','cancelled':'ยกเลิกร่างแล้ว'}.get(d['status'])
@@ -346,21 +348,25 @@ class CalendarBatches:
             if 'time_or_all_day' in fields:
                 rows.append(f"{d['ordinal']}. {name}"+('\nวันนัด: '+d['facts']['date_text'] if d['facts']['date_text'] else ''))
                 questions.append(timing_question(d['ordinal']))
+            elif d['start'] and d['end']:rows.append(f"{d['ordinal']}. {name}\n"+appointment_text(d['start'],d['end'],d.get('all_day',False)))
             else:rows.append(f"{d['ordinal']}. {name}\n"+('ทั้งวัน '+(date_label(d['start']) if d['start'] else 'ยังไม่ระบุวัน') if d.get('all_day') else f"เริ่ม {d['start'] or '?'}\nสิ้นสุด {d['end'] or '?'}"))
             missing=[NAMES.get(x,x) for x in [*fields,*d['issues']] if x!='time_or_all_day']
             if missing:rows.append('ขาด/ต้องตรวจ: '+', '.join(missing))
-            review=self.child(d['draft_ref']).get('review')
-            if review and review['conflicts']:rows.append('ทับนัดเดิม '+str(len(review['conflicts']))+' รายการ')
+            child=self.child(d['draft_ref']);review=child.get('review')
+            notes=(['ทับนัดเดิม '+str(len(review['conflicts']))+' รายการ'] if review and review['conflicts'] else [])+approximate_notices(child)
+            if notes:rows+=notes;notices[d['draft_ref']]=notes
         ready=[d for d in view['events'] if d['status']=='review' and d['start'] and d['end']]
         overlaps=[str(a['ordinal'])+' กับ '+str(b['ordinal']) for i,a in enumerate(ready) for b in ready[i+1:]
             if interval(a)[0]<interval(b)[1] and interval(b)[0]<interval(a)[1]]
         if overlaps:rows.append('เวลาในชุดทับกัน: '+', '.join(overlaps))
-        data={'domain':'calendar','tool_result':output,'calendar_batch_view':view}
-        message='ชุดนัดที่ตรวจสอบได้ (Asia/Bangkok)\nปฏิทิน: '+self.f.label+'\n'+'\n'.join(rows)
+        data={'domain':'calendar','tool_result':output,'calendar_batch_view':view,'calendar_notices':notices,'calendar_label':self.f.label,
+              'calendar_batch_notices':['เวลาในชุดทับกัน: '+', '.join(overlaps)] if overlaps else []}
+        pending=sum(d['status'] not in {'recorded','cancelled'} for d in view['events'])
+        message=f'ตรวจสอบนัด {pending} รายการ\nปฏิทิน: '+self.f.label+'\n'+'\n'.join(rows)
         if b['status']=='cancelled':return Result('cancelled',message+'\nยกเลิกเฉพาะร่าง ไม่มีการลบนัดที่สร้างแล้ว',data)
         if b['status']!='review':return Result('clarification',message+('\n'+'\n'.join(questions) if questions else '\nยังไม่สร้างรายการที่เหลือ กรุณาระบุเฉพาะข้อมูลที่ยังขาดหรือเลือกนัดที่จะแก้'),data)
         command='ยืนยันชุดนัด '+b['batch_ref']+' '+b['review']['nonce'];data['confirm_command']=command
-        message+='\nตรวจทุกนัดแล้วพิมพ์ยืนยันชุดนัดนี้เมื่อต้องการสร้างทั้งชุด'
+        message+='\nถ้าถูกต้อง พิมพ์ “ยืนยันชุดนัด” หรือกดปุ่มเพื่อสร้างทั้งชุดครับ'
         from .conversation_ui import render_actions
         data['line_message']=render_actions(message,[{'type':'postback','label':'ยืนยันชุดนัด','data':f"c2|confirm|{b['batch_ref']}|{b['version']}|{b['review']['nonce']}",'displayText':'ยืนยันชุดนัด'}])
         return Result('preview',message,data)
@@ -508,9 +514,13 @@ class CalendarBatches:
         for item in action.payload['members']:
             child=self.h.state.actions.get(item['key']);done=bool(child and child.status=='completed' and child.result and child.result.status=='created')
             (created if done else pending).append(item['ref']);rows.append(('สร้างแล้ว: ' if done else 'ยังไม่ยืนยันผล: ')+item['payload']['title'])
-        message=(f'เพิ่มนัดทั้ง {len(created)} รายการเรียบร้อยแล้วครับ\n'+'\n'.join('- '+item['payload']['title'] for item in action.payload['members']) if status=='created' and not pending else 'ผลการเพิ่มนัด:\n'+'\n'.join(rows))
+        complete=status=='created' and not pending
+        events=[{'title':v['title'],'start':v['start'],'end':v['end'],'all_day':v.get('all_day') is True}
+                for v in (item['payload'] for item in action.payload['members'])] if complete else []
+        message=(f'เพิ่มนัดทั้ง {len(created)} รายการเรียบร้อยแล้วครับ\n'+'\n'.join('- '+v['title']+' · '+appointment_text(v['start'],v['end'],v['all_day']) for v in events) if complete else 'ผลการเพิ่มนัด:\n'+'\n'.join(rows))
         if status=='in_progress':message+='\nยังมีรายการที่ยืนยันไว้แต่ยังไม่เริ่มสร้าง พิมพ์ ดำเนินชุดนัดต่อ เพื่อทำต่อภายในอายุร่าง'
-        return Result(status,message,{'domain':'calendar','batch_ref':action.payload['batch_ref'],'created_refs':created,'pending_refs':pending,'needs_reconciliation':status=='uncertain'})
+        return Result(status,message,{'domain':'calendar','batch_ref':action.payload['batch_ref'],'created_refs':created,'pending_refs':pending,'needs_reconciliation':status=='uncertain',
+                                      **({'created_events':events,'calendar_label':self.f.label} if complete else {})})
     def control(self,text):
         if self.text_confirmation(text):
             if self.h._active_event_kind!='text':return Result('stale','ปุ่มชุดนัดไม่ถูกต้อง',{'domain':'calendar'})

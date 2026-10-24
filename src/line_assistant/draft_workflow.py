@@ -13,7 +13,8 @@ def views(h):
     if not result:return result
     tax=h._taxonomy()
     for view in result:
-        d=h._draft(view['draft_ref'])
+        from .pending_catalog import revalidate
+        d=revalidate(h._draft(view['draft_ref']),tax)
         view.update(entries=[{k:e[k] for k in ('entry_ref','item','amount','date','fact_sources') if k in e} for e in d['entries']],missing_fields=deepcopy(d['missing_fields']),item_resolutions=[],fact_completion=[])
         for e in d['entries']:
             if e.get('previous_price'):

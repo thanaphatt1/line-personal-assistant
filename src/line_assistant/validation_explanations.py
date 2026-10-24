@@ -16,33 +16,37 @@ REASONS={
  'new_item_requires_category_clarification':'ผมส่งหมวดหรือหมวดย่อยที่ยังยืนยันจากคำตอบของคุณไม่ได้ จึงยังไม่ใช้หมวดนั้นครับ',
  'category_step_not_ready':'ขั้นตอนเลือกหมวดยังไม่พร้อม จึงยังไม่เปลี่ยนหมวดครับ',
  'subcategory_step_not_ready':'ยังเลือกหมวดย่อยไม่ได้ ต้องตรวจหมวดหลักก่อนครับ',
- 'category_not_offered':'หมวดที่ผมส่งไปไม่ตรงกับตัวเลือกที่ระบบให้ใช้ครับ',
+ 'category_not_offered':'หมวดที่ผมเลือกไม่อยู่ในตัวเลือกที่มีครับ',
  'subcategory_not_in_selected_category':'หมวดย่อยที่ส่งไปไม่อยู่ในหมวดหลักที่เลือกครับ',
  'invalid_tool_arguments':'ผมส่งข้อมูลให้เครื่องมือผิดรูปแบบ จึงยังทำขั้นตอนนี้ต่อไม่ได้ครับ',
- 'source_not_in_visible_context':'ผมอ้างอิงข้อความต้นทางไม่ตรงกับประวัติที่ระบบให้ใช้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
- 'field_source_unavailable':'ผมอ้างแหล่งข้อมูลของบางฟิลด์ไม่ตรงกับข้อความที่ใช้ตรวจสอบได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
- 'field_source_not_owner_fact':'ผมจับคู่ชื่อ ยอด หรือวันที่กับข้อความต้นทางที่อ้างไว้ไม่ได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'source_not_in_visible_context':'ผมอ้างข้อความที่อยู่นอกบทสนทนาที่ใช้ได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'field_source_unavailable':'ผมอ้างที่มาของบางข้อมูลไม่ตรงกับข้อความของคุณ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'field_source_not_owner_fact':'ผมจับคู่ชื่อ ยอด หรือวันที่กับข้อความของคุณไม่ได้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'cancelled_fact_source':'ผมอ้างข้อมูลจากรายการที่ยกเลิกไปแล้ว จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'source_expired_or_removed':'ข้อความที่ผมอ้างไม่อยู่ในบทสนทนาที่ใช้ได้แล้ว จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'stale_or_unrelated_fact_source':'ผมอ้างข้อความที่ไม่เกี่ยวกับรายการนี้ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
+ 'item_source_conflicts_with_current_expense':'ชื่อรายการที่ผมเสนอไม่ตรงกับข้อความล่าสุดของคุณ จึงยังไม่ใช้ข้อเสนอนี้ครับ',
  'category_fields_belong_to_item_resolution':'ผมส่งหมวดผ่านขั้นตอนแก้ข้อมูลรายจ่าย ซึ่งต้องใช้ขั้นตอนเลือกหมวดแยกกัน จึงยังไม่เปลี่ยนข้อมูลครับ',
  'count_amount_mismatch':'จำนวนเที่ยว/ขาที่ระบุไม่ตรงกับจำนวนยอดเงิน จึงยังไม่สร้างรายการบันทึก',
  'count_price_basis_ambiguous':'ระบุหลายเที่ยว/ขาแต่มีเงินเพียงยอดเดียว ยอดนี้เป็นยอดรวม หรือราคาต่อเที่ยว/ขาครับ?',
  'unsupported_expense_count':'จำนวนเที่ยว/ขาที่ระบุยังตรวจสอบไม่ได้ รองรับจำนวนชัดเจน 1–5 รายการต่อชุด',
- 'amount_occurrence_missing_or_reused':'ยังจับคู่ยอดเงินแต่ละรายการกับตำแหน่งตัวเลขต้นฉบับที่ไม่ซ้ำกันไม่ได้',
- 'expense_batch_incomplete':'ข้อเสนอของโมเดลยังไม่ครบทุกชื่อและยอดในข้อความ จึงยังไม่ให้ยืนยันหรือบันทึกเฉพาะบางรายการ',
+ 'amount_occurrence_missing_or_reused':'ผมยังจับคู่ยอดเงินกับแต่ละรายการในข้อความได้ไม่ชัดครับ',
+ 'expense_batch_incomplete':'ผมยังเตรียมชื่อและยอดได้ไม่ครบทุกรายการในข้อความ จึงยังไม่ให้ยืนยันหรือบันทึกเฉพาะบางรายการครับ',
  'reused_expense_fields_required':'ผมยังใส่ชื่อ ยอด หรือแหล่งอ้างอิงของรายการเดิมไม่ครบในข้อเสนอรายการใหม่ครับ',
  'ambiguous_date_scope':'วันที่ท้ายข้อความหมายถึงรายการไหนครับ: ทุกรายการ หรือเฉพาะรายการสุดท้าย?',
- 'amount_source':'ยังยืนยันยอดเงินของรายการจากข้อความต้นฉบับไม่ได้',
- 'item_source':'ยังยืนยันชื่อเต็มของรายการจากข้อความต้นฉบับไม่ได้',
- 'full_item_name_required':'ชื่อที่โมเดลเสนอไม่ครอบคลุมชื่อเต็มในข้อความต้นฉบับ',
- 'note_source':'หมายเหตุที่โมเดลเสนอไม่มีช่องหมายเหตุที่เจ้าของระบุในข้อความต้นฉบับ',
- 'date_text_source':'ข้อความวันที่ที่โมเดลเสนอไม่ตรงกับวันที่ของรายการในต้นฉบับ',
- 'date_source':'วันที่ที่โมเดลเสนอไม่ตรงกับวันที่ที่ระบบตรวจสอบจากต้นฉบับ',
+ 'amount_source':'ผมยังหายอดเงินของรายการนี้ในข้อความของคุณไม่เจอครับ',
+ 'item_source':'ผมยังหาชื่อเต็มของรายการนี้ในข้อความของคุณไม่เจอครับ',
+ 'full_item_name_required':'ชื่อที่ผมเสนอยังไม่ครบตามชื่อเต็มในข้อความของคุณครับ',
+ 'note_source':'หมายเหตุที่ผมเสนอไม่มีอยู่ในข้อความของคุณครับ',
+ 'date_text_source':'วันที่ที่ผมเสนอไม่ตรงกับวันที่ของรายการในข้อความของคุณครับ',
+ 'date_source':'วันที่ที่ผมเสนอไม่ตรงกับวันที่ในข้อความของคุณครับ',
  'date_expression_unresolved':'ยังแปลข้อความวันที่ที่ระบุให้เป็นวันที่ของรายการไม่ได้',
  'ambiguous_date_source':'พบวันที่หลายค่าที่ขัดกันในรายการเดียว กรุณาเลือกวันที่ของรายการนั้น',
  'invalid_calendar_date':'วันที่ที่ระบุไม่มีอยู่จริงตามปฏิทิน',
  'future_expense_date':'วันที่ที่ตรวจสอบได้เป็นอนาคต จึงยังไม่อนุญาตให้บันทึกรายจ่าย',
  'missing_day':'ระบุเดือนหรือปีแล้ว แต่ยังไม่มีวันของรายการ',
  'missing_month_for_future_day':'วันที่ระบุจะเป็นอนาคตถ้าใช้เดือนนี้ กรุณาระบุเดือน',
- 'tool_unavailable':'ขั้นตอนตรวจสอบทำงานไม่สำเร็จ จึงยังไม่ได้บันทึก และยังระบุสาเหตุที่เจาะจงกว่านี้ไม่ได้',
+ 'tool_unavailable':'รอบนี้ผมตรวจรายการไม่สำเร็จ จึงยังไม่ได้บันทึก และยังบอกสาเหตุที่ชัดกว่านี้ไม่ได้ครับ',
 }
 
 ENROLLMENT_ERRORS={'new_item_requires_category_clarification','category_step_not_ready',
@@ -50,7 +54,8 @@ ENROLLMENT_ERRORS={'new_item_requires_category_clarification','category_step_not
 MODEL_ERRORS=ENROLLMENT_ERRORS|{'invalid_tool_arguments','amount_occurrence_missing_or_reused',
  'expense_batch_incomplete','reused_expense_fields_required','amount_source','item_source','full_item_name_required','note_source',
  'date_text_source','date_source','source_not_in_visible_context','field_source_unavailable',
- 'field_source_not_owner_fact','category_fields_belong_to_item_resolution'}
+ 'field_source_not_owner_fact','category_fields_belong_to_item_resolution','cancelled_fact_source','source_expired_or_removed',
+ 'stale_or_unrelated_fact_source','item_source_conflicts_with_current_expense'}
 
 
 def enrich(h,call,output):
@@ -62,7 +67,7 @@ def enrich(h,call,output):
  kind=('model_arguments' if set(values)<=MODEL_ERRORS else 'unavailable' if values==['tool_unavailable'] else
        'validation' if all(v in REASONS for v in values) else 'unclassified')
  facts={'status':'ยังไม่ได้บันทึกครับ','reason':'; '.join(dict.fromkeys(REASONS.get(v,
-     'ระบบทำขั้นตอนนี้ไม่สำเร็จ แต่ผลตรวจยังไม่บอกสาเหตุ จึงยังบอกไม่ได้ว่าคุณต้องแก้ข้อมูลส่วนไหนครับ') for v in values))}
+     'รอบนี้ผมทำขั้นตอนนี้ไม่สำเร็จ และยังบอกไม่ได้ว่าคุณต้องแก้ข้อมูลส่วนไหนครับ') for v in values))}
  feedback={'version':1,'tool':call['name'],'codes':values,'kind':kind,
            'invalid_fields':deepcopy(output.get('invalid_fields',[])),
            'required_fields':deepcopy(output.get('missing_fields',[])),
@@ -137,7 +142,7 @@ def message(output):
   rows+='\nขอเฉพาะข้อมูลที่ยังตรวจสอบไม่ได้: '+', '.join(missing)
  dates=list(dict.fromkeys(v['normalized_date'] for v in output.get('date_details',[]) if v.get('normalized_date')))
  if dates:rows+='\nวันที่ที่ตรวจสอบได้: '+', '.join(dates)
- unknown='ระบบทำขั้นตอนนี้ไม่สำเร็จ แต่ผลตรวจยังไม่บอกสาเหตุ จึงยังบอกไม่ได้ว่าคุณต้องแก้ข้อมูลส่วนไหนครับ'
+ unknown='รอบนี้ผมทำขั้นตอนนี้ไม่สำเร็จ และยังบอกไม่ได้ว่าคุณต้องแก้ข้อมูลส่วนไหนครับ'
  reasons=list(dict.fromkeys(REASONS.get(v,unknown) for v in values))
  return 'ยังไม่ได้บันทึก: '+'; '.join(reasons)+rows
 

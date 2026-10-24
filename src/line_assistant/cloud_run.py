@@ -18,7 +18,7 @@ from .config import Settings
 from .firestore_state import FirestoreState
 from .line_api import LineReplyApi, ReplyDispatcher
 from .main import create_app
-from .model_api import DurableModelGuard, ResponsesPlanner
+from .model_api import DurableModelGuard, ResponsesPlanner,PLANNER_TURN_SECONDS
 from .pilot_config import PILOT_KEYS, SECRET_PATHS, PilotConfig
 from .pilot_http import PilotHttp, PilotPort, rpc_budget
 from .readonly_preflight import TEST_WORKBOOK_ID
@@ -64,7 +64,7 @@ class ExpenseAssistant(Assistant):
         self.state.event_workbooks[event_id] = storage_scope(self.sheets)
 
     def handle(self, event):
-        with rpc_budget(96):
+        with rpc_budget(96,seconds=PLANNER_TURN_SECONDS if getattr(self,'raw_history_enabled',False) else 30):
             return super().handle(event)
 
     def _transactions(self, *args, **kwargs):

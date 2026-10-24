@@ -54,6 +54,7 @@ BUILD_INPUTS = (
     "src/line_assistant/language.py",
     "src/line_assistant/line_auth_check.py",
     "src/line_assistant/reply_check.py",
+    "src/line_assistant/reply_display.py",
     "src/line_assistant/local_runtime.py",
     "src/line_assistant/main.py",
     "src/line_assistant/mock_api.py",

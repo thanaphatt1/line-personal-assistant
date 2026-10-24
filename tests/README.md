@@ -24,6 +24,13 @@ recorded-fact reuse on another date, unrelated pending drafts, catalog item
 case variants, creation-only repair, cold signed restore/confirmation/replay,
 and safe planner failure diagnostics. Business providers are synthetic.
 
+The [natural reply contracts](test_natural_replies.py) check that approximate
+Calendar times are prepared and disclosed while alternatives at the date/time
+still ask, that unrelated wording does not block preparation, that Calendar
+reviews and receipts use readable dates through bound operation documents and
+fallbacks, that evidence mismatches return to the planner, and that failure copy
+states no effect without internal terms.
+
 The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
 missing-field questions, interruption, compound rename/category corrections,
 short continuations and one final save. [Batch reads](test_read_batch.py) compare

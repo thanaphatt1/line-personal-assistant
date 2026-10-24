@@ -246,6 +246,10 @@ def staged_expense(h,p):
     stage._patch_field_sources={r.record_ref:evidence(h,r) for r in p.records}
     d=stage._draft(p.draft_ref)
     if h._request_views.get(p.draft_ref)!=h._view(d):raise PatchError('patch_unoffered_draft')
+    from .pending_catalog import revalidate
+    d=revalidate(d,stage._taxonomy())
+    stage.state.drafts[p.draft_ref]=d;stage._seal(d)
+    stage._request_views[p.draft_ref]=stage._view(d)
     facts=[]
     for record in p.records:
         changes=[v for v in record.changes if v.field in {'item','amount','date_text','note'}]

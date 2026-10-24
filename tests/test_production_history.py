@@ -58,7 +58,7 @@ class Hosted(HostedConversation):
 def test_signed_real_factory_normal_topic_resume_amount_confirm_and_recreated_replay():
     api=Hosted();before=deepcopy(api.google.cells)
     with TestClient(api.app()) as client:
-        first=api.create(client);assert first.status=='preview' and '2026-10-10' in first.message
+        first=api.create(client);assert first.status=='preview' and '10 ต.ค. 2026' in first.message
         r,_=api.send_text(client,'ดาวฤกษ์คืออะไร',response(text='ดาวฤกษ์เปล่งแสงได้เอง'));assert r.status=='answer'
         resumed=api.update(client,'ค่ากระดาษที่ค้างอยู่เป็นเดือนตุลาคม',date='2026-10-10',date_text='เดือนตุลาคม');assert resumed.status=='preview'
         corrected=api.update(client,'แก้ยอดค่ากระดาษเป็น 250 บาท',amount=250);assert corrected.status=='preview'

@@ -154,9 +154,10 @@ def test_query_cannot_reuse_prior_expense_or_calendar_confirmation():
     assert h.send('ยืนยัน').status=='clarification' and not h.sheets.entries and not h.state.actions
     from test_calendar_text_confirmation_v13 import turn
     from test_calendar_factory import Hosted,prepare
-    api=Hosted();assert turn(api,'นัดตรวจฟันพรุ่งนี้บ่ายสอง 45 นาที',prepare)[0].status=='preview'
+    api=Hosted();first=turn(api,'นัดตรวจฟันพรุ่งนี้บ่ายสอง 45 นาที',prepare)[0];assert first.status=='preview'
     assert turn(api,'ดูนัด',plan('calendar','2026-10-17'))[0].status=='answer'
-    assert turn(api,'ยืนยัน')[0].status in {'clarification','stale'} and not api.calendar.posts
+    again=turn(api,'ยืนยัน')[0]  # fresh consent for the unchanged draft, never a write
+    assert again.status=='preview' and again.data['confirm_command']!=first.data['confirm_command'] and not api.calendar.posts
 
 
 def test_calendar_pagination_deduplication_and_incomplete_fail_closed():

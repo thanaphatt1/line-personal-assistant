@@ -38,7 +38,7 @@ def test_single_relative_date_review_confirm_cold_restore_and_duplicate_are_date
     api=hosted();r,_=turn(api,'เพิ่มนัดนิทรรศการทดสอบวันพุธหน้าทั้งวัน',proposal([event()]))
     assert r.status=='preview' and r.data['calendar_view']['all_day'] is True and not api.calendar.posts,r
     assert r.data['calendar_view']['start']=='2026-10-21' and r.data['calendar_view']['end']=='2026-10-22'
-    assert 'ทั้งวัน 21 ต.ค. 2026' in r.message and '00:00' not in r.message and not r.message.startswith('ได้เลย')
+    assert '21 ต.ค. 2026' in r.message and 'ทั้งวัน' in r.message and '00:00' not in r.message and not r.message.startswith('ได้เลย')
     saved,confirmation=turn(api,'ยืนยัน')
     assert saved.status=='created' and saved.data['all_day'] is True and api.calendar.posts==1,saved
     wire=next(iter(api.calendar.events.values()));assert wire['start']=={'date':'2026-10-21'} and wire['end']=={'date':'2026-10-22'}
@@ -77,7 +77,7 @@ def test_dated_without_time_offers_choice_and_all_day_answer_keeps_same_draft(vo
     r,_=turn(api,'เพิ่มนัดนิทรรศการทดสอบวันพุธหน้า',proposal([event(all_day=None)]))
     view=r.data['calendar_view'];ref=view['draft_ref']
     assert r.status=='clarification' and not api.calendar.posts and 'confirm_command' not in r.data
-    assert 'นัดนี้ทั้งวัน หรือเริ่มกี่โมงครับ?' in r.message
+    assert 'นิทรรศการทดสอบ เป็นนัดทั้งวัน หรือเริ่มกี่โมงครับ?' in r.message
     assert 'เวลาสิ้นสุด' not in r.message and 'ระยะเวลา' not in r.message and view['missing_fields']==['time','end']
     r,_=turn(api,'ทั้งวัน',proposal([{'all_day':True}],update=True));fresh=r.data['calendar_view']
     assert r.status=='preview' and fresh['draft_ref']==ref and fresh['all_day'] is True
@@ -111,7 +111,7 @@ def test_mixed_batch_asks_choice_only_for_second_and_resolves_only_that_member(v
     r,_=turn(api,'เพิ่มนัด22 Oct นิทรรศการทดสอบ'+('ทั้งวัน' if first_all_day else '9:00-10:00')+' และ23 Oct คุยโครงการทดสอบ',
         proposal([first,event('คุยโครงการทดสอบ','23 Oct',all_day=None)],batch=True))
     before=r.data['calendar_batch_view']['events'];assert r.status=='clarification' and not api.calendar.posts
-    assert 'นัดที่ 2 ทั้งวัน หรือเริ่มกี่โมงครับ?' in r.message and 'นัดที่ 1 ทั้งวัน หรือเริ่มกี่โมง' not in r.message
+    assert 'คุยโครงการทดสอบ เป็นนัดทั้งวัน หรือเริ่มกี่โมงครับ?' in r.message and 'นิทรรศการทดสอบ เป็นนัดทั้งวัน' not in r.message
     answer='นัดที่สองเวลา9:00-10:00' if first_all_day else 'นัดที่สองทั้งวัน'
     edit={'index':1,'time_text':'9:00','end_time_text':'10:00'} if first_all_day else {'index':1,'all_day':True}
     r,_=turn(api,answer,proposal([edit],update=True,batch=True));after=r.data['calendar_batch_view']['events']
@@ -168,10 +168,12 @@ def test_single_date_edit_then_rejected_old_nonce_allows_only_latest_unchanged_d
     saved,_=turn(api,'ยืนยัน');assert saved.status=='created' and api.calendar.posts==1 and saved.data['start']=='2026-10-22',saved
 
 def test_rejected_new_edit_or_other_reply_cannot_reactivate_older_single_review():
-    api=hosted();turn(api,'เพิ่มนัดนิทรรศการทดสอบวันพุธหน้าทั้งวัน',proposal([event()]))
+    api=hosted();first,_=turn(api,'เพิ่มนัดนิทรรศการทดสอบวันพุธหน้าทั้งวัน',proposal([event()]))
     invalid=response('prepare_calendar_event',{'draft_ref':'cal_'+'0'*20,'draft_version':1,'title':None,'date_text':None,'time_text':None,'end_date_text':None,'end_time_text':None,'duration_text':None,'all_day':None,'source_refs':['fake']})
     wrong,_=turn(api,'แก้นัดที่ไม่ทราบให้เป็นวันพฤหัสหน้า',invalid);assert wrong.status=='clarification'
-    got,_=turn(api,'ยืนยัน');assert got.status=='stale' and not api.calendar.posts
+    # The unchanged older draft is shown again for fresh consent, never confirmed.
+    got,_=turn(api,'ยืนยัน');assert got.status=='preview' and 'ยืนยันอีกครั้ง' in got.message and not api.calendar.posts
+    assert got.data['confirm_command']!=first.data['confirm_command'] and got.data['calendar_view']['start']==first.data['calendar_view']['start']
 
 def test_model_spreading_a_second_member_edit_to_both_is_rejected_and_recoverable_with_old_history():
     from test_calendar_text_confirmation_v13 import retained

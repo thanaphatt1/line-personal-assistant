@@ -437,10 +437,13 @@ class Assistant:
         action = self.state.actions[key]
         if action.kind in {"add_transactions", "catalog_expense"}:
             refs = tuple(receipt)
-            details = "\n".join(f"{entry['item']} {entry['amount']} บาท วันที่ {entry['date']}" for entry in action.payload["entries"])
-            result = Result("recorded", f"บันทึกรายจ่าย{self.expense_label} {len(refs)} รายการแล้ว\n{details}",
+            from .reply_display import expense_lines
+            details = expense_lines(action.payload['entries'])
+            result = Result("recorded", f"บันทึกรายจ่าย{self.expense_label} {len(refs)} รายการแล้วครับ\n{details}",
                             {"refs": refs, "items": [entry["item"] for entry in action.payload["entries"]],
-                             "raw_items": action.metadata["raw_items"]})
+                             "raw_items": action.metadata["raw_items"],
+                             "entries": [{k:deepcopy(entry[k]) for k in ('item','amount','date','note') if k in entry}
+                                         for entry in action.payload['entries']]})
             last_kind = "transactions"
         elif action.kind in {"create_event", "update_event"}:
             refs, last_kind = (receipt.id,), "event"

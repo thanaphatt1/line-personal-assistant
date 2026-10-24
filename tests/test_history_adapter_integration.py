@@ -132,7 +132,7 @@ def test_date_v03_future_day_question_survives_restart_then_owner_month_reply():
     state = persisted(p); e = next(iter(state['drafts'].values()))['entries'][0]
     assert e['date'] is None and e['date_parts']['day'] == 20
     b, _ = setup(p); r = b.handle(event('กันยายน', 'month', 2))
-    assert r.status == 'preview' and '2026-09-20' in r.message
+    assert r.status == 'preview' and '20 ก.ย. 2026' in r.message
     c, _ = setup(p); assert c.handle(event(r.data['confirm_command'], 'confirm', 3)).status == 'recorded'
     assert next(iter(persisted(p)['drafts'].values()))['entries'][0]['date'] == '2026-09-20'
 

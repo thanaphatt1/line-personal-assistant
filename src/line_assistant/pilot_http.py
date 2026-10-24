@@ -19,7 +19,8 @@ from pydantic import SecretStr
 
 from .google_auth import SCOPES
 from .google_requests import identified_append_preview
-from .model_api import MODEL_ID, MAX_BODY_BYTES, MAX_OUTPUT_TOKENS, request_body, response_tools
+from .model_api import (MODEL_ID, MAX_BODY_BYTES, MAX_OUTPUT_TOKENS, request_body, response_tools,
+    PLANNER_REASONING_EFFORT,PLANNER_RPC_SECONDS)
 from .pilot_config import PilotConfig
 
 from .sheet_metadata import TransactionIdMetadata
@@ -43,12 +44,12 @@ def rpc_budget(limit, *, seconds=30):
         _rpc_remaining.reset(token)
 
 
-def take_rpc():
+def take_rpc(*,max_seconds=12):
     remaining = _rpc_remaining.get()
     if remaining is None or remaining["remaining"] <= 0 or monotonic() >= remaining["deadline"]:
         raise LiveDisabled("No active bounded owner RPC scope")
     remaining["remaining"] -= 1
-    return max(0.001, min(12, remaining["deadline"]-monotonic()))
+    return max(0.001, min(max_seconds, remaining["deadline"]-monotonic()))
 
 
 class PilotHttp:
@@ -84,7 +85,13 @@ class PilotHttp:
         with span('provider_'+service):return self._send_http(method,url,**kwargs)
 
     def _send_http(self, method, url, **kwargs):
-        timeout = take_rpc()
+        # Body authorization precedes HTTP. Only the bound raw planner gets
+        # extra reasoning time; provider writes and auxiliary calls stay at 12s.
+        body=kwargs.get('json',{})
+        planner=(getattr(self,'raw_history_enabled',False) and method=='POST'
+            and url=='https://api.openai.com/v1/responses' and isinstance(body,dict)
+            and body.get('reasoning')=={'effort':PLANNER_REASONING_EFFORT})
+        timeout = take_rpc(max_seconds=PLANNER_RPC_SECONDS if planner else 12)
         if self.reply_check and method == "POST" and url == "https://api.line.me/v2/bot/message/reply":
             self.reply_check.current()
             timeout = min(timeout, (self.reply_check.spec.expires_at - self.clock()).total_seconds())

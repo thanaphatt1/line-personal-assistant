@@ -219,14 +219,16 @@ def test_planner_can_answer_negated_and_hypothetical_requests_without_preparatio
     h=Harness();h.send(prefix+'ตรวจฟันพรุ่งนี้14:00 30นาที',response(text='ยังไม่เตรียมนัดครับ'))
     assert len(h.model.requests)==1 and not h.state.calendar_drafts and h.provider.posts==0
 
-@pytest.mark.parametrize('word',['ประมาณ','ราวๆ','อาจจะ','ยังไม่แน่ใจ'])
+# Approximations (ประมาณ/ราวๆ) are prepared and disclosed in review; see
+# test_natural_replies. Hesitation at the time itself still asks first.
+@pytest.mark.parametrize('word',['อาจจะ','ยังไม่แน่ใจ'])
 def test_model_cannot_drop_owner_uncertainty_and_create_an_exact_time(word):
     h=Harness();r=h.prepare('นัดตรวจฟันพรุ่งนี้'+word+'14:00 30นาที',title='ตรวจฟัน',date_text='พรุ่งนี้',time_text='14:00',duration_text='30นาที')
     assert r.status=='clarification' and not h.state.calendar_drafts and h.provider.posts==0
 
 def test_invalid_correction_revokes_old_review_without_losing_certified_facts():
     h=Harness();r=complete(h);before=deepcopy(h.draft())
-    changed=h.prepare('แก้เป็นประมาณ15:00',time_text='15:00')
+    changed=h.prepare('แก้เป็น 15:00 หรือ 16:00',time_text='15:00')
     assert changed.status=='clarification' and h.draft()['facts']==before['facts'] and h.draft()['review'] is None
     assert h.send(r.data['confirm_command']).status=='stale' and h.provider.posts==0
 

@@ -60,7 +60,8 @@ def test_eight_events_finish_in_bounded_chunks_read_only_checks_never_advance_un
     api=Hosted()
     with TestClient(api.app()) as client:
         r,_=api.turn(client,text(8),lambda body:proposed(body,8));assert r.status=='preview',r
-        assert api.model_bodies[-1]['max_output_tokens']==4096
+        from line_assistant.raw_history import PLANNER_MAX_OUTPUT_TOKENS
+        assert api.model_bodies[-1]['max_output_tokens']==PLANNER_MAX_OUTPUT_TOKENS
         result,_=api.turn(client,r.data['confirm_command']);assert result.status=='in_progress' and api.calendar.posts==2,result
     with TestClient(api.app()) as client:
         read,event=api.turn(client,'ตรวจผลชุดนัด');assert read.status=='in_progress' and api.calendar.posts==2

@@ -120,7 +120,7 @@ def test_internal_failure_cannot_echo_model_advice_to_repeat_the_same_sentence()
         return response(name='prepare_expenses',args={'draft_ref':None,'draft_version':None,'entries':[entry(item='MRT',amount=56,source_refs=['invented'])]})
     r=h.send('เพิ่ม mrt 56 บาท เมื่อวาน',call,response(text='กรุณาส่ง เพิ่ม MRT 56 บาท เมื่อวาน อีกครั้ง'))
     assert r.status=='clarification' and 'ไม่ต้องส่งประโยคเดิมซ้ำ' not in r.message and 'กรุณาส่ง' not in r.message
-    assert 'อ้างอิงข้อความต้นทาง' in r.message
+    assert 'ผมอ้างข้อความที่อยู่นอกบทสนทนาที่ใช้ได้' in r.message
     assert not h.state.drafts and not h.sheets.entries
 
 def test_partial_validation_reply_shows_verified_facts_and_only_requests_failed_field():

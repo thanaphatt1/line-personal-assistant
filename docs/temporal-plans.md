@@ -39,6 +39,16 @@ Saved Calendar rescheduling accepts the same reference bindings and retains
 its original conditional ETag write protocol. Offset date/time projections
 must describe the same instant across midnight.
 
+For a Calendar request with shared date components, the planner resolves each
+intended date separately and binds its reference in `prepare_calendar_events`.
+It leaves the paired field null or supplies the returned projection/original
+span, rather than concatenating fragments into a fabricated quote. Distinct
+verified dates can establish separate occurrences in a shared source clause.
+One literal title and its original clock range remain common to those events;
+unrepresented substantive clauses and explicit extra slots still block review.
+Each occurrence retains original text coordinates and a sealed temporal proof,
+including after cold restore. This creates proposals only, never appointments.
+
 References cannot be invented, reused on a later owner turn or used after a
 pending basis changes. A sealed pending draft retains a self-contained
 calculation proof and original fact provenance; cold restore validates the
@@ -51,6 +61,10 @@ Tools declare `recovery.kind` as `assistant_arguments`, `owner_input`,
 required inputs and an optional repair-tool scope. The planner receives the
 actual offered schemas. A new validator/tool can declare recovery without
 adding its name or error code to a global repair allowlist.
+
+Calendar source errors identify the failing field. If argument repair stops,
+the fallback describes an internal preparation failure instead of claiming the
+owner omitted details that the validator did not mark as missing.
 
 Repair has no fixed two-attempt ceiling. It stops on repeated plans or
 unchanged normalized diagnostics. Rotating invented fields/targets does not

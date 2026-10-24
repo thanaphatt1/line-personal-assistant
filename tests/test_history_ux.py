@@ -106,7 +106,7 @@ def test_explicit_add_on_reuses_single_immediately_confirmed_date_and_previews_i
     result=h.prepare('กาแฟ 50 ด้วย',item='กาแฟ',amount=50)
     d=[d for d in h.state.drafts.values() if d['status']!='recorded'][0]
     assert result.status=='preview' and d['entries'][0]['date']=='2026-10-12'
-    assert 'วันที่เดียว' in result.message and '2026-10-12' in result.message
+    assert 'วันที่เดียว' in result.message and '12 ต.ค. 2026' in result.message
     assert h.send('ยืนยัน').status=='recorded' and len(h.sheets.entries)==2
 
 
@@ -123,7 +123,7 @@ def test_continuation_keeps_confirmed_date_across_bangkok_midnight_within_histor
     h=Harness();saved_yesterday(h);h.now+=timedelta(hours=15)
     result=h.prepare('กาแฟ 50 ด้วย',item='กาแฟ',amount=50)
     assert result.status=='preview' and result.data['tool_result']['entries'][0]['date']=='2026-10-12'
-    assert '2026-10-12' in result.message and len(h.sheets.entries)==1
+    assert '12 ต.ค. 2026' in result.message and len(h.sheets.entries)==1
 
 
 def test_continuation_word_inside_a_literal_note_does_not_change_the_date():
@@ -191,7 +191,7 @@ def test_signed_production_recreation_preserves_plain_confirmation_binding_and_c
     with TestClient(api.app()) as client:
         assert api.send(client,event).status_code==200 and api.google.sheet_writes==1
         result=api.create(client,'ค่ากระดาษ 50 ด้วย',amount=50)
-        assert result.status=='preview' and '2026-10-12' in result.message
+        assert result.status=='preview' and '12 ต.ค. 2026' in result.message
         assert 'วันที่เดียว' in result.message and api.google.sheet_writes==1
 
 

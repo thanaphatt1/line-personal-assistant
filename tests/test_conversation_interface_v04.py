@@ -129,10 +129,14 @@ def test_invalid_sparse_update_is_atomic_but_revokes_old_confirmation(case):
     assert current(h)==expected and h.state.draft_proofs==proof
     assert h.service._draft(before['draft_ref'])==expected and not h.sheets.entries and not h.state.actions
 
-def test_catalog_changed_cannot_recertify_untouched_rows_under_a_new_catalog_hash():
+def test_unrelated_catalog_change_revalidates_untouched_rows_before_new_review():
     h=multi();before=deepcopy(current(h));h.sheets.rows.append(('ขนม','Food/Drink','Food'))
     result=update(h,'เปลี่ยนกาแฟเป็น 75 บาท',[{'entry_ref':before['entries'][0]['entry_ref'],'amount':75}])
-    assert result.data['tool_result']['error']=='catalog_changed' and current(h)=={**before,'review':None} and not h.sheets.entries
+    assert result.status=='preview' and not h.sheets.entries
+    fresh=current(h)
+    assert fresh['catalog_hash']!=before['catalog_hash'] and fresh['version']==before['version']+1
+    assert fresh['entries'][0]['amount']=='75' and fresh['entries'][1]==before['entries'][1]
+    assert fresh['review']['nonce']!=before['review']['nonce']
 
 def test_sparse_date_correction_preserves_amount_and_other_entry():
     h=multi();before=deepcopy(current(h))

@@ -24,9 +24,9 @@ def offline(monkeypatch):
 
 def generated(body,parts=None):
     payload=json.loads(body['input'][0]['content'])
-    if payload.get('answer_document'):
+    if payload.get('answer_document') or payload.get('operation_document'):
         if parts is None:
-            view=payload['answer_facts']
+            view=payload['operation_facts'] if payload.get('operation_document') else payload['answer_facts']
             blocks=[{'kind':'text','template':'{{'+key+'}}'} for key in view['facts']]
             blocks += [{'kind':'rows','record_refs':[row['id']],'heading':'',
                         'template':'{{index}}. '+' — '.join('{{'+key+'}}' for key in row['fields'])}
@@ -65,7 +65,7 @@ class VoiceHosted(Hosted):
 def test_calendar_realization_keeps_all_facts_and_exact_delivered_confirmation_binding_after_cold_restore():
     api=VoiceHosted();r,event=turn(api,text(),proposed)
     assert r.status=='preview' and r.data['response_realization']['status']=='llm',r
-    assert 'กิจกรรมทดสอบA' in r.message and 'กิจกรรมทดสอบB' in r.message and '22 ต.ค. 2026 08:00' in r.message and '23 ต.ค. 2026 17:00' in r.message
+    assert 'กิจกรรมทดสอบA' in r.message and 'กิจกรรมทดสอบB' in r.message and '22 ต.ค. 2026' in r.message and '23 ต.ค. 2026' in r.message and r.message.count('08:00–17:00')==2
     state=api.snapshot();receipt=result_from(state['receipts'][event['webhookEventId']]['result'])
     assert receipt==r and state['replies'][event['webhookEventId']]['content_hash']==message_hash(rendered_message(r))
     payload=r.data['line_message']['contents']['footer']['contents'][0]['action']['data'];assert payload.startswith('c2|confirm|')
@@ -77,8 +77,10 @@ def test_calendar_realization_keeps_all_facts_and_exact_delivered_confirmation_b
 def test_unknown_name_item_enrollment_and_all_multi_item_fields_are_retained():
     api=VoiceHosted();old_expense(api)
     assert len(api.voice_bodies)==1
-    payload=json.loads(api.voice_bodies[-1]['input'][0]['content']);assert '23' in ''.join(payload['facts'].values()) and 'กาแฟ' in ''.join(payload['facts'].values())
-    assert payload['questions_allowed'] is True
+    payload=json.loads(api.voice_bodies[-1]['input'][0]['content'])
+    cells=[f['display'] for row in payload['operation_facts']['records'] for f in row['fields'].values()]
+    assert any('23' in value for value in cells) and 'กาแฟ' in cells
+    assert 'instruction' in payload['operation_facts']['fact_labels'].values()
 
 @pytest.mark.parametrize('mutation',['drop','duplicate','unknown_ref','literal_amount','literal_created','literal_name','literal_date','extra_tool','incomplete','usage'])
 def test_invalid_realization_falls_back_to_review_without_any_write(mutation):
@@ -108,7 +110,7 @@ def test_generation_failure_after_actual_fake_effect_does_not_retry_tool_write()
     assert api.calendar.posts==2 and len(api.model_bodies)==calls
 
 def test_hard_foreground_timeout_returns_saved_status_and_never_retries_unknown_text_attempt(monkeypatch):
-    api=VoiceHosted();turn(api,text(),proposed);release=Event();monkeypatch.setattr(voice,'TIMEOUT_SECONDS',0.08)
+    api=VoiceHosted();turn(api,text(),proposed);release=Event();monkeypatch.setattr(voice,'TIMEOUT_SECONDS',0.08);monkeypatch.setattr(voice.answer_composition,'TIMEOUT_SECONDS',0.08)
     def slow(body):release.wait(1);return generated(body)
     api.voice=slow;started=monotonic();saved,event=turn(api,'ยืนยันชุดนัดนี้');elapsed=monotonic()-started
     assert elapsed<0.7 and saved.status=='created' and saved.data['response_realization']['reason']=='timeout' and api.calendar.posts==2

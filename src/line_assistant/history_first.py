@@ -134,9 +134,15 @@ def tools(*,enrollment=False,semantic=False,controls=False):
     return [{'type':'function','name':name,'description':brief[name] if semantic else description,'strict':True,'parameters':schema} for name,description,schema in specs
             if (enrollment or name!='prepare_item_enrollment') and (semantic and controls or name!='control_expense_draft')]
 
+class PlannerOutputLimit(ValueError):pass
+
+
 def parse_response(value,*,max_input_tokens=MAX_INPUT_TOKENS_BOUND,allowed_tools=None,max_output_tokens=MAX_OUTPUT_TOKENS):
-    if max_output_tokens not in {MAX_OUTPUT_TOKENS,4096}:raise ValueError('output_configuration')
-    if value.get('model')!=MODEL_ID or value.get('status')!='completed':raise ValueError('incomplete_response')
+    from .raw_history import PLANNER_MAX_OUTPUT_TOKENS
+    if max_output_tokens not in {MAX_OUTPUT_TOKENS,4096,PLANNER_MAX_OUTPUT_TOKENS}:raise ValueError('output_configuration')
+    if value.get('model')!=MODEL_ID:raise ValueError('incomplete_response')
+    if value.get('status')=='incomplete' and value.get('incomplete_details',{}).get('reason')=='max_output_tokens':raise PlannerOutputLimit('output_limit')
+    if value.get('status')!='completed':raise ValueError('incomplete_response')
     usage=value.get('usage',{})
     if any(type(usage.get(k)) is not int or not 0<=usage[k]<=bound for k,bound in [('input_tokens',max_input_tokens),('output_tokens',max_output_tokens)]):raise OverflowError('usage_bound')
     output=value.get('output')
@@ -171,7 +177,8 @@ def planner_failure(error):
     import httpx
     from .transport import ApiError,OutcomeUnknown
     kind='unavailable';status=None
-    if isinstance(error,httpx.TimeoutException) or isinstance(error,TimeoutError):kind='timeout'
+    if isinstance(error,PlannerOutputLimit):kind='output_limit'
+    elif isinstance(error,httpx.TimeoutException) or isinstance(error,TimeoutError):kind='timeout'
     elif isinstance(error,OutcomeUnknown):kind=error.reason or 'outcome_unknown'
     elif isinstance(error,ApiError):
         status=error.status
@@ -181,15 +188,22 @@ def planner_failure(error):
     return {'kind':kind,**({'http_status':status} if status is not None else {})}
 
 
+EVIDENCE_ERRORS={'full_item_name_required','item_source_conflicts_with_current_expense','amount_occurrence_missing_or_reused',
+    'source_not_in_visible_context','source_expired_or_removed','cancelled_fact_source','field_source_unavailable',
+    'field_source_not_owner_fact','stale_or_unrelated_fact_source'}
+
 def planner_failure_message(detail):
-    return {'timeout':'โมเดลตอบไม่ทันครับ กรุณาลองอีกครั้ง',
-        'transport':'ติดต่อโมเดลไม่สำเร็จครับ กรุณาลองอีกครั้ง',
-        'rate_limited':'โมเดลรับคำขอเกินขีดจำกัดชั่วคราวครับ กรุณาลองอีกครั้ง',
-        'provider_error':'บริการโมเดลขัดข้องชั่วคราวครับ กรุณาลองอีกครั้ง',
-        'invalid_response':'คำตอบจากโมเดลไม่ผ่านการตรวจสอบครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
-        'response_too_large':'คำตอบจากโมเดลเกินขนาดที่ระบบรับได้ครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
-        'usage_bound':'การใช้โมเดลรอบนี้เกินขีดจำกัดที่กำหนดครับ จึงยังทำขั้นตอนนี้ต่อไม่ได้',
-        }.get(detail.get('kind'),'เรียกใช้โมเดลไม่สำเร็จในรอบนี้ครับ กรุณาลองอีกครั้ง')
+    # The planner never writes; say so plainly instead of naming internals.
+    retry='ยังไม่ได้บันทึกหรือสร้างอะไรครับ ลองส่งข้อความเดิมอีกครั้งได้เลยครับ'
+    return {'timeout':'รอบนี้ใช้เวลาคิดนานเกินไปครับ '+retry,
+        'transport':'ตอนนี้ผมตอบกลับไม่ได้ชั่วคราวครับ '+retry,
+        'rate_limited':'ตอนนี้มีคำขอเข้ามามากเกินไปชั่วคราวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองอีกครั้งในอีกสักครู่ได้เลยครับ',
+        'provider_error':'ตอนนี้ผมตอบกลับไม่ได้ชั่วคราวครับ '+retry,
+        'invalid_response':'รอบนี้ผมเรียบเรียงคำขอไม่สำเร็จครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองพิมพ์ใหม่หรือแยกเป็นทีละเรื่องได้ไหมครับ?',
+        'response_too_large':'คำขอนี้ยาวเกินกว่าที่ผมทำได้ในรอบเดียวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองแยกเป็นทีละเรื่องได้ไหมครับ?',
+        'output_limit':'คำขอนี้ยาวเกินกว่าที่ผมทำได้ในรอบเดียวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองแยกเป็นทีละเรื่องได้ไหมครับ?',
+        'usage_bound':'รอบนี้ใช้การประมวลผลเกินขีดจำกัดที่ตั้งไว้ครับ ยังไม่ได้บันทึกหรือสร้างอะไร',
+        }.get(detail.get('kind'),'รอบนี้ผมทำต่อไม่สำเร็จครับ '+retry)
 
 def success_claim(text):
     # Completion claims are controlled outputs, not a broad ban on discussing
@@ -1017,7 +1031,11 @@ class HistoryFirstAssistant(Assistant):
                 'available_drafts':self._workflow(),
                 'available_source_refs':[r['source_ref'] for r in self.state.history if r['role']=='user' and r['source_ref'] in self.visible],
                 'financial_write_authorized':False}
-        if old:self._bound_update(p,old)
+        if old:
+            self._bound_update(p,old)
+            if self.raw_history_enabled:
+                from .pending_catalog import revalidate
+                old=revalidate(old,self._taxonomy())
         elif p.draft_version is not None:raise ValueError('version_without_draft')
         if not old and any(e.entry_ref is not None for e in p.entries):raise ValueError('entry_reference_without_draft')
         if old and self.raw_history_enabled and len(p.entries)==1:
@@ -1122,8 +1140,6 @@ class HistoryFirstAssistant(Assistant):
                     return {'ok':False,'status':'invalid_request','error':'invalid_or_duplicate_entry_reference',
                             'available_drafts':self._workflow(),'financial_write_authorized':False}
                 supplied[ref]=value
-            if old['catalog_hash']!=digest([[r.item,r.category,r.subcategory] for r in self._taxonomy().rows]):
-                return {'ok':False,'status':'invalid_request','error':'catalog_changed','available_drafts':self._workflow(),'financial_write_authorized':False}
         if old and (datetime.fromisoformat(self._current['at'])<datetime.fromisoformat(old['updated_at']) or
                     datetime.fromisoformat(self._current['at'])==datetime.fromisoformat(old['updated_at']) and not interpreted_patch):raise ValueError('older_draft_update')
         active=sum(len(d['entries']) for d in self.state.drafts.values() if d['status']!='recorded')
@@ -1358,8 +1374,11 @@ class HistoryFirstAssistant(Assistant):
             code=(value if isinstance(e,(ValueError,PlanningError)) and re.fullmatch(r'[a-z][a-z_0-9]{0,79}',value) else
                   'invalid_tool_arguments' if isinstance(e,json.JSONDecodeError) else 'tool_failed')
             fields=['.'.join(map(str,v['loc'])) for v in e.errors()] if isinstance(e,ValidationError) else []
+            # Evidence mismatches describe the assistant's proposal, not the
+            # owner's input: return them to the planner before asking anyone.
+            repairable=isinstance(e,(ValidationError,json.JSONDecodeError)) or type(e) is ValueError and code in EVIDENCE_ERRORS
             return {'ok':False,'error':code,'clarification_required':True,
-                'recovery':recovery(e,kind='assistant_arguments' if isinstance(e,(ValidationError,json.JSONDecodeError)) else None,fields=fields)}
+                'recovery':recovery(e,kind='assistant_arguments' if repairable else None,fields=fields)}
         except Exception:
             return {'ok':False,'error':'tool_unavailable','clarification_required':True,'recovery':recovery()}
 
@@ -1475,19 +1494,22 @@ class HistoryFirstAssistant(Assistant):
                 if choice:return Result('clarification',choice[1],{'tool_result':choice[0]})
         if tool_output and not tool_output.get('ok'):
             for detail in tool_output.get('date_details',[]):
-                if detail['issue']=='future_expense_date':return Result('clarification',f"วันที่คำนวณได้คือ {detail['normalized_date']} แต่ข้อจำกัดเดิมยังไม่อนุญาตรายจ่ายอนาคต กรุณาตรวจสอบวันที่",{'tool_result':tool_output})
+                if detail['issue']=='future_expense_date':
+                    from .reply_display import day
+                    return Result('clarification',f"{day(detail['normalized_date'])} ยังไม่ถึงครับ บันทึกรายจ่ายล่วงหน้าไม่ได้ เป็นรายจ่ายวันที่เท่าไรครับ?",{'tool_result':tool_output})
                 if detail['issue']=='invalid_calendar_date':return Result('clarification',f"วันที่ระบุไม่มีอยู่จริง: {detail['parts']} กรุณาแก้วันที่",{'tool_result':tool_output})
             error=tool_output.get('error','')
-            if self.raw_history_enabled and (error in {'invalid_fields','tool_unavailable','full_item_name_required','item_source_conflicts_with_current_expense','amount_occurrence_missing_or_reused','source_not_in_visible_context','field_source_unavailable','field_source_not_owner_fact','stale_or_unrelated_fact_source'} or error.endswith('_source')):
-                return Result('clarification','ยังไม่ได้บันทึก ระบบตรวจสอบหลักฐานของรายการไม่ผ่าน',{'tool_result':tool_output})
+            if self.raw_history_enabled and (error in {'invalid_fields','tool_unavailable'}|EVIDENCE_ERRORS or error.endswith('_source')):
+                return Result('clarification','ยังไม่ได้บันทึกครับ ผมจับคู่ชื่อ ยอด หรือวันที่กับข้อความของคุณไม่ได้ครบ ช่วยบอกรายการที่ต้องการอีกครั้งได้ไหมครับ?',{'tool_result':tool_output})
         if tool_output and tool_output.get('status')=='review':
             d=self.state.drafts[tool_output['draft_ref']];command=f"ยืนยัน {d['draft_ref']} {d['review']['nonce']}"
-            rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {e['date']}"+(f" หมายเหตุ {e['note']}" if e['note'] else '')+
+            from .reply_display import day
+            rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {day(e['date'])}"+(f" หมายเหตุ {e['note']}" if e['note'] else '')+
                            (f"\nเลือกชื่อเดิม: {e['item_resolution']['from']} → {e['item_resolution']['to']}" if e.get('item_resolution') else '')+
                            (f"\nเพิ่มชื่อใหม่ใน Database: {e['mapping']['category']}"+(f" / {e['mapping']['subcategory']}" if e['mapping']['subcategory'] else '') if e['mapping'] else '') for e in d['entries'])
             if self.semantic_enabled:
                 quotes=list(dict.fromkeys(e.get('source_quote','') for e in d['entries'] if e.get('source_quote')))
-                if quotes:rows+='\nต้นทาง: '+' / '.join(quotes)
+                if quotes:rows+='\nจากข้อความ: '+' / '.join(quotes)
             active=sum(v['status']!='recorded' for v in self.state.drafts.values())
             instruction='พิมพ์ ยืนยัน เพื่อบันทึกรายการที่แสดงนี้' if active==1 else 'มีหลายชุดที่รอบันทึก กรุณาใช้คำสั่งของรายการชุดนี้: '+command
             if self.semantic_enabled:instruction='บันทึกตามนี้เลยไหมครับ? ตอบทางข้อความหรือใช้ปุ่มได้'

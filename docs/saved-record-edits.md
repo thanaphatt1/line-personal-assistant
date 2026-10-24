@@ -95,6 +95,14 @@ uncertain and blocks additional writes. Calendar reconciliation requires the
 action marker and desired state. Sheets can only establish that the current
 record matches the confirmed values, so that result is worded as an observation.
 
+The owner sees a short confirmation instruction and can type “ยืนยัน” or use
+the review's button. The long reference/nonce stays in the internal postback and
+persisted proof. Display formatting does not change provider timestamps or the
+review hash. Optional reply composition receives separate original/proposed
+values and authoritative status, allowing natural wording and shared dates/times;
+it does not receive the confirmation token as a display fact. The deterministic
+fallback uses readable Bangkok dates too.
+
 Configuration flags are `PILOT_SAVED_EXPENSE_EDITS_ENABLED=false`,
 `PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED=false`, and
 `PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY=off`. Enabling either requires the existing

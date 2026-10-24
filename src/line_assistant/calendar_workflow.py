@@ -9,15 +9,38 @@ import hmac,re,secrets
 from pydantic import BaseModel,ConfigDict,Field
 from .calendar_dates import event_date,event_time,duration,bangkok_zone
 from .contracts import CreateEvent
-from .calendar_event_types import AllDayEvent,ALL_DAY,interval,parse_payload,date_label,range_requested,clarification_fields,timing_question
+from .calendar_event_types import AllDayEvent,ALL_DAY,interval,parse_payload,range_requested,clarification_fields,timing_question
 from .tool_errors import PlanningError,recovery
 from .history_context import digest,WINDOW
 from .history_dates import MONTH
 from .language import BANGKOK,intent_guard,DIGITS
 from .model_api import object_schema
+from .reply_display import appointment_text
 from .state import Result,LastAction
 
 FIELDS=('title','date_text','time_text','end_date_text','end_time_text','duration_text')
+TEMPORAL=FIELDS[1:]
+APPROXIMATE=r'(?:ประมาณ|ราว\s*ๆ?|คร่าว\s*ๆ)'
+HESITANT=r'(?:อาจจะ|(?:ยัง)?ไม่แน่(?:ใจ|นอน)?)'
+APPROXIMATE_LABELS={'date_text':'วันนัด','time_text':'เวลาเริ่ม','end_date_text':'วันสิ้นสุด','end_time_text':'เวลาสิ้นสุด','duration_text':'ระยะเวลา'}
+
+def unqualified(value):
+    """An approximation word is wording around the owner's date/time, not part of its literal."""
+    found=re.fullmatch(r'\s*(?:(?:ใช้เวลา|กินเวลา|ระยะเวลา|นาน|เวลา|ตอน)\s*)?'+APPROXIMATE+r'\s*(.+?)\s*',value) or re.fullmatch(r'\s*(.+?)\s*(?:กว่า\s*ๆ|โดยประมาณ)\s*',value)
+    return found[1] if found else value
+
+def temporal_context(text,literal):
+    """Only wording adjacent to the literal qualifies it: (approximate, alternatives/hesitation)."""
+    approximate=hesitant=False
+    for match in re.finditer(re.escape(literal),text):
+        before=text[:match.start()];after=text[match.end():]
+        approximate|=bool(re.search(APPROXIMATE+r'\s*$',before) or re.match(r'\s*(?:กว่า\s*ๆ|โดยประมาณ)',after))
+        hesitant|=bool(re.search(r'(?:หรือ|'+HESITANT+r')\s*$',before) or re.match(r'\s*(?:หรือ(?!เปล่า|ไม่|ยัง)|'+HESITANT+')',after))
+    return approximate,hesitant
+
+def approximate_notices(d):
+    labels=[APPROXIMATE_LABELS[f] for f in TEMPORAL if f in d.get('approximate_fields',()) and d['facts'].get(f)]
+    return ['และ'.join(labels)+'เป็นค่าประมาณตามที่บอกไว้'] if labels else []
 NAMES={'title':'ชื่อเรื่อง','date':'วันนัด','time':'เวลาเริ่ม','end':'เวลาสิ้นสุดหรือระยะเวลา (นาที)','time_or_all_day':'ทั้งวันหรือเวลาเริ่ม',
        'calendar_date_unclear':'วันนัดที่ชัดเจน','calendar_date_invalid':'วันที่มีอยู่จริง','calendar_weekday_conflict':'วันในสัปดาห์กับวันที่ให้ตรงกัน',
        'calendar_time_unclear':'เวลาเริ่มหรือสิ้นสุดที่ชัดเจน','calendar_time_invalid':'เวลาที่ถูกต้อง',
@@ -165,6 +188,8 @@ def restore_calendar(state,value):
                 if not d.get('all_day') or anchor['source_ref'] not in d['source_refs'] or datetime.fromisoformat(anchor['at']).utcoffset() is None:raise PlanningError('Invalid all-day temporal source')
         if (set(d['facts'])!=set(FIELDS) or not isinstance(d['source_refs'],list) or len(d['source_refs'])>32
             or any(not isinstance(v,str) for v in d['source_refs'])):raise PlanningError('Invalid Calendar facts')
+        if 'approximate_fields' in d and (not isinstance(d['approximate_fields'],list) or not d['approximate_fields']
+            or any(f not in TEMPORAL or not d['facts'].get(f) for f in d['approximate_fields'])):raise PlanningError('Invalid Calendar approximation')
         for field,text in d['facts'].items():
             if text is None:continue
             if not isinstance(text,str) or not 1<=len(text)<=200:raise PlanningError('Invalid Calendar literal fact')
@@ -213,16 +238,17 @@ class CalendarWorkflow:
     def single_definitions(self):
         nullable={'type':['string','null']}
         fields={name:{**nullable,'description':'Literal full owner event name, excluding leading request verbs unless explicitly quoted/named as title' if name=='title' else 'Literal owner date/time/duration wording; null retains the certified value'} for name in FIELDS}
-        fields['date_text']['description']='Copy only the literal date span, excluding adjacent clock, duration and all-day mode wording. Select all_day separately.'
+        fields['date_text']['description']='Copy a contiguous owner date span, excluding clock/duration/mode wording. Never join separated source fragments. For a date interpreted from shared components use resolve_temporal then temporal_refs, leaving this field null for its verified date projection.'
         fields['time_text']['description']='Literal owner start clock, without date or duration. Null when unknown or for an explicitly all-day event.'
         fields['end_time_text']['description']='Literal owner endpoint clock. Do not place an endpoint in duration_text or calculate an absent endpoint.'
         fields['duration_text']['description']='Literal elapsed duration, not an endpoint clock or a model-calculated clock difference. Null when absent.'
-        temporal_refs={'type':'array','maxItems':5,'items':object_schema({'field':{'type':'string','enum':[f for f in FIELDS if f!='title']},'temporal_ref':{'type':'string'}})}
+        temporal_refs={'type':'array','maxItems':5,'description':'Verified current-turn resolve_temporal refs. Set the paired field null, its exact returned projection, or its original source_text. The server supplies the normalized value. Each distinct event may cite its own date resolution.',
+            'items':object_schema({'field':{'type':'string','enum':[f for f in FIELDS if f!='title']},'temporal_ref':{'type':'string'}})}
         return [{'type':'function','name':'prepare_calendar_event','strict':True,
             'description':'Prepare one appointment, never writes. all_day=true only for explicit owner all-day wording; requires a date, never times. Timed appointments need start and end/duration. Null retains existing mode/facts. One all-day date per event; clarify or split multi-day ranges. Use owned source refs/current version. No guests, recurrence or reminders.',
             'parameters':object_schema({'draft_ref':nullable,'draft_version':{'type':['integer','null']},**fields,'all_day':{'type':['boolean','null']},'temporal_refs':temporal_refs,'source_refs':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':16}})},
-            {'type':'function','name':'read_calendar_drafts','strict':True,'description':'Read owned pending Calendar facts without creating a review or consent.','parameters':object_schema({'draft_ref':nullable})},
-            {'type':'function','name':'control_calendar_draft','strict':True,'description':'Only explicitly requested review or pending-draft cancellation. Never confirms a write or deletes an event.','parameters':object_schema({'draft_ref':{'type':'string'},'draft_version':{'type':'integer'},'operation':{'type':'string','enum':['review','cancel']}})}]
+            {'type':'function','name':'read_calendar_drafts','strict':True,'description':'Read owned pending Calendar facts for planning without creating a review or consent. To show the owner a pending appointment again for confirmation, use control_calendar_draft review instead.','parameters':object_schema({'draft_ref':nullable})},
+            {'type':'function','name':'control_calendar_draft','strict':True,'description':'review re-presents a pending draft with fresh confirmation controls when the owner asks to see or check it again; cancel discards a pending draft only when requested. Never confirms a write or deletes an event.','parameters':object_schema({'draft_ref':{'type':'string'},'draft_version':{'type':'integer'},'operation':{'type':'string','enum':['review','cancel']}})}]
     def bound(self,p,*,allow_batch=False):
         d=self.draft(p.draft_ref)
         if d.get('batch_ref') and not allow_batch:raise PlanningError('calendar_batch_required')
@@ -242,6 +268,7 @@ class CalendarWorkflow:
                 if getattr(p,field) not in {None,row['value'],row['text']}:raise PlanningError('temporal_value_mismatch',fields=[field])
             p=p.model_copy(update={k:v['value'] for k,v in resolved.items()})
             field_evidence={**(field_evidence or {}),**resolved}
+        p=p.model_copy(update={f:unqualified(getattr(p,f)) for f in TEMPORAL if getattr(p,f)})
         # Models occasionally put an explicit end clock or clock range in
         # the duration slot. Retain the literal end-role prefix so ordinary
         # owner-span checks cannot accept a model-invented "ถึง" role.
@@ -360,7 +387,7 @@ class CalendarWorkflow:
             scoped=[scope(r,field,value,p.title or d['facts']['title']) if scope else r for r in eligible]
             matches=[(r,r['value'] if r.get('temporal') and r['value']==value else literal_fact(value,r['text'] if field=='title' else outside_title(r['text'],p.title or d['facts']['title']),field)) for r in scoped]
             matches=[(r,literal) for r,literal in matches if literal is not None]
-            if not matches:raise PlanningError('calendar_'+field+'_source')
+            if not matches:raise PlanningError('calendar_'+field+'_source',fields=[field])
             row,literal=matches[-1];bare=bool(old and self._answer(old,'time' if field=='time_text' else 'end',literal))
             d['facts'][field]=literal;d['fact_sources'][field]=[row['source_ref']]
             d['anchors'][field]={'source_ref':row['source_ref'],'at':row['at'],'bare':bare,
@@ -374,11 +401,25 @@ class CalendarWorkflow:
             d['facts']['duration_text']=None;d['fact_sources'].pop('duration_text',None);d['anchors'].pop('duration_text',None)
         relevant={ref for refs in d['fact_sources'].values() for ref in refs}
         guard_rows=[r for r in rows if r['source_ref'] in relevant and r['source_ref']!=self.h._current['source_ref']]+[self.h._current]
-        for row in guard_rows:
+        def guard_text(row):
             clean=literal_guard_text(row['text'],d['facts']['title'])
             for other in guard_titles:clean=literal_guard_text(clean,other)
+            return clean
+        # Uncertainty is judged at each certified date/time span, not by any
+        # word elsewhere in the message. Approximations stay visible in review.
+        approximate=set(d.get('approximate_fields',()))&{f for f in TEMPORAL if d['facts'][f]}
+        sources={r['source_ref']:r for r in guard_rows}
+        for field in TEMPORAL:
+            row=sources.get((d['fact_sources'].get(field) or [None])[0])
+            if not d['facts'][field] or not row:continue
+            near,hesitant=temporal_context(guard_text(row),d['facts'][field])
+            if hesitant:raise PlanningError('calendar_ambiguous_source',fields=[field])
+            (approximate.add if near else approximate.discard)(field)
+        if approximate:d['approximate_fields']=[f for f in TEMPORAL if f in approximate]
+        else:d.pop('approximate_fields',None)
+        for row in guard_rows:
+            clean=guard_text(row)
             bangkok_zone(clean)
-            if re.search(r'หรือ|ประมาณ|ราว\s*ๆ?|คร่าว\s*ๆ|ยังไม่แน่ใจ|อาจจะ',clean):raise PlanningError('calendar_ambiguous_source')
             if re.search(r'ทุก(?:วัน|สัปดาห์|เดือน|จันทร์|อังคาร|พุธ|พฤหัส|ศุกร์|เสาร์|อาทิตย์)|\b(?:weekly|daily|recurr|invite|attendee|every\s+(?:day|week|month))|ส่งคำเชิญ|เชิญ|ผู้เข้าร่วม|แจ้งเตือน|เตือน(?:ก่อน|ล่วงหน้า|ด้วย|\s*\d)',clean,re.I):
                 error=PlanningError('calendar_timed_single_creation_only',kind='unsupported');error.unsupported_features=unsupported_features(clean);raise error
         d['source_refs']=list(dict.fromkeys([*(old['source_refs'] if old else []),*p.source_refs,*(r for refs in d['fact_sources'].values() for r in refs),*([d['all_day_anchor']['source_ref']] if 'all_day_anchor' in d else [])]))
@@ -433,7 +474,9 @@ class CalendarWorkflow:
                 d.update(status='cancelled',review=None,version=d['version']+1,updated_at=self.h._current['at'])
                 self.h.state.calendar_drafts[d['draft_ref']]=d;self.seal(d);self.h.state.checkpoint()
                 return {'domain':'calendar','ok':True,'status':'cancelled','draft_ref':d['draft_ref']}
-            if p.operation!='review' or not re.search(r'ตรวจ|ทบทวน|ดูร่าง|บันทึก|สร้าง|review|save',self.h._current['text'],re.I):raise PlanningError('calendar_review_not_requested')
+            # A review only re-presents the draft with fresh consent; it never
+            # writes, so the planner's reading of the request is sufficient.
+            if p.operation!='review':raise PlanningError('calendar_review_not_requested')
             d.update(version=d['version']+1,updated_at=self.h._current['at']);d['start'],d['end'],d['missing_fields'],d['issues']=calculate(d)
             return self.save_review(d)
         except (ValueError,KeyError,TypeError) as error:
@@ -444,11 +487,11 @@ class CalendarWorkflow:
             return {'domain':'calendar','ok':False,'status':'invalid_request','error':code,
                 'recovery':metadata,
                 **({'unsupported_features':error.unsupported_features} if hasattr(error,'unsupported_features') else {})}
-    def render(self,output):
+    def render(self,output,*,refreshed=False):
         if output.get('ok') and 'calendar_batch_view' in output:return self.batches.render(output)
         data={'domain':'calendar','tool_result':output,'calendar_reason':'นัดต้องมีชื่อ วัน เวลาเริ่ม และเวลาสิ้นสุดหรือระยะเวลาจากเจ้าของ แล้วจึงตรวจร่างและยืนยันก่อนสร้าง'}
         if not output.get('ok'):
-            messages={'calendar_ambiguous_source':'มีตัวเลือกมากกว่าหนึ่งแบบ กรุณาระบุรายละเอียดนัดที่ต้องการใช้',
+            messages={'calendar_ambiguous_source':'วันหรือเวลานัดยังไม่แน่นอนครับ ต้องการใช้วันเวลาไหนครับ?',
                 'calendar_timezone_unsupported':'รอบนี้ใช้เวลาไทย (Asia/Bangkok) กรุณาระบุวันและเวลาไทยที่ต้องการก่อนตรวจร่าง',
                 'calendar_timed_single_creation_only':'คำขอนี้มีรูปแบบนัดที่ยังเพิ่มให้ไม่ได้ จึงยังไม่ได้สร้างนัดครับ',
                 'calendar_event_type_conflict':'ต้องการนัดทั้งวันหรือนัดระบุเวลาครับ? ข้อมูลสองแบบนี้ยังขัดกัน จึงยังไม่ได้สร้างนัด',
@@ -462,7 +505,9 @@ class CalendarWorkflow:
                 calendar_ambiguous_event_target='มีหลายร่างนัด กรุณาระบุชื่อนัด หมายเลข หรือระบุว่าทั้งชุด',
                 calendar_shared_target_count='จำนวนวัน/นัดที่ระบุร่วมกันไม่ตรงกับชุด กรุณาระบุรายการที่ต้องการใช้เวลาเดียวกัน',
                 calendar_batch_required='นัดนี้อยู่ในชุด กรุณาตรวจหรือแก้ชุดนัดล่าสุด')
-            message=messages.get(output.get('error'),'ขอรายละเอียดนัดที่ชัดเจนจากข้อความของคุณ เพื่อจัดเตรียมร่างให้ตรวจสอบ')
+            fallback=('ผมยังเตรียมนัดจากข้อความนี้ไม่สำเร็จครับ' if output.get('recovery',{}).get('kind')=='assistant_arguments'
+                else 'บอกชื่อนัด วัน และเวลาที่ต้องการได้เลยครับ')
+            message=messages.get(output.get('error'),fallback)
             if output.get('error') in {'calendar_event_type_conflict','calendar_all_day_source'}:
                 return Result('clarification',message,data)
             if output.get('error')=='calendar_timed_single_creation_only':
@@ -475,7 +520,8 @@ class CalendarWorkflow:
             return Result('clarification','ยังไม่ได้สร้างนัด\n'+message,data)
         if output['status']=='cancelled':return Result('cancelled','ยกเลิกร่างนัดแล้ว ไม่มีการลบนัดที่สร้างไว้',data)
         if output['status']=='draft_read':
-            values=output['drafts'];return Result('answer','ร่างนัดที่ยังไม่บันทึก:\n'+'\n'.join((v['facts']['title'] or 'ยังไม่มีชื่อ')+' '+(v['start'] or 'ยังไม่มีเวลา') for v in values) if values else 'ไม่มีร่างนัดที่ค้างอยู่',data)
+            when=lambda v:appointment_text(v['start'],v['end'],v.get('all_day',False)) if v['start'] and v['end'] else 'ยังไม่ครบวันเวลา'
+            values=output['drafts'];return Result('answer','นัดที่ยังไม่ได้สร้าง:\n'+'\n'.join((v['facts']['title'] or 'ยังไม่มีชื่อ')+' · '+when(v) for v in values) if values else 'ไม่มีนัดที่รอสร้างครับ',data)
         d=self.draft(output['draft_ref']);data['calendar_view']=deepcopy(output['calendar_view'])
         if output['status']!='review':
             fields=clarification_fields(d)
@@ -485,12 +531,14 @@ class CalendarWorkflow:
             if needed:message+='\nขอเฉพาะข้อมูลที่ยังขาด/ไม่ชัดเจน: '+', '.join(needed)
             if 'time_or_all_day' in fields:message+='\n'+timing_question()
             data['calendar_reason']=message;return Result('clarification',message,data)
-        r=d['review'];a,b=interval(d)
-        message=f"ตรวจสอบนัด: {d['facts']['title']}\nปฏิทิน: {d['calendar_label']}\n"
-        message+=('ทั้งวัน '+date_label(d['start'])+'\n' if d.get('all_day') else f'เริ่ม {a:%Y-%m-%d %H:%M}\nสิ้นสุด {b:%Y-%m-%d %H:%M} (Asia/Bangkok)\n')
-        message+=f"มีนัดทับในปฏิทินนี้ {len(r['conflicts'])} รายการ\n" if r['conflicts'] else 'ตรวจเฉพาะปฏิทินนี้ ไม่ได้ตรวจปฏิทินหลัก\n'
-        if a<self.h.clock():message+='เวลาเริ่มนี้อยู่ในอดีต กรุณาตรวจสอบก่อนยืนยัน\n'
-        message+='ยืนยันสร้างนัดนี้ไหมครับ? ตอบ ยืนยัน หรือใช้ปุ่ม'
+        r=d['review'];a,_=interval(d)
+        notices=[f"มีนัดทับในปฏิทินนี้ {len(r['conflicts'])} รายการ" if r['conflicts'] else 'ไม่พบนัดทับในปฏิทินนี้ (ไม่ได้ตรวจปฏิทินหลัก)']
+        if a<self.h.clock():notices.append('เวลาเริ่มนี้อยู่ในอดีต กรุณาตรวจสอบก่อนยืนยัน')
+        notices+=approximate_notices(d)
+        if refreshed:notices.insert(0,'มีข้อความอื่นคั่นหลังรายการเดิม จึงแสดงนัดล่าสุดให้ยืนยันอีกครั้ง')
+        message=f"ตรวจสอบนัด: {d['facts']['title']}\n{appointment_text(d['start'],d['end'],d.get('all_day',False))}\nปฏิทิน: {d['calendar_label']}\n"
+        message+=''.join(v+'\n' for v in notices)+'ยืนยันสร้างนัดนี้ไหมครับ? ตอบ ยืนยัน หรือใช้ปุ่ม'
+        data.update(calendar_notices=notices,calendar_label=d['calendar_label'])
         data['confirm_command']='ยืนยันนัด '+d['draft_ref']+' '+r['nonce']
         from .conversation_ui import render_actions
         data['line_message']=render_actions(message,[{'type':'postback','label':label,
@@ -528,8 +576,15 @@ class CalendarWorkflow:
         try:d=self.draft(ref)
         except ValueError:return Result('stale','ร่างนัดเปลี่ยนหรือหมดอายุแล้ว')
         r=d['review']
-        if (not self.enabled or d['status']!='review' or not r or not hmac.compare_digest(r['nonce'],nonce)
-            or r['payload_hash']!=payload_hash(d) or datetime.fromisoformat(self.h._current['at'])<=datetime.fromisoformat(r['at']) or not self.delivered(d,latest=latest)):
+        valid=(self.enabled and d['status']=='review' and r and hmac.compare_digest(r['nonce'],nonce)
+            and r['payload_hash']==payload_hash(d) and datetime.fromisoformat(self.h._current['at'])>datetime.fromisoformat(r['at']))
+        if not valid or not self.delivered(d,latest=latest):
+            if valid and latest and self.delivered(d):
+                # A plain confirmation after other replies is not bound to the
+                # earlier review. Show the unchanged draft again for fresh
+                # consent instead of a dead-end stale reply; nothing is written.
+                d=deepcopy(d);d.update(version=d['version']+1,updated_at=self.h._current['at'])
+                return self.render(self.save_review(d),refreshed=True)
             return Result('stale','กรุณาตรวจสอบร่างนัดล่าสุดก่อนยืนยัน')
         blocked=self.h._blocked_action()
         if blocked:return self.h._uncertain(blocked)
@@ -605,9 +660,9 @@ class CalendarWorkflow:
             action.status='uncertain';self.h.state.checkpoint();return self.h._uncertain(key)
         m=action.metadata;ref=m['calendar_draft_ref'];d=self.h.state.calendar_drafts.get(ref)
         if d:d.update(status='recorded',review=None);self.seal(d)
-        when=('ทั้งวัน '+date_label(args.start.isoformat()) if getattr(args,'all_day',False) else f'{args.start.astimezone(BANGKOK):%Y-%m-%d %H:%M} ถึง {args.end.astimezone(BANGKOK):%Y-%m-%d %H:%M} (Asia/Bangkok)')
+        when=appointment_text(args.start.isoformat(),args.end.isoformat(),getattr(args,'all_day',False))
         result=Result('created',f"เพิ่มนัด {args.title} เรียบร้อยแล้วครับ\n{when}",
-            {'domain':'calendar','event_id':receipt.id,'draft_ref':ref,'start':args.start.isoformat(),'end':args.end.isoformat(),'calendar_label':m['calendar_label'],'all_day':getattr(args,'all_day',False)})
+            {'domain':'calendar','event_id':receipt.id,'draft_ref':ref,'start':args.start.isoformat(),'end':args.end.isoformat(),'calendar_label':m['calendar_label'],'all_day':getattr(args,'all_day',False),'title':args.title})
         self.h.state.last=LastAction('event',(receipt.id,),datetime.fromisoformat(m['last_expires_at']))
         action.status='completed';action.result=deepcopy(result);self.h.state.checkpoint();self.h.phase_hook('action_completed',key)
         return result

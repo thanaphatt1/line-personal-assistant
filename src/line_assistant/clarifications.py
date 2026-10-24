@@ -11,7 +11,7 @@ def compact(host,result):
     question=None;focus=None
     entries=output.get('entries')
     if entries and not output.get('item_enrollment'):
-        if (output.get('previous_price_lookup') is not None or any(e.get('previous_price') or e.get('date_issue') for e in entries)):
+        if (output.get('previous_price_lookup') is not None or any(e.get('previous_price') or e.get('date_issue') not in {None,'continuation_date_required'} for e in entries)):
             return result
         # Catalog decisions and validation explanations have their own exact
         # question/choice contract. Never shorten warnings or uncertainty.
@@ -35,20 +35,21 @@ def compact(host,result):
     view=result.data.get('calendar_batch_view')
     if not view and result.data.get('calendar_view'):view={'events':[result.data['calendar_view']]}
     if view:
-        from .calendar_event_types import clarification_fields,timing_question
+        from .calendar_event_types import clarification_fields
         # Timing conflicts and invalid dates still display their full diagnosis.
         events=view['events']
-        if not any(e.get('issues') or not e['facts'].get('title') for e in events):
-            for index,event in enumerate(events,1):
+        # An untitled member of a set keeps the full listing: its own source
+        # wording, not an ordinal alone, tells the owner which slot is meant.
+        if not any(e.get('issues') or len(events)>1 and not e['facts'].get('title') for e in events):
+            for event in events:
                 fields=clarification_fields(event)
                 if not fields:continue
-                title=event['facts'].get('title') or 'นัดที่ '+str(index)
+                subject=event['facts'].get('title') or 'นัดนี้'
                 field=fields[0]
-                ask={'title':'นัดนี้ชื่ออะไรครับ?','date':'นัดนี้วันไหนครับ?',
-                     'time':'เริ่มกี่โมงครับ?','end':'เวลาสิ้นสุดกี่โมงหรือใช้เวลานานเท่าไรครับ?'}.get(field)
-                if field=='time_or_all_day':ask=timing_question(index if len(events)>1 else None)
+                ask={'title':'ชื่ออะไรครับ?','date':'วันไหนครับ?','time':'เริ่มกี่โมงครับ?',
+                     'end':'เวลาสิ้นสุดกี่โมง หรือใช้เวลานานเท่าไรครับ?','time_or_all_day':'เป็นนัดทั้งวัน หรือเริ่มกี่โมงครับ?'}.get(field)
                 if ask:
-                    question=title+' — '+ask
+                    question=subject+('' if field=='title' else ' ')+ask
                     focus={'draft_ref':view.get('batch_ref') or event.get('draft_ref'),
                            'version':view.get('version') or event.get('version'),'record_ref':event.get('draft_ref'),'field':field}
                 break

@@ -12,17 +12,18 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .history_context import WINDOW,digest,source_ref,draft_index
-from .model_api import MODEL_ID,MAX_OUTPUT_TOKENS,object_schema
+from .model_api import (MODEL_ID,MAX_OUTPUT_TOKENS,object_schema,PLANNER_REASONING_EFFORT,
+    PLANNER_MAX_OUTPUT_TOKENS,PLANNER_RPC_SECONDS,PLANNER_TURN_SECONDS)
 from .line_api import message_hash,rendered_message
 from .transport import ApiError,OutcomeUnknown
 from .planner_instructions import CORE as RAW_INSTRUCTIONS, build as planner_instructions
 
-# Official gpt-6-luna model page, verified Oct 14, 2026.
+# Official gpt-6-luna model page, verified Oct 24, 2026.
 MODEL_CONTEXT_TOKENS=1_050_000
 LONG_CONTEXT_THRESHOLD=272_000
 FRAMING_TOKEN_RESERVE=4096
 SUMMARY_OUTPUT_TOKENS=1024
-CALENDAR_MAX_OUTPUT_TOKENS=4096
+CALENDAR_MAX_OUTPUT_TOKENS=PLANNER_MAX_OUTPUT_TOKENS
 RAW_SOURCE=ContextVar('raw_owner_source',default=None)
 # Legacy constant names remain available; active instructions are built from
 # the offered capabilities, without changing the history or tool-call contract.
@@ -249,8 +250,8 @@ def request(state,text,at,event,definitions,previous=None,*,production=False,sum
     context['available_tools']=[t['name'] for t in definitions]
     if summary:context['rolling_summary']=checked
     body={'model':MODEL_ID,'instructions':request_instructions(definitions,calendar=calendar_drafts is not None),'input':[{'role':'user','content':json.dumps(context,ensure_ascii=False,separators=(',',':'))}],
-          'tools':deepcopy(definitions),'tool_choice':'auto','parallel_tool_calls':False,'reasoning':{'effort':'none'},
-          'max_output_tokens':CALENDAR_MAX_OUTPUT_TOKENS if calendar_drafts is not None else MAX_OUTPUT_TOKENS,'store':False,'service_tier':'default','truncation':'disabled'}
+          'tools':deepcopy(definitions),'tool_choice':'auto','parallel_tool_calls':False,'reasoning':{'effort':PLANNER_REASONING_EFFORT},
+          'max_output_tokens':PLANNER_MAX_OUTPUT_TOKENS,'store':False,'service_tier':'default','truncation':'disabled'}
     if previous:
         exchanges=previous if isinstance(previous,list) else [previous]
         for call,result in exchanges:

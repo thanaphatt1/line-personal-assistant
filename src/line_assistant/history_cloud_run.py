@@ -218,13 +218,16 @@ class HistoryHttp(PilotHttp):
             if body.get('truncation')!='disabled' or not expected or body['tools']!=expected:raise LiveDisabled('Unbound raw tools')
             raw.reservation(body)
         expected_choice='required' if raw_request and body['instructions']==raw.SUMMARY_INSTRUCTIONS else 'auto'
+        planner_request=raw_request and body['instructions']!=raw.SUMMARY_INSTRUCTIONS
+        expected_effort=raw.PLANNER_REASONING_EFFORT if planner_request else 'none'
+        expected_output=raw.PLANNER_MAX_OUTPUT_TOKENS if planner_request else MAX_OUTPUT_TOKENS
         proposal_choice={'type':'function','name':'propose_historical_categories'}
         if raw_request and self.config.historical_categories_enabled and body['instructions']!=raw.SUMMARY_INSTRUCTIONS and body['tool_choice']==proposal_choice:
             pending=self.state.pending if self.state is not None else None
             if not pending or pending.kind!='historical_category_review' or pending.payload.get('stage')!='unclassified':raise LiveDisabled('No historical page awaiting proposals')
             expected_choice=proposal_choice
         if (set(body)!=keys or body['model']!=MODEL_ID or body['tool_choice']!=expected_choice or body['parallel_tool_calls'] is not False
-                or body['store'] is not False or body['reasoning']!={'effort':'none'} or body['max_output_tokens']!=(raw.CALENDAR_MAX_OUTPUT_TOKENS if raw_request and self.config.calendar_enabled and body['instructions']!=raw.SUMMARY_INSTRUCTIONS else MAX_OUTPUT_TOKENS)
+                or body['store'] is not False or body['reasoning']!={'effort':expected_effort} or body['max_output_tokens']!=expected_output
                 or body['service_tier']!='default' or not raw_request and len(json.dumps(body,ensure_ascii=False,separators=(',',':')).encode())>MAX_BODY_BYTES
                 or self.state is None or not self.state.holder):raise LiveDisabled('Unbound history request')
         fingerprint=hashlib.sha256(json.dumps(body,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

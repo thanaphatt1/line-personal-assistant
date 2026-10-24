@@ -101,7 +101,7 @@ def test_natural_partial_dialogue_asks_only_duration_and_confirm_replay_is_once(
     h=Harness();r=h.prepare('นัดตรวจฟันพรุ่งนี้บ่ายสอง',title='ตรวจฟัน',date_text='พรุ่งนี้',time_text='บ่ายสอง')
     assert r.status=='clarification' and r.data['calendar_view']['missing_fields']==['end'] and not h.provider.events
     old=deepcopy(h.draft());r=h.prepare('45 นาที',duration_text='45 นาที')
-    assert r.status=='preview' and '2026-10-17 14:45' in r.message and not h.provider.events
+    assert r.status=='preview' and '17 ต.ค. 2026 เวลา 14:00–14:45' in r.message and not h.provider.events
     d=h.draft();assert d['facts']['title']==old['facts']['title'] and d['fact_sources']['date_text']==old['fact_sources']['date_text']
     event=h.event('ยืนยัน');calls=len(h.model.requests);saved=h.app.handle(event)
     assert saved.status=='created' and len(h.provider.events)==h.provider.posts==1 and len(h.model.requests)==calls
@@ -132,8 +132,12 @@ def test_changed_time_invalidates_old_confirmation_and_preserves_other_facts():
 def test_read_and_other_topic_cannot_become_plain_confirmation():
     h=Harness();r=complete(h);before=deepcopy(h.draft())
     h.send('สวัสดี',response(text='ช่วยเรื่องรายจ่ายหรือนัดได้ครับ'))
-    assert h.draft()==before and h.send('ยืนยัน').status=='stale' and not h.provider.events
-    assert h.send(r.data['confirm_command']).status=='created'
+    assert h.draft()==before
+    # Plain confirmation after another topic shows the unchanged draft again for
+    # fresh consent; it never creates, and the superseded review cannot either.
+    again=h.send('ยืนยัน')
+    assert again.status=='preview' and not h.provider.events and h.draft()['facts']==before['facts']
+    assert h.send(r.data['confirm_command']).status=='stale' and h.send(again.data['confirm_command']).status=='created'
 
 def test_calendar_and_expense_pending_require_domain_selection():
     h=Harness();calendar=complete(h)

@@ -5,6 +5,7 @@ import json
 import pytest
 from line_assistant import history_first
 from line_assistant.history_context import source_ref
+from line_assistant.reply_display import day
 from line_assistant.history_dates import cues
 from test_history_first import Harness,data,response
 
@@ -29,7 +30,7 @@ from test_history_first import Harness,data,response
 ])
 def test_explicit_relative_and_defaulted_dates_normalize_without_literal_iso(at,text,expected):
  h=Harness();h.now=datetime.fromisoformat(at);r=h.prepare(text,date=expected)
- assert r.status=='preview' and h.draft()['entries'][0]['date']==expected and expected in r.message and not h.sheets.entries
+ assert r.status=='preview' and h.draft()['entries'][0]['date']==expected and day(expected) in r.message and not h.sheets.entries
  assert h.draft()['entries'][0]['date_basis']['policy']=='bangkok-date-defaults-v02'
 
 @pytest.mark.parametrize('text',['วันที่ 31 พฤศจิกายน ค่ากระดาษ 228','วันที่ 31 เดือน 4 ค่ากระดาษ 228','วันที่ 29 กุมภาพันธ์ 2025 ค่ากระดาษ 228','วันที่ 30 กุมภาพันธ์ 2024 ค่ากระดาษ 228','วันที่ 0 ค่ากระดาษ 228','วันที่ 10 เดือน 13 ค่ากระดาษ 228'])
@@ -45,7 +46,7 @@ def test_impossible_calendar_dates_clarify_without_review(text):
  ('2026-10-13T12:00:00+00:00','ค่ากระดาษ 228 วันที่ 2027-01-01','2027-01-01')])
 def test_future_date_is_surfaced_under_unchanged_business_restriction_without_rollback(at,text,expected):
  h=Harness();h.now=datetime.fromisoformat(at);r=h.prepare(text,date=expected)
- assert r.status=='clarification' and expected in r.message and 'อนาคต' in r.message
+ assert r.status=='clarification' and day(expected) in r.message and 'ล่วงหน้าไม่ได้' in r.message
  assert r.data['tool_result']['date_details'][0]['normalized_date']==expected
  assert 'entries[0].future_expense_date' in r.data['tool_result']['invalid_fields'] and not h.state.drafts and not h.sheets.entries
 
@@ -70,7 +71,7 @@ def test_followup_month_resolves_the_original_day_and_preserves_item_amount(repl
  r=h.update(reply,date='2026-09-20',date_text=reply)
  assert r.status=='preview' and h.draft()['draft_ref']==ref
  assert [(e['item'],e['amount'],e['date']) for e in h.draft()['entries']]==[('ค่ากระดาษ','228','2026-09-20')]
- assert '2026-09-20' in r.message and not h.sheets.entries
+ assert '20 ก.ย. 2026' in r.message and not h.sheets.entries
 
 def test_amount_edit_while_awaiting_month_keeps_original_day_and_then_resolves():
  h=Harness();h.prepare('วันที่ 20 มีค่ากระดาษ 228')
@@ -82,7 +83,7 @@ def test_amount_edit_while_awaiting_month_keeps_original_day_and_then_resolves()
 def test_explicit_current_month_reply_is_future_restriction_not_another_missing_month_question():
  h=Harness();h.prepare('วันที่ 20 มีค่ากระดาษ 228')
  r=h.update('ตุลา',date='2026-10-20',date_text='ตุลา')
- assert r.status=='clarification' and '2026-10-20' in r.message and 'ข้อจำกัดเดิม' in r.message and 'เดือนไหน' not in r.message
+ assert r.status=='clarification' and '20 ต.ค. 2026 ยังไม่ถึง' in r.message and 'เดือนไหน' not in r.message
  assert 'entries[0].future_expense_date' in r.data['tool_result']['invalid_fields'] and 'entries[0].date.month' not in r.data['tool_result']['missing_fields'] and not h.sheets.entries
 
 def test_invalid_month_reply_clarifies_and_preserves_original_partial_day():
@@ -96,7 +97,7 @@ def test_invalid_month_reply_clarifies_and_preserves_original_partial_day():
 def test_relevant_explicit_month_context_precedes_future_day_month_question(month,status,expected):
  h=Harness();h.send(f'กำลังลงรายจ่ายเดือน{month} ปี 2026',response(text='รับทราบ'))
  r=send_sources(h,'วันที่ 20 ค่ากระดาษ 228',[source_ref('history-1')],date=expected)
- assert r.status==status and expected in r.message and 'เดือนไหน' not in r.message and not h.sheets.entries
+ assert r.status==status and day(expected) in r.message and 'เดือนไหน' not in r.message and not h.sheets.entries
 
 def test_old_confirmation_stays_stale_during_month_question_and_after_valid_month_reply():
  h=Harness();first=h.prepare('วันที่ 10 มีค่ากระดาษ 228')

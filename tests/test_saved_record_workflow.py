@@ -137,7 +137,9 @@ def test_ambiguous_candidate_requires_delivered_choice_and_current_money_not_ord
     result,_=turn(api,'ยืนยัน');assert result.status!='updated' and api.expense_posts==0
 
 def test_catalog_change_revokes_confirmation_and_old_nonce_cannot_be_reused():
-    api=SavedHosted();review,_=preview(api);command=review.message.split('“')[-1].split('”')[0]
+    api=SavedHosted();review,_=preview(api)
+    parts=review.data['line_message']['contents']['footer']['contents'][0]['action']['data'].split('|')
+    command='ยืนยันแก้ '+parts[2]+' '+parts[3]
     api.google.cells[('Database',2,2)]='Changed'
     stale,_=turn(api,'ยืนยัน');assert stale.status=='stale' and not api.expense_posts
     fresh,_=turn(api,'ตรวจรายการใหม่',response('review_saved_record_change',{}));assert fresh.status=='preview'
@@ -162,8 +164,9 @@ def test_review_amendment_retains_previous_proposed_date_and_revokes_nonce():
     first,_=turn(api,'แก้กาแฟวันที่ 5 พ.ย. ไป 6 พ.ย.',find(),prepare(date='2026-11-06',date_text='6 พ.ย.'))
     assert first.status=='preview',first
     second,_=turn(api,'ยอดเป็น 35 บาท',prepare(amount='35',amount_text='35'))
-    assert second.status=='preview' and '2026-11-06' in second.message and '35.00' in second.message,second
-    old=first.message.split('“')[-1].split('”')[0]
+    assert second.status=='preview' and '6 พ.ย. 2026' in second.message and '35.00' in second.message,second
+    parts=first.data['line_message']['contents']['footer']['contents'][0]['action']['data'].split('|')
+    old='ยืนยันแก้ '+parts[2]+' '+parts[3]
     stale,_=turn(api,old);assert stale.status=='stale' and not api.expense_posts
 
 @pytest.mark.parametrize('domain',['expense','calendar'])

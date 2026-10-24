@@ -193,7 +193,7 @@ def test_cached_older_amount_cannot_overwrite_a_later_owner_correction():
 
 def test_semantic_name_preparation_accepts_normal_verbs_but_preserves_suffix_modifiers():
     h=Harness();r=h.prepare('ช่วยบันทึกค่ากาแฟ 50 บาทให้หน่อยครับ',item='กาแฟ',amount=50)
-    assert r.status=='preview' and 'ต้นทาง:' in r.message and not h.sheets.entries
+    assert r.status=='preview' and 'จากข้อความ:' in r.message and not h.sheets.entries
     h=Harness();r=h.prepare('กาแฟลาเต้ 50 บาท',item='กาแฟ',amount=50)
     assert r.status=='clarification' and not h.state.drafts and not h.sheets.entries
 

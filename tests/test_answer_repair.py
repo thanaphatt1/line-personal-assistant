@@ -165,11 +165,16 @@ def test_oversized_feedback_uses_fallback_without_clipping_facts_or_sending_anot
 def test_mutation_preview_does_not_enter_read_document_repair():
     api=VoiceHosted()
     def invalid(body):
-        assert not json.loads(body['input'][0]['content']).get('answer_document')
+        payload=json.loads(body['input'][0]['content'])
+        assert not payload.get('answer_document') and payload.get('operation_document')
         return generated(body,[{'kind':'text','value':'999 บาท'}])
     api.voice=invalid
     result,_=turn(api,text(),proposed)
-    assert result.status=='preview' and len(api.voice_bodies)==1 and not api.calendar.posts
+    # A Calendar review may repair its own operation document once; it never
+    # becomes a read answer, and the readable fallback keeps the bound review.
+    repair=json.loads(api.voice_bodies[-1]['input'][0]['content'])
+    assert result.status=='preview' and len(api.voice_bodies)==2 and repair['answer_repair'] and not api.calendar.posts
+    assert result.data['response_realization']['status']=='fallback' and '999' not in result.message
 
 
 def unit_host(state=None, respond=None):

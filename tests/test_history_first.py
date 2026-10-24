@@ -77,7 +77,7 @@ def test_first_message_day_only_defaults_bangkok_month_year_and_shows_full_revie
  assert r.status=='preview' and not h.sheets.entries
  e=r.data['tool_result']['entries'][0]
  assert e['date']=='2026-10-10' and e['date_parts']=={} and e['amount']=='228'
- assert r.data['tool_result']['missing_fields']==[] and '2026-10-10' in r.message
+ assert r.data['tool_result']['missing_fields']==[] and '10 ต.ค. 2026' in r.message
  assert e['date_basis']['explicit_parts']=={'day':10} and e['date_basis']['defaulted_parts']=={'year':2026,'month':10}
  assert len(h.port.requests)==1 and e['item']=='ค่ากระดาษ'
 

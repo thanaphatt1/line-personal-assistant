@@ -64,11 +64,10 @@ def visible_record(record,domain):
     return {k:deepcopy(record[k]) for k in keys}
 
 def describe(value,domain):
-    if domain=='expense':return f"{value['item']} — {value['amount']} บาท วันที่ {value['date']}"
-    if value['all_day']:
-        last=(date.fromisoformat(value['end'])-timedelta(days=1)).isoformat()
-        return value['title']+' — '+value['start']+(' ถึง '+last if last!=value['start'] else '')+' ทั้งวัน'
-    return value['title']+' — '+value['start']+' ถึง '+value['end']
+    from .reply_display import day,calendar_parts
+    if domain=='expense':return f"{value['item']} — {value['amount']} บาท วันที่ {day(value['date'])}"
+    when,hours=calendar_parts(value)
+    return value['title']+' — '+when+' '+hours
 
 class SavedEdits:
     def __init__(self,host,*,expense_editor=None,calendar_editor=None,expense_enabled=False,calendar_enabled=False):
@@ -334,17 +333,19 @@ class SavedEdits:
             message='นำรายการนี้ออกจากรายจ่ายใช่ไหมครับ?\n'+describe(v['before'],'expense')+'\nยังไม่ได้ลบครับ พิมพ์ “ยืนยัน” หรือกดปุ่มเพื่อนำรายการนี้ออก'
             return self.output('saved_edit_review',message,'expense',review_ref=v['ref'],review_version=v['version'],review_hash=v['review_hash'],operation='delete')
         message='ตรวจรายการก่อน–หลังครับ ยังไม่ได้แก้ข้อมูล\nก่อน: '+describe(v['before'],v['domain'])+'\nหลัง: '+describe(v['after'],v['domain'])
-        message+='\nถ้าถูกต้อง พิมพ์ “ยืนยัน” หรือ “ยืนยันแก้ '+v['ref']+' '+v['nonce']+'” เพื่อแก้รายการนี้ครับ'
-        return self.output('saved_edit_review',message,v['domain'],review_ref=v['ref'],review_version=v['version'],review_hash=v['review_hash'])
+        message+='\nถ้าถูกต้อง ตอบ “ยืนยัน” หรือกดปุ่มยืนยันได้เลยครับ'
+        return self.output('saved_edit_review',message,v['domain'],review_ref=v['ref'],review_version=v['version'],review_hash=v['review_hash'],
+                           before=visible_record(v['before'],v['domain']),after=visible_record(v['after'],v['domain']))
     def result(self,output):
         status='preview' if output['status']=='saved_edit_review' else 'clarification' if output['status']=='saved_edit_candidates' else 'answer'
         data={'domain':output['domain'],'saved_record_edit':True,'tool_result':deepcopy(output)}
         if output['status']=='saved_edit_candidates':data['saved_edit_selection']=output['selection_ref']
         if output['status']=='saved_edit_review':data['saved_edit_review']={k:output[k] for k in ['review_ref','review_version','review_hash']}
-        if output.get('operation')=='delete' and output['status']=='saved_edit_review':
+        if output['status']=='saved_edit_review':
             from .conversation_ui import render_actions
             v=self.pending().payload
-            data['line_message']=render_actions(output['message'],[{'type':'postback','label':'ยืนยันนำออก','data':'e1|confirm|'+v['ref']+'|'+v['nonce']}])
+            data['line_message']=render_actions(output['message'],[{'type':'postback','label':'ยืนยันนำออก' if output.get('operation')=='delete' else 'ยืนยันแก้ไข',
+                'displayText':'ยืนยัน','data':'e1|confirm|'+v['ref']+'|'+v['nonce']}])
         return Result(status,output['message'],data)
     def refresh(self):
         p=self.pending();v=deepcopy(p.payload)

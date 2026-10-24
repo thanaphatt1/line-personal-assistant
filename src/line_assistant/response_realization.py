@@ -1,11 +1,11 @@
 """Optional, budgeted Luna realization of immutable server facts.
 
 The model composes speech and fact references, never tools or business values.
-Completed reads use free prose/layout over linked display cells. Write and
-incomplete replies use neutral language outside facts. Diagnosed enrollment
+Completed reads and supported operation reviews/results use free prose/layout
+over linked display cells. Other replies use neutral language outside facts. Diagnosed enrollment
 failures permit a short explanatory sentence; status and the
 next question are still inserted by the server, never rewritten by the model.
-Completed read documents can repair a received validation failure once within
+Linked documents can repair a received validation failure once within
 the same deadline, with a separate durable reservation and unchanged facts.
 """
 from copy import deepcopy
@@ -18,7 +18,7 @@ import hashlib,json,re
 from .state import Claim,Result
 from .model_api import MODEL_ID,BudgetBlocked
 from .language import BANGKOK
-from . import answer_composition
+from . import answer_composition, operation_composition
 
 MAX_OUTPUT=768
 MAX_BODY_BYTES=24000
@@ -36,7 +36,7 @@ def speech_words(outcome,query=False):
         'clarification':('ยัง','ต้อง','ตรวจสอบ','รายการ','เพิ่ม'),
         'stale':('ยัง','ต้อง','ตรวจสอบ','รายการ','ยืนยัน','ใหม่','ชุด','นัด','ล่าสุด')}.get(outcome,())
     return (*NEUTRAL,*extra,*QUERY_WORDS) if query else (*NEUTRAL,*extra)
-INSTRUCTIONS=answer_composition.INSTRUCTIONS+(
+INSTRUCTIONS=operation_composition.INSTRUCTIONS+answer_composition.INSTRUCTIONS+(
     'Realize a concise natural Thai reply from immutable server facts and relevant conversation context. '
     'Return JSON with an optional opening (prefer an empty string) and parts, each kind=text or fact. fact.value is an ID, never a copied/edited fact. '
     'Include EVERY fact ID exactly once in the supplied order. The status fact is authoritative: draft is not saved, '
@@ -76,7 +76,7 @@ INSTRUCTIONS+=selection.INSTRUCTIONS
 def encoded(value):return json.dumps(value,ensure_ascii=False,separators=(',',':')).encode()
 def identity(result):return hashlib.sha256(encoded({'status':result.status,'message':result.message,'data':result.data})).hexdigest()
 def context_text(value):
-    value=re.sub(r'\b(?:calset_|cal_|draft_)[a-f0-9]{20}\b','[รายการที่เลือก]',value)
+    value=re.sub(r'\b(?:calset_|cal_|draft_|se_)[a-f0-9]{20}\b','[รายการที่เลือก]',value)
     return re.sub(r'\b[a-f0-9]{16}\b','[ข้อมูลยืนยัน]',value)
 
 def speech_pattern(outcome,query=False):
@@ -169,6 +169,9 @@ def facts_for(host,result):
                 row=f"{i}. {title}\nทั้งวัน "+(date_label(e['start']) if e.get('start') else 'ยังไม่ระบุวัน')
                 if e['facts'].get('end_date_text'):row+='\nวันสิ้นสุดที่ระบุ: '+e['facts']['end_date_text']
             elif 'time_or_all_day' in fields:row=f"{i}. {title}"
+            elif e.get('start') and e.get('end'):
+                from .reply_display import appointment_text
+                row=f"{i}. {title}\n"+appointment_text(e['start'],e['end'])
             else:row=f"{i}. {title}\nเริ่ม {instant(e.get('start'))}\nสิ้นสุด {instant(e.get('end'))}"
             if not e.get('start'):
                 for field,label in [('date_text','วันที่ที่ระบุ'),('time_text','เวลาเริ่มที่ระบุ')]:
@@ -183,7 +186,7 @@ def facts_for(host,result):
                 asks.extend(timing_question(None if single else e.get('ordinal',i)) if x=='time_or_all_day' else f"{labels.get(x,'รายละเอียดนัดที่ต้องตรวจ')}ของนัดที่ {i}" for x in [*fields,*e.get('issues',[])])
             facts[f'row{i}']=row
         # The renderer retains every conflict/overlap warning verbatim.
-        warnings=[line for line in result.message.splitlines() if any(word in line for word in ['ทับนัดเดิม','เวลาในชุดทับกัน','มีนัดทับ','ตรวจเฉพาะปฏิทินนี้','เวลาเริ่มนี้อยู่ในอดีต'])]
+        warnings=[line for line in result.message.splitlines() if any(word in line for word in ['ทับนัดเดิม','เวลาในชุดทับกัน','มีนัดทับ','ไม่พบนัดทับ','ตรวจเฉพาะปฏิทินนี้','เวลาเริ่มนี้อยู่ในอดีต','เป็นค่าประมาณ'])]
         if warnings:facts['warnings']='\n'.join(warnings)
         if result.status=='preview':facts['instruction']=('ตรวจรายละเอียด ถ้าถูกต้องตอบ “ยืนยัน” หรือใช้ปุ่มยืนยันนัดครับ' if single else 'ตรวจรายละเอียดทุกนัด ถ้าถูกต้องพิมพ์ “ยืนยันชุดนัดนี้” เพื่อสร้างทั้งชุดครับ')
         else:
@@ -239,12 +242,16 @@ def body_for(host,result):
         'relevant_context':context,'allowed_speech_words':list(speech_words(result.status,query)),
         'questions_allowed':result.status in {'clarification','stale','expired'} or any(k.startswith('ask') or k=='instruction' for k in facts)}
     answer=answer_composition.for_result(host,result)
+    operation=operation_composition.for_result(result)
     if answer:
         # The old rendered rows are fallback only. They are not supplied as
         # fixed strings or automatically appended to a composed read answer.
         payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
         payload.update(answer_document=True,answer_facts=answer,
                        read_evidence=answer_composition.evidence(result.data.get('tool_result') or {}))
+    elif operation:
+        payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
+        payload.update(operation_document=True,operation_facts=operation)
     feedback=(result.data.get('tool_result') or {}).get('validation_feedback')
     if feedback:
         payload['validation_feedback']={k:deepcopy(feedback[k]) for k in ('version','tool','codes','kind','invalid_fields','required_fields','next_action')}
@@ -263,6 +270,9 @@ def body_for(host,result):
     if answer:
         body['max_output_tokens']=answer_composition.MAX_OUTPUT
         body['text']['format'].update(name='grounded_answer_document',schema=answer_composition.schema())
+    elif operation:
+        body['max_output_tokens']=answer_composition.MAX_OUTPUT
+        body['text']['format'].update(name='grounded_operation_document',schema=answer_composition.schema())
     if len(encoded(body))>MAX_BODY_BYTES:return None
     return body
 
@@ -272,6 +282,18 @@ def validate_body(body):
     try:
         p=json.loads(body['input'][0]['content'])
         if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
+        if p.get('operation_document'):
+            expected={'outcome','current_owner_text','relevant_context','operation_document','operation_facts'}
+            return (set(body)==keys and set(p) in (expected,expected|{'answer_repair'})
+                and p['operation_document'] is True and p['outcome'] in {'preview','updated','recorded','created'}
+                and answer_composition.valid_view(p['operation_facts'])
+                and ('answer_repair' not in p or answer_composition.valid_repair(p['answer_repair'],p['operation_facts']))
+                and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
+                and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'}
+                and body['max_output_tokens']==answer_composition.MAX_OUTPUT
+                and body['store'] is False and body['service_tier']=='default' and body['truncation']=='disabled'
+                and body['text']=={'format':{'type':'json_schema','name':'grounded_operation_document','strict':True,'schema':answer_composition.schema()}}
+                and len(encoded(body))<=MAX_BODY_BYTES)
         if p.get('answer_document'):
             expected={'outcome','current_owner_text','relevant_context','answer_document','answer_facts','read_evidence'}
             return (set(body)==keys and set(p) in (expected,expected|{'answer_repair'})
@@ -326,8 +348,8 @@ def parse(value,body):
     document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
     if payload.get('calendar_selection'):return selection.parse(document,payload)
     if payload.get('validation_reply'):return parse_validation(document,payload)
-    if payload.get('answer_document'):
-        try:return answer_composition.render(document,payload['answer_facts'])
+    if payload.get('answer_document') or payload.get('operation_document'):
+        try:return answer_composition.render(document,payload['operation_facts'] if payload.get('operation_document') else payload['answer_facts'])
         except answer_composition.AnswerError as error:
             # Only a fully received, usage-checked final JSON document is
             # eligible for feedback. Transport/envelope failures never retry.
@@ -453,13 +475,17 @@ def realize(host,event,result):
         if repair_from:metadata.update(repair_count=repair_count,repair_from=repair_from)
         if validation_code:metadata['validation_code']=validation_code
         if selection.pending(result):return selection.fallback(result,metadata)
+        operation=operation_composition.for_result(result)
+        if operation:
+            try:return apply(result,operation_composition.fallback(operation),metadata)
+            except (ValueError,KeyError,TypeError):pass
         return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
     if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')
     body=body_for(host,result)
     if body is None:return fallback('body_bound')
     from .pilot_http import remaining_rpc_seconds
     deadline=(selection.TIMEOUT_SECONDS if selection.pending(result) else
-              answer_composition.TIMEOUT_SECONDS if json.loads(body['input'][0]['content']).get('answer_document') else TIMEOUT_SECONDS)
+              answer_composition.TIMEOUT_SECONDS if body['text']['format']['name'] in {'grounded_answer_document','grounded_operation_document'} else TIMEOUT_SECONDS)
     finish_by=started+deadline
     for number in range(2):
         remaining=remaining_rpc_seconds();timeout=finish_by-monotonic()

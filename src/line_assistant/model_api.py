@@ -21,6 +21,12 @@ from .state import ModelBudget, ModelRun
 
 
 MODEL_ID = "gpt-6-luna"
+# The raw-history planner needs space for both reasoning and visible output.
+# Legacy extraction, auxiliary summaries and reply roles retain their profiles.
+PLANNER_REASONING_EFFORT = 'medium'
+PLANNER_MAX_OUTPUT_TOKENS = 32768
+PLANNER_RPC_SECONDS = 30
+PLANNER_TURN_SECONDS = 50
 MAX_INPUT_TOKENS_BOUND = 8192
 MAX_OUTPUT_TOKENS = 1024
 MAX_BODY_BYTES = 6144

@@ -36,9 +36,17 @@ ambiguous requests clarify without writing.
 
 `เพิ่มนัดนิทรรศการทดสอบวันพุธหน้า` prepares an incomplete draft and asks:
 
-> นัดนี้ทั้งวัน หรือเริ่มกี่โมงครับ?
+> นิทรรศการทดสอบ เป็นนัดทั้งวัน หรือเริ่มกี่โมงครับ?
 
 `ทั้งวัน` keeps that draft's title/date and switches to a date-only event. `9:00` keeps the same facts and asks only for an end time or duration. `9:00-10:00` completes the time range. Explicit `ทั้งวัน` never asks for clock fields. Google Calendar all-day events use `start.date` and the exclusive next-day `end.date`.
+
+Uncertainty is judged at each certified date/time span, not by a word anywhere in
+the message. `พรุ่งนี้ประมาณ 14:00` or `ใช้เวลาประมาณชั่วโมงนึง` prepares the stated
+value and the review says that the start time or duration is an approximation
+before the owner confirms. Alternatives or hesitation at the span itself, such as
+`14:00 หรือ 15:00`, `พรุ่งนี้หรือมะรืน` or `อาจจะ 14:00`, still ask first. Unrelated
+wording elsewhere, such as `ร้านเดิมหรือร้านไหนก็ได้`, does not block preparation.
+Reviews and receipts show Bangkok dates such as `17 ต.ค. 2026 เวลา 14:00–14:45`.
 
 A new request may contain up to eight events, including a mixture of timed and all-day appointments. Clarification targets only the unresolved member. An immediate ordinal edit after a delivered group review is bound to that displayed group; a similarly named older group cannot silently replace it. Ambiguous references ask for selection.
 

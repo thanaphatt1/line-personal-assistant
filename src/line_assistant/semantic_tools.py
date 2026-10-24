@@ -207,6 +207,14 @@ def display_item(value):
 
 def review(h,d):
     tax=h.sheets.taxonomy()
+    if h.raw_history_enabled:
+        from .pending_catalog import revalidate
+        fresh=revalidate(d,tax)
+        if fresh!=d:
+            if fresh['missing_fields']:
+                fresh.update(version=d['version']+1,updated_at=h._current['at'])
+                h.state.drafts[fresh['draft_ref']]=fresh;h._seal(fresh)
+            d=fresh
     if d['missing_fields']:return h._enrollment_result(d)
     for e in d['entries']:
         mapping=e['mapping']

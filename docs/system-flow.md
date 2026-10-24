@@ -18,7 +18,7 @@ flowchart TD
     Route["CODE: admit verified direct control or interpretation<br/>No semantic query keyword pre-router"]:::code
     Interpret["LLM: interpret language and context<br/>Output: typed read or draft proposal, or clarification"]:::llm
     Core["CODE: validate and execute bounded tool<br/>Output: structured result or reviewed draft"]:::code
-    Voice["LLM: optional reply arrangement<br/>Input: immutable facts and bounded relevant context<br/>Output: required fact slots with allowed natural phrases"]:::llm
+    Voice["LLM: optional reply composition<br/>Input: verified facts/cells and relevant context<br/>Output: prose and layout over linked values"]:::llm
     Reply["CODE: validate wording or use factual fallback<br/>Output: factual text or review with owner controls"]:::code
     Delivery["EXT: LINE reply API<br/>Output: delivery acknowledgement"]:::ext
     Line --> Gate --> Load
@@ -49,6 +49,24 @@ History includes original owner messages and delivered assistant replies. A roll
 The development-only critic benchmark is separate from this runtime flow: it can add one two-second Luna review after exact validation, with a trusted fallback on rejection or timeout. Its frozen two-call baseline remains historical benchmark evidence; see the [benchmark protocol](../benchmarks/PROTOCOL.md).
 
 All runtime LLM roles use the configured model. The raw-history path has **no fixed provider-call count per owner turn**. A verified direct control can use zero interpretation calls. A simple stored-data query normally uses interpretation and optional grounded wording. Multi-step read analysis can continue across table, Expense and Calendar results, including SQL analysis, with a complete call/result transcript and read-only tools. Repeated reads stop rather than executing again. Provider/context/output bounds, request deadlines, replay protections and configured accounting gates remain. A proposal may need another tool-result step; optional wording is no longer suppressed just because two core requests ran. Failed or slow wording uses the code-produced message and cannot call business tools.
+
+The raw-history planner uses Luna `medium`; auxiliary summary and grounded reply
+roles use `none`. Its 32,768 output-token ceiling covers both reasoning and visible
+output. The application reserves that full allowance before sending, validates
+total reported usage and refuses incomplete output. A planner RPC can use up to
+30 seconds, bounded by the 50-second owner RPC scope; it cannot extend that scope
+or the separate delivery scope.
+
+Completed reads, saved-record change reviews/results, expense reviews/results,
+and Calendar reviews/creation receipts (single or complete set)
+can use linked display cells with model-selected prose and layout. Business values
+come from placeholders; coverage checks retain every record and required fact.
+Shared dates can appear once above a group. Saved Calendar changes share an
+unchanged time range, and show Bangkok dates/times in readable form. Only the
+authoritative status, warning and confirmation facts remain fixed. Other outcomes
+retain the conservative whole-fact reply path. A received invalid document can
+repair once against the same facts/deadline; unavailable wording uses a complete
+readable fallback. No presentation request has tools or write authority.
 
 ## 2. Structured-record writes: metadata, proposal and confirmation
 
@@ -147,7 +165,7 @@ flowchart TD
     classDef ext fill:#E6F4EA,stroke:#188038,color:#111;
 ```
 
-Calendar creation does not invent a missing clock or duration. A dated request without timing asks all-day versus start time; an all-day request never needs clock fields. Single-date all-day creation uses `start.date` and the **exclusive next-day** `end.date`. Timed payloads carry explicit offsets. Group reviews retain each event's facts, and partial/uncertain writes retain per-event recovery state. Draft cancellation does not delete saved events. A terse dated title can ask add-versus-read intent before any draft proposal.
+Calendar creation does not invent a missing clock or duration. Approximate wording at a certified date/time span (`ประมาณ`, `ราวๆ`, `กว่าๆ`) keeps the stated value and is disclosed in the review; alternatives or hesitation at that span ask first. A dated request without timing asks all-day versus start time; an all-day request never needs clock fields. Single-date all-day creation uses `start.date` and the **exclusive next-day** `end.date`. Timed payloads carry explicit offsets. Group reviews retain each event's facts, and partial/uncertain writes retain per-event recovery state. Draft cancellation does not delete saved events. A terse dated title can ask add-versus-read intent before any draft proposal.
 
 ## 4. Stored-data analysis: source reads, then SQL
 

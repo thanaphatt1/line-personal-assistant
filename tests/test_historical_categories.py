@@ -27,7 +27,8 @@ class HistoricalHosted(LabelHosted):
         super().__init__()
     def app(self,enabled=True):
         flags={'PILOT_HISTORICAL_CATEGORIES_ENABLED':str(self.historical).lower(),'PILOT_PROVISIONAL_CATEGORIES_ENABLED':str(self.labels).lower(),'PILOT_PROVISIONAL_MAPPING_ENABLED':str(self.mapping).lower(),'PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY':'reviewed_single_writer' if self.mapping else 'off','PILOT_RESPONSE_REALIZATION_ENABLED':str(self.voice).lower()}
-        return create_history_cloud_run_app({**values(enabled),**TARGET,**flags},transport=httpx.MockTransport(self.handle),secret_loader=lambda name:SecretStr('synthetic-'+name),clock=lambda:self.now)
+        return create_history_cloud_run_app({**values(enabled),**TARGET,**flags,
+            'PILOT_MODEL_USAGE_GATES_ENABLED':str(getattr(self,'usage_gates',True)).lower()},transport=httpx.MockTransport(self.handle),secret_loader=lambda name:SecretStr('synthetic-'+name),clock=lambda:self.now)
     def many(self,n=23):
         for k in list(self.google.cells):
             if k[0]=='All Expenses' and k[1]>1:del self.google.cells[k]
@@ -236,7 +237,8 @@ def test_query_only_still_works_when_persistent_mapping_is_disabled():
     r,_=turn(api,command(api,'query'));assert r.status=='summary' and not api.mapping_posts
 
 def test_many_pages_cover_every_group_and_do_not_expose_unseen_names_to_model():
-    api=HistoricalHosted();api.many(104);r,_=preview(api);seen=set()
+    api=HistoricalHosted();api.usage_gates=False  # Exercise all pages with observational reservations.
+    api.many(104);r,_=preview(api);seen=set()
     while True:
         out=r.data['tool_result'];names={g['item'] for g in out['groups']}
         assert len(names)<=10 and not seen&names;seen|=names

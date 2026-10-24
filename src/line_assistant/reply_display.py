@@ -1,0 +1,52 @@
+"""Display values only; provider timestamps and confirmation evidence stay intact."""
+from datetime import date, datetime, timedelta
+from .language import BANGKOK, MONTHS
+
+
+def day(value):
+    at=date.fromisoformat(value)
+    return f'{at.day} {MONTHS[at.month-1][1]} {at.year}'
+
+
+def clock(at):
+    if at.microsecond:return at.strftime('%H:%M:%S.%f').rstrip('0')
+    return at.strftime('%H:%M:%S' if at.second else '%H:%M')
+
+
+def calendar_parts(value):
+    if value['all_day']:
+        first=day(value['start']);last=(date.fromisoformat(value['end'])-timedelta(days=1)).isoformat()
+        return first+(' – '+day(last) if last!=value['start'] else ''),'ทั้งวัน'
+    start=datetime.fromisoformat(value['start']);end=datetime.fromisoformat(value['end'])
+    if start.utcoffset() is None or end.utcoffset() is None:raise ValueError('Aware display times required')
+    start=start.astimezone(BANGKOK);end=end.astimezone(BANGKOK)
+    period=day(start.date().isoformat())
+    if start.date()!=end.date():period+=' – '+day(end.date().isoformat())
+    return period,clock(start)+'–'+clock(end)
+
+
+def appointment_parts(start,end,all_day=False):
+    """Date and time cells for one appointment; an overnight span keeps both days."""
+    if all_day:return calendar_parts({'start':start,'end':end,'all_day':True})
+    a=datetime.fromisoformat(start);b=datetime.fromisoformat(end)
+    if a.utcoffset() is None or b.utcoffset() is None:raise ValueError('Aware display times required')
+    a=a.astimezone(BANGKOK);b=b.astimezone(BANGKOK)
+    if a.date()==b.date():return day(a.date().isoformat()),clock(a)+'–'+clock(b)
+    return day(a.date().isoformat())+' '+clock(a)+' – '+day(b.date().isoformat())+' '+clock(b),None
+
+
+def appointment_text(start,end,all_day=False):
+    period,hours=appointment_parts(start,end,all_day)
+    return period+(' '+hours if hours=='ทั้งวัน' else ' เวลา '+hours if hours else '')
+
+
+def expense_lines(entries):
+    """Group adjacent dates without sorting, deduplicating or combining payments."""
+    rows=[];previous=object()
+    for entry in entries:
+        when=entry.get('date')
+        if when!=previous:
+            rows.append(day(when) if when else 'ยังไม่ระบุวันที่');previous=when
+        rows.append(f"{entry.get('item') or 'ยังไม่ระบุชื่อ'} — {entry.get('amount') or 'ยังไม่ระบุยอด'} บาท"+
+                    ('\nหมายเหตุ: '+entry['note'] if entry.get('note') else ''))
+    return '\n'.join(rows)
