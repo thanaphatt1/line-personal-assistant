@@ -21,7 +21,7 @@ from .runtime_config import ConfigError
 from . import raw_history as raw
 
 
-HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_NAME_MATCHING_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED','PILOT_STATE_RECORDS_ENABLED'})
+HISTORY_KEYS=frozenset({'PILOT_HISTORY_ENABLED','PILOT_NAME_MATCHING_ENABLED','PILOT_ACTIVITY_MEMORY_ENABLED','PILOT_HISTORY_STATE_ENABLED','PILOT_CALENDAR_ENABLED','PILOT_CALENDAR_ID','PILOT_CALENDAR_READ_ALL_ENABLED','PILOT_CALENDAR_READ_IDS','PILOT_CALENDAR_CONNECTIONS_ENABLED','PILOT_RESPONSE_REALIZATION_ENABLED','PILOT_MODEL_USAGE_GATES_ENABLED','PILOT_SAVED_EXPENSE_EDITS_ENABLED','PILOT_SAVED_CALENDAR_RESCHEDULE_ENABLED','PILOT_SAVED_EXPENSE_EDIT_CONCURRENCY','PILOT_PROVISIONAL_CATEGORIES_ENABLED','PILOT_PROVISIONAL_MAPPING_ENABLED','PILOT_HISTORICAL_CATEGORIES_ENABLED','PILOT_PREVIOUS_EXPENSE_PRICES_ENABLED','PILOT_TABLE_REGISTRY_JSON','PILOT_SAVED_EXPENSE_DELETE_ENABLED','PILOT_CATALOG_ALIASES_ENABLED','PILOT_RECORD_ACTIONS_ENABLED','PILOT_STATE_RECORDS_ENABLED'})
 
 @dataclass(frozen=True,repr=False)
 class HistoryConfig:
@@ -48,6 +48,7 @@ class HistoryConfig:
     record_actions_enabled: bool=False
     state_records_enabled: bool=False
     name_matching_enabled: bool=False
+    activity_memory_enabled: bool=False
     def __getattr__(self,key):return getattr(self.legacy,key)
     @classmethod
     def from_mapping(cls,values):
@@ -116,7 +117,10 @@ class HistoryConfig:
         names=values.get('PILOT_NAME_MATCHING_ENABLED','false')
         if names not in {'true','false'} or names=='true' and (h!='true' or s!='true'):
             raise ConfigError('Name matching requires explicit history/state opt-in')
-        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras),records=='true',names=='true')
+        activities=values.get('PILOT_ACTIVITY_MEMORY_ENABLED','false')
+        if activities not in {'true','false'} or activities=='true' and (calendar!='true' or voice!='true'):
+            raise ConfigError('Activity memory requires Calendar reads and semantic classification')
+        return cls(core,h=='true',s=='true',calendar=='true',target or None,voice=='true',usage=='true',expense=='true',reschedule=='true',concurrency,labels=='true',mappings=='true',historical=='true',prices=='true',read_all=='true',read_ids,connections=='true',table_json,*(v=='true' for v in extras),records=='true',names=='true',activities=='true')
 
 class HistoryHttp(PilotHttp):
     def request(self,service,method,path,*,body=None,params=None,headers=None):
@@ -316,6 +320,7 @@ def create_history_cloud_run_app(values=None,*,transport=None,secret_loader=None
     assistant.table_flow=TableWorkflow(assistant,table_registry)
     assistant.response_realization_enabled=config.response_realization_enabled
     assistant.name_matching_enabled=config.name_matching_enabled and raw_history_enabled
+    assistant.activity_memory_enabled=config.activity_memory_enabled and raw_history_enabled
     assistant.bind_legacy(legacy,history_enabled=config.history_enabled)
     replies=BoundedReplies(LineReplyApi(PilotPort(http,'line')),assistant)
     app=create_app(assistant,replies,inspection_mode=False,event_limit=5,body_limit=16384,app_mode='owner_expenses')

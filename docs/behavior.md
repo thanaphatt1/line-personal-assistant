@@ -43,6 +43,16 @@ keeps a confidence and short reason in the private model record. A timeout,
 quota stop or invalid output keeps the previous new-name question. Typing the
 save button label (`บันทึก`) after the latest review confirms like the button.
 
+With `PILOT_ACTIVITY_MEMORY_ENABLED`, an owner answer that covers every shown
+occurrence of a title (`DSDE Exam เป็นคุมสอบ`, or `ไม่ใช่`) is remembered for that
+activity. The reply says so and offers `ไม่ต้องจำ`. Later reads of the same
+activity apply the label by exact normalized title, classify only the other
+titles (no classifier request when every title is known) and disclose each
+applied label; differently worded activities receive the labels only as disclosed
+classifier hints. `update_activity_label` remembers, corrects or forgets a label
+the owner states with both names in the current message. Choosing only some
+dates of a title is not remembered. Calendar is never written.
+
 When the owner chooses an existing Database name for a different spelling, the
 saved receipt offers a button that sends `จำว่า <spelling> คือ <name>`. That only
 starts the existing alias review; nothing is remembered without its confirmation.

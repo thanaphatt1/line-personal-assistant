@@ -195,7 +195,7 @@ class ProductionHistoryState(FirestoreState, HistoryState):
                 self.calendar_drafts={};self.calendar_proofs={}
                 self.calendar_batches={};self.calendar_batch_proofs={}
                 self.calendar_connections=None;self.calendar_connection_probe=None
-                self.catalog_aliases={};self.owner_features_used=False
+                self.catalog_aliases={};self.owner_features_used=False;self.activity_labels={}
             if self.record_store.mode=='ready':self.record_store.hydrate()
 
 def production_binding(state,sheets,port):

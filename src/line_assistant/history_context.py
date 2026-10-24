@@ -29,6 +29,7 @@ class HistoryState(MemoryState):
         self.calendar_connections=None;self.calendar_connection_probe=None
         self.catalog_aliases={}
         self.owner_features_used=False
+        self.activity_labels={}
         self.raw_history_enabled=False;self.raw_history_migrated=False;self.raw_journal=None;self.rolling_summary=None
         self.raw_tool_definitions=[]
         self.clock=lambda:datetime.now(timezone.utc)

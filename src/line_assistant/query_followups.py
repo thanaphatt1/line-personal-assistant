@@ -123,7 +123,8 @@ def annotate(host, result):
     pending = {'format': 'activity-read-followup-v1', 'owner': host.settings.owner_id,
                'ref': 'follow_' + digest([host.settings.owner_id, host._active_event_id, scope, candidates])[:20],
                'question': host._current['text'], 'goal': 'expense' if any(r.get('domain') == 'expense' for r in rows)
-                       or any(t.get('call', {}).get('name') == 'query_expenses' for t in getattr(host, 'trace', [])) else 'activity',
+                       or any(t.get('call', {}).get('name') == 'query_expenses' for t in getattr(host, 'trace', []))
+                       or scope.get('purpose') == 'expense_dates' else 'activity',
                'scope': deepcopy(scope), 'candidates': candidates, 'confirmed': deepcopy(confirmed),
                'unconfirmed_count': row['calendar_selection']['uncertain_count'],
                'expires_at': (now + timedelta(hours=24)).isoformat()}
@@ -227,12 +228,13 @@ def execute(host, args):
     if any(ref not in fresh_by_ref or any(e[k] != fresh_by_ref[ref][k] for k in fields) for ref, e in checked.items()):
         return fail('calendar_changed')
     if p.decision == 'exclude':
+        learned = learn(host, pending, chosen, 'exclude')
         pending['candidates'] = [e for e in pending['candidates'] if e['candidate_ref'] not in p.candidate_refs]
         pending['unconfirmed_count'] -= len(chosen)
         pending['excluded'] = pending.get('excluded', []) + [{k: e[k] for k in fields} for e in chosen]
         pending['ref'] = 'follow_' + digest([host._active_event_id, pending['ref'], p.candidate_refs, p.decision])[:20]
         return {'query_followup_result': True, 'ok': True, 'complete': False, 'status': 'selection_updated',
-                'read_only': True, 'pending': pending, 'excluded': chosen}
+                'read_only': True, 'pending': pending, 'excluded': chosen, 'learned': learned}
     confirmed = checked
     # Owner-confirmed membership is complete only for this explicit subset.
     # Its extent is derived from stored events, never a model-provided ISO date.
@@ -245,13 +247,14 @@ def execute(host, args):
     if pending['goal'] == 'activity':
         # The original question was about the appointments themselves, so the
         # answer is the confirmed occurrences, not spending on their dates.
+        learned = learn(host, pending, chosen, 'match')
         remaining = [e for e in pending['candidates'] if e['candidate_ref'] not in p.candidate_refs]
         pending.update(candidates=remaining, confirmed=[{k: e[k] for k in fields} for e in confirmed.values()],
                        unconfirmed_count=pending['unconfirmed_count'] - len(chosen))
         pending['ref'] = 'follow_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
         events = sorted(confirmed.values(), key=lambda e: (e['start'], e['title']))
         return {'query_followup_result': True, 'ok': True, 'complete': not pending['unconfirmed_count'], 'status': 'activity_confirmed',
-                'read_only': True, 'pending': pending, 'events': events, 'count': len(events)}
+                'read_only': True, 'pending': pending, 'events': events, 'count': len(events), 'learned': learned}
     ref = 'read_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
     host._query_reads[ref] = {'domain': 'calendar', 'complete': True, 'count': len(confirmed),
         'scope': {**scope, 'start': a, 'end': b}, 'analysis_records': list(confirmed.values())}
@@ -260,13 +263,44 @@ def execute(host, args):
         'filter': None, 'measure': 'expense', 'view': 'total', 'calendar_query_refs': [ref]})
     if not output['complete']:
         return {**fail('expense_unavailable'), 'expense_error': output.get('error_code')}
+    # Remember only an answer the owner sees acknowledged in a successful reply.
+    learned = learn(host, pending, chosen, 'match')
     remaining = [e for e in pending['candidates'] if e['candidate_ref'] not in p.candidate_refs]
     pending.update(candidates=remaining, confirmed=[{k: e[k] for k in fields} for e in confirmed.values()],
                    unconfirmed_count=pending['unconfirmed_count'] - len(chosen))
     pending['ref'] = 'follow_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
     output['scope']['calendar_basis'].update(coverage='confirmed_dates_only',
             original_start=scope['start'], original_end=scope['end'], unconfirmed_count=pending['unconfirmed_count'])
-    return {**output, 'query_followup_result': True, 'pending': pending, 'at': host._current['at']}
+    return {**output, 'query_followup_result': True, 'pending': pending, 'at': host._current['at'], 'learned': learned}
+
+
+def learn(host, pending, chosen, decision):
+    """Remember a title only when the answer covers every shown occurrence of it."""
+    from .activity_labels import enabled, remember
+    if not enabled(host):
+        return {'titles': [], 'decision': decision}
+    picked = {e['candidate_ref'] for e in chosen}
+    titles = {}
+    for e in pending['candidates']:
+        titles.setdefault(e['title'], set()).add(e['candidate_ref'])
+    whole = [title for title, refs in titles.items() if refs <= picked
+             and remember(host, pending['scope']['filter_text'], title, decision, host._current['source_ref'])]
+    return {'titles': whole, 'decision': decision}
+
+
+def remembered_note(output, activity):
+    """Say what was remembered and offer to undo a single title in one tap."""
+    from .activity_labels import names
+    learned = output.get('learned') or {}
+    titles = learned.get('titles') or []
+    if not titles:
+        return '', []
+    if learned['decision'] == 'match':
+        line, undo = f'จำไว้แล้วว่า {names(titles)} เป็น{activity} ครั้งหน้าจะนับให้เลยครับ', ' เป็น'
+    else:
+        line, undo = f'จำไว้แล้วว่า {names(titles)} ไม่ใช่{activity} ครั้งหน้าจะไม่นับครับ', ' ไม่ใช่'
+    actions = [{'type': 'message', 'label': 'ไม่ต้องจำ', 'text': 'ไม่ต้องจำว่า ' + titles[0] + undo + activity}] if len(titles) == 1 else []
+    return '\n' + line, actions
 
 
 def render(output):
@@ -279,14 +313,14 @@ def render(output):
         'expense_unavailable': 'ตรวจนัดที่ยืนยันแล้ว แต่อ่านรายจ่ายไม่ครบครับ จึงยังสรุปยอดไม่ได้'}
     pending = output.get('pending')
     if output.get('status') == 'activity_confirmed':
-        from .read_queries import label_text, uncertain_rows
+        from .read_queries import label_text, title_rows
         from .reply_display import day
         scope = pending['scope'];activity = label_text(scope['filter_text'])
         message = (f"{activity} {output['count']} นัดครับ ({day(scope['start'])} ถึง {day(scope['end'])})\n"
-                   + '\n'.join(uncertain_rows(output['events'])))
+                   + '\n'.join(title_rows(output['events'])))
         if pending['unconfirmed_count']:
             message += f"\nยังมีอีก {pending['unconfirmed_count']} นัดที่ยังไม่ได้ยืนยันครับ"
-            if pending['candidates']:message += '\n' + '\n'.join(uncertain_rows(pending['candidates']))
+            if pending['candidates']:message += '\n' + '\n'.join(title_rows(pending['candidates']))
         data = {'tool_result': {k: v for k, v in output.items() if k != 'pending'}}
         status = 'clarification' if pending['unconfirmed_count'] else 'answer'
     elif output.get('status') == 'selection_updated':
@@ -317,6 +351,15 @@ def render(output):
         status = 'clarification'
         if pending and pending['candidates']:
             message += '\nนัดที่รอยืนยัน:\n' + '\n'.join(calendar_rows(pending['candidates'], pending['scope']))
-    return Result(status, message, {**data, 'query_analysis': True, 'read_only': True,
-        'financial_write_authorized': False, 'calendar_write_authorized': False,
-        **({'read_followup': pending} if pending and pending['unconfirmed_count'] else {})})
+    actions = []
+    if output.get('ok') and pending:
+        from .read_queries import label_text
+        line, actions = remembered_note(output, label_text(pending['scope']['filter_text']))
+        message += line
+    data = {**data, 'query_analysis': True, 'read_only': True,
+            'financial_write_authorized': False, 'calendar_write_authorized': False,
+            **({'read_followup': pending} if pending and pending['unconfirmed_count'] else {})}
+    if actions:
+        try:data['line_message'] = render_actions(message, actions)
+        except ValueError:pass
+    return Result(status, message, data)

@@ -83,6 +83,10 @@ class NotReady(RuntimeError):
     pass
 
 
+class ReadCapacity(NotReady):
+    """A complete read would leave too little of the owner turn to finish and reply."""
+
+
 class WriteBlocked(RuntimeError):
     """Adapter setup rejected the operation before any write RPC was sent."""
 

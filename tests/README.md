@@ -47,7 +47,17 @@ long activity question is one read with one decision per repeated title, that a
 zero-confirmed answer leads with grouped possible matches and one per-title
 question, that answering for a title settles every occurrence without a write,
 the multi-year window bound, month-split reads answered as one question, and
-that a paraphrased filter returns to the planner instead of ending the turn.
+that a paraphrased filter returns to the planner instead of ending the turn, and
+that a read stops before the turn's provider-call budget so the turn still saves
+and replies (`read_capacity`) instead of failing the webhook.
+The [activity memory contracts](test_activity_memory.py) cover remembering a
+whole-title answer with a one-tap undo, applying and disclosing labels on the
+next read, skipping the classifier when every title is known, forgetting,
+owner-wording grounding, date-subset answers, the disabled flag, the optional
+snapshot key and its tamper check, the configuration dependency, labels outside
+the restore bounds, no memory after a failed expense read, disclosed hints for
+other activity wording, expense totals and count summaries that disclose the
+label, and `purpose=expense_dates` keeping the spending goal.
 
 The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
 missing-field questions, interruption, compound rename/category corrections,

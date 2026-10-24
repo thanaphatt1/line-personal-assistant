@@ -12,7 +12,7 @@ from .contracts import CreateEvent
 from .calendar_event_types import parse_payload
 from .google_requests import timed
 from .language import BANGKOK
-from .transport import ApiError,OutcomeUnknown,WriteBlocked,NotReady
+from .transport import ApiError,OutcomeUnknown,WriteBlocked,NotReady,ReadCapacity
 
 CALENDAR_LIST_PATH='/calendar/v3/users/me/calendarList'
 CALENDAR_LIST_PARAMS={'maxResults':20,'minAccessRole':'reader','showHidden':'true','showDeleted':'false'}
@@ -20,6 +20,16 @@ MAX_READ_CALENDARS=16
 MAX_QUERY_DAYS=1096
 MAX_EVENT_PAGES=20
 READ_PAGE_SIZE=50
+# Provider calls and seconds kept for classification, state and the reply.
+# A read that would cut into them stops as incomplete instead of leaving a
+# turn that cannot save its receipt (a 503 the webhook would redeliver).
+READ_RESERVE_CALLS=20  # measured: finishing after the last read used 11–16 calls
+READ_RESERVE_SECONDS=15.0
+
+def reserve_left():
+    from .pilot_http import rpc_left
+    left=rpc_left()
+    return left is None or left[0]>READ_RESERVE_CALLS and left[1]>READ_RESERVE_SECONDS
 
 def additional_calendar_ids(identifiers,calendar_id):
     if (not isinstance(identifiers,(list,tuple)) or len(identifiers)>=MAX_READ_CALENDARS
@@ -173,6 +183,7 @@ class CalendarCreationApi:
         base='/calendar/v3/calendars/'+quote(calendar_id,safe='')+'/events'
         result={};page=None;seen=set()
         for _ in range(MAX_EVENT_PAGES):
+            if not reserve_left():raise ReadCapacity('Calendar read would exhaust the owner turn')
             params={'timeMin':start.isoformat(),'timeMax':end.isoformat(),'singleEvents':'true','orderBy':'startTime','timeZone':'Asia/Bangkok','maxResults':READ_PAGE_SIZE}
             if page:params['pageToken']=page
             value=self.client.request('GET',base,params=params)

@@ -42,6 +42,11 @@ def history_snapshot(state,*,max_snapshot_bytes=MAX_LOCAL_SNAPSHOT_BYTES,include
     if state.calendar_batches:
         value['calendar_batches_v1']={'format':'calendar-batches-v1','batches':deepcopy(state.calendar_batches),'proofs':deepcopy(state.calendar_batch_proofs)}
     if state.calendar_connections is not None:value['calendar_connections_v1']=deepcopy(state.calendar_connections)
+    if state.activity_labels:
+        # A separate optional key: older runtimes ignore it, so a rollback
+        # forgets these conveniences instead of rejecting the owner state.
+        from .activity_labels import snapshot as activity_snapshot
+        value['activity_labels_v1']=activity_snapshot(state)
     if state.raw_history_enabled and state.raw_history_migrated:
         value['history']=[]
         value['raw_history']={'enabled':True,'rolling_summary':deepcopy(state.rolling_summary)}
@@ -143,6 +148,10 @@ def restore_history(state,value,owner,*,expected_scope=None,max_snapshot_bytes=M
         from .calendar_connections import validate as validate_connections
         validate_connections(value['calendar_connections_v1'],owner)
         fresh.calendar_connections=deepcopy(value['calendar_connections_v1'])
+    if 'activity_labels_v1' in value:
+        from .activity_labels import validate as validate_labels
+        validate_labels(value['activity_labels_v1'],owner)
+        fresh.activity_labels=deepcopy(value['activity_labels_v1']['labels'])
     fresh.history=deepcopy(rows);fresh.history_removed=value['history_removed'];fresh.drafts=deepcopy(drafts);fresh.draft_proofs=deepcopy(proofs)
     for k,v in vars(fresh).items():
         if k not in {'lock','raw_journal','clock'}:setattr(state,k,v)

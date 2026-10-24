@@ -1359,6 +1359,9 @@ class HistoryFirstAssistant(Assistant):
             if self.raw_history_enabled and name=='resolve_activity_dates':
                 from .query_followups import execute
                 return execute(self,args)
+            if self.raw_history_enabled and name=='update_activity_label':
+                from .activity_labels import execute
+                return execute(self,args)
             if self.raw_history_enabled and name=='connect_calendar':
                 from .calendar_connections import execute
                 return execute(self,args)
@@ -1500,6 +1503,9 @@ class HistoryFirstAssistant(Assistant):
         if tool_output and tool_output.get('provisional_categories'):return self.provisional_categories.result(tool_output)
         if tool_output and tool_output.get('saved_record_edit'):return self.saved_edits.result(tool_output)
         if tool_output and tool_output.get('catalog_alias'):return self.catalog_aliases.result(tool_output)
+        if tool_output and tool_output.get('activity_label'):
+            from .activity_labels import render as render_label
+            return render_label(tool_output)
         if tool_output and tool_output.get('status')=='stored_query':
             from .read_queries import result
             rendered=result(tool_output,datetime.fromisoformat(self._current['at']))
@@ -1741,7 +1747,7 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _finalize_result(self,event,result):
-        if result.data.get('domain') in {'catalog_alias','record_source'} or result.data.get('record_action_focus') or result.data.get('record_action_selection'):return result
+        if result.data.get('domain') in {'catalog_alias','record_source','activity_label'} or result.data.get('record_action_focus') or result.data.get('record_action_selection'):return result
         from .clarifications import compact
         result=compact(self,result)
         if result.data.get('domain')=='table' or result.data.get('query_analysis'):
@@ -1880,6 +1886,8 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request+=relation_definitions()
                     from .query_followups import definitions as followup_definitions,context as followup_context
                     definitions_for_request+=followup_definitions(self)
+                    from .activity_labels import definitions as label_definitions,context as label_context
+                    definitions_for_request+=label_definitions(self)
                     from .data_inventory import definitions as inventory_definitions,context as inventory_context
                     definitions_for_request+=inventory_definitions()
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
@@ -1907,7 +1915,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -2019,7 +2027,7 @@ class HistoryFirstAssistant(Assistant):
                     from .query_analysis import remember
                     last=remember(self,last,at,step);self._query_analysis_active=True
                     previous=(call,last);continue
-                if last.get('calendar_connection') or last.get('catalog_alias'):return self._finish(event,at,self._result(last))
+                if last.get('calendar_connection') or last.get('catalog_alias') or last.get('activity_label'):return self._finish(event,at,self._result(last))
                 if last.get('historical_categories'):
                     if last.get('continue_model'):
                         previous=(call,last);continue

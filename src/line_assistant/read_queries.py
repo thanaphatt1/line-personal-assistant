@@ -16,7 +16,7 @@ from .catalog import normalized
 from .model_api import object_schema
 from .history_context import digest
 from .state import Result
-from .transport import ApiError, OutcomeUnknown, NotReady
+from .transport import ApiError, OutcomeUnknown, NotReady, LiveDisabled, ReadCapacity
 from .calendar_provider import MAX_QUERY_DAYS
 from .tool_errors import recovery
 MAX_EXPENSE_DAYS=3660
@@ -53,6 +53,7 @@ class Expenses(Query):
 class Calendar(Query):
     upcoming: bool
     filter_text: str | None = Field(default=None,max_length=200)
+    purpose: Literal['appointments','expense_dates'] = 'appointments'
 
 
 def definitions():
@@ -73,7 +74,8 @@ def definitions():
              'calendar_query_refs':{'type':'array','items':{'type':'string'},'maxItems':16,'description':'Current-request complete Calendar query refs whose matching events define the Bangkok DATES to include. Empty for ordinary expenses. Server unions dates, clips spans and never double-counts same-day expenses. date_mode=previous can use these Calendar periods directly. Re-read Calendar on a new turn; refs cannot be reused across turns.'}})},
         {'type':'function','name':'query_calendar','strict':True,
          'description':'Read saved appointments from all server-selected readable calendars for the whole requested period in ONE read (up to 3 years), including all-day/transparent. Reads the full requested period and semantically classifies events by the requested condition, preserving uncertainty. Next-appointment intent uses upcoming; an explicit calendar frame uses its own date_mode. Never creates or edits.',
-         'parameters':object_schema({**common,'upcoming':{'type':'boolean','description':'True only for next/upcoming appointment intent; false for an explicit day, week, month or year scope.'},'filter_text':{'type':['string','null'],'description':'Appointment subject/type/condition copied character-for-character as one contiguous span of a cited owner message; do not rephrase or add words. The server classifies fetched events semantically. Null only when no filter requested.'}})}]
+         'parameters':object_schema({**common,'upcoming':{'type':'boolean','description':'True only for next/upcoming appointment intent; false for an explicit day, week, month or year scope.'},'filter_text':{'type':['string','null'],'description':'Appointment subject/type/condition copied character-for-character as one contiguous span of a cited owner message; do not rephrase or add words. Copy only the words naming the activity itself, without surrounding verbs or particles such as go/attend/day (ไป, ที่, วันที่). The server classifies fetched events semantically. Null only when no filter requested.'},
+              'purpose':{'type':'string','enum':['appointments','expense_dates'],'description':'expense_dates when this read finds the dates for a spending/cost question (then query_expenses with calendar_query_refs); appointments when the owner asks about the appointments themselves.'}})}]
 
 
 def previous_scope(host):
@@ -127,6 +129,26 @@ def calendar_read_ids_hash(host):
 def label_text(value):
     value = re.sub(r'[\r\n\t\x00-\x1f]', ' ', value)
     return value[:80] + ('…' if len(value)>80 else '')
+
+
+def remembered_lines(remembered, activity):
+    """Disclosure facts for every owner-stated label an answer relied on."""
+    from .activity_labels import names
+    exact=[r for r in remembered if 'activity' not in r];similar=[r for r in remembered if 'activity' in r]
+    matched=[r['title'] for r in exact if r['decision']=='match'];excluded=[r['title'] for r in exact if r['decision']=='exclude']
+    lines={}
+    if matched:lines['remembered_match']=f"นับ {names(matched)} เป็น{activity}ตามที่เคยยืนยันไว้"
+    if excluded:lines['remembered_exclude']=f"ไม่นับ {names(excluded)} เพราะเคยบอกว่าไม่ใช่{activity}"
+    for i,r in enumerate(similar[:3],1):
+        lines[f'remembered_similar{i}']=(f"นับ {label_text(r['title'])} โดยอิงที่เคยยืนยันว่าเป็น{label_text(r['activity'])}" if r['decision']=='match'
+                                          else f"ไม่นับ {label_text(r['title'])} โดยอิงที่เคยบอกว่าไม่ใช่{label_text(r['activity'])}")
+    return lines
+
+
+def capacity_or(code):
+    """A spent per-turn call budget is a read-size limit, not malformed data."""
+    from .pilot_http import rpc_exhausted
+    return 'read_capacity' if rpc_exhausted() else code
 
 
 def error(output, code, outcome='unavailable'):
@@ -246,6 +268,7 @@ def execute(host, name, args):
     if domain=='calendar':
         output['scope']['upcoming']=p.upcoming
         output['scope']['filter_text']=p.filter_text
+        if p.purpose=='expense_dates':output['scope']['purpose']='expense_dates'
         output['scope']['calendar_read_all']=getattr(host.calendar_flow.adapter,'read_all_enabled',False)
         if calendar_read_ids_hash(host):output['scope']['calendar_read_ids_hash']=calendar_read_ids_hash(host)
         if not host.calendar_flow.enabled:return error(output,'calendar_disabled')
@@ -256,12 +279,21 @@ def execute(host, name, args):
                     else host.calendar_flow.adapter.saved_events(start,end,include_details=True,include_refs=True) if p.filter_text
                     else host.calendar_flow.adapter.saved_events(start,end)) if start<end else []
         except (ApiError,OutcomeUnknown):return error(output,'provider_failure')
+        except ReadCapacity:return error(output,'read_capacity','clarification')
         except NotReady:return error(output,'read_incomplete')
+        except LiveDisabled:return error(output,capacity_or('schema_failure'),'clarification')
         except Exception:return error(output,'schema_failure')
         if p.filter_text and events:
-            from .calendar_inference import MAX_CANDIDATES,groups
-            if len(groups(events))>MAX_CANDIDATES:return error(output,'calendar_inference_capacity','clarification')
-            return {**output,'outcome':'clarification','error_code':'calendar_inference_pending','source_complete':True,'calendar_candidates':events}
+            from .calendar_inference import MAX_CANDIDATES,open_groups,settle
+            from .activity_labels import lookup
+            known={i:label for i,e in enumerate(events) if (label:=lookup(host,p.filter_text,e['title']))}
+            if len(open_groups(events,known))>MAX_CANDIDATES:return error(output,'calendar_inference_capacity','clarification')
+            pending={**output,'outcome':'clarification','error_code':'calendar_inference_pending','source_complete':True,'calendar_candidates':events}
+            if len(known)==len(events):return settle(pending,known)
+            from .activity_labels import hints
+            similar=hints(host,p.filter_text,[e['title'] for i,e in enumerate(events) if i not in known])
+            return {**pending,**({'calendar_remembered':{str(i):v for i,v in known.items()}} if known else {}),
+                    **({'calendar_hints':similar} if similar else {})}
         return {**output,'complete':True,'outcome':'answer','events':events[:20],'count':len(events),'shown':min(20,len(events)),
                 **({'analysis_records':events} if p.continue_analysis else {})}
     chosen=p.filter
@@ -313,6 +345,7 @@ def execute(host, name, args):
         elif p.descending:entries.reverse()
     except (ApiError,OutcomeUnknown):return error(output,'provider_failure')
     except NotReady:return error(output,'schema_failure')
+    except LiveDisabled:return error(output,capacity_or('schema_failure'),'clarification')
     except Exception:return error(output,'schema_failure')
     return {**output,'complete':True,'outcome':'summary','expense':f'{total:.2f}','count':len(entries),
             'entries':entries[:p.limit] if p.view=='list' and p.group_by=='none' else [],
@@ -389,6 +422,7 @@ ERRORS = {
  'provider_failure':'ตอนนี้เชื่อมต่อแหล่งข้อมูลไม่สำเร็จครับ เลยยังสรุปผลให้ไม่ได้',
  'schema_failure':'รูปแบบข้อมูลที่อ่านมายังตรวจสอบไม่ผ่านครับ จึงยังสรุปยอดหรือยืนยันว่าไม่มีรายการไม่ได้',
  'read_incomplete':'อ่านข้อมูลได้ไม่ครบครับ จึงยังยืนยันรายการทั้งหมดหรือการไม่มีนัดไม่ได้',
+ 'read_capacity':'ข้อมูลช่วงนี้มีมากเกินกว่าจะอ่านให้ครบในข้อความเดียวครับ ลองถามช่วงที่สั้นลงหน่อยได้ไหมครับ?',
  'calendar_filter_unsupported':'ตอนนี้อ่านนัดได้ตามช่วงวันครับ ยังกรองชื่อหรือประเภทนัดไม่ได้ ต้องการดูทุกนัดในช่วงนั้นไหมครับ?',
  'calendar_inference_pending':'อ่านนัดในช่วงที่ถามแล้ว แต่ยังแยกนัดที่เข้าข่ายให้ไม่ได้ครับ จึงยังสรุปจำนวนเฉพาะที่ถามไม่ได้',
  'calendar_inference_disabled':'ยังไม่ได้เปิดการวิเคราะห์นัดที่เข้าข่ายครับ จึงยังสรุปจำนวนเฉพาะที่ถามไม่ได้',
@@ -426,6 +460,7 @@ def facts(output, at):
         if scope.get('calendar_basis'):
             values['row_basis']=f"จับคู่ได้ {len(basis['dates'])} วัน จาก {basis['event_count']} นัด: "+(', '.join(day_label(d) for d in basis['dates']) or 'ไม่พบวันที่เข้าข่าย')
             values['row_method']='ยอดนี้รวมรายจ่ายทั้งหมดในวันที่ตรงกัน ไม่ได้ยืนยันว่าแต่ละรายการเป็นค่าใช้จ่ายของนัดนั้นโดยตรง'
+            values.update(remembered_lines(basis.get('remembered',[]),activity))
         grouping=scope.get('group_by','none');order=scope.get('order_by','date')
         if grouping!='none' or order!='date' or scope.get('descending'):
             groups={'none':'รายการ','item':'ชื่อรายการ','date':'วัน','category':'หมวด','subcategory':'หมวดย่อย'}
@@ -445,15 +480,18 @@ def facts(output, at):
     else:
         if scope.get('filter_text'):values['filter']=label_text(scope['filter_text'])
         values['count']=str(output['count'])+(' ครั้ง' if scope.get('filter_text') else ' นัด')
-        for i,row in enumerate(calendar_rows(output['events'],scope),1):values[f'row{i}']=row
+        # An activity answer groups repeated titles, like its follow-up confirmation.
+        rows=title_rows(output['events']) if scope.get('filter_text') else calendar_rows(output['events'],scope)
+        for i,row in enumerate(rows,1):values[f'row{i}']=row
         if scope.get('upcoming'):values['upcoming']='เฉพาะนัดที่ยังไม่จบตั้งแต่เวลาปัจจุบัน'
         selection=output.get('calendar_selection',{})
         if selection.get('uncertain_count'):
             n=selection['uncertain_count']
             values['uncertainty']=(f"แต่มี {n} นัดที่อาจเป็น{values['filter']} ยังยืนยันไม่ได้ครับ" if not output['count']
                                    else f"และมีอีก {n} นัดที่อาจเป็น{values['filter']} ยังไม่นับรวมครับ")
-            for i,row in enumerate(uncertain_rows(output['uncertain_events']),1):values[f'row_uncertain{i}']=row
+            for i,row in enumerate(title_rows(output['uncertain_events']),1):values[f'row_uncertain{i}']=row
             if n>len(output['uncertain_events']):values['uncertainty_limit']=f"แสดงนัดที่อาจเข้าข่าย {len(output['uncertain_events'])} รายการแรก"
+        values.update(remembered_lines(selection.get('remembered',[]),values.get('filter','')))
     if output.get('group_count',output['count'])>output['shown'] and output['shown']:
         if scope['domain']=='expense':
             unit='กลุ่ม' if scope.get('group_by','none')!='none' else 'รายการ'
@@ -486,14 +524,16 @@ def coalesce(rows):
         a['calendar_selection']={'classification_complete':x['classification_complete'] and y['classification_complete'],
             'examined_count':x['examined_count']+y['examined_count'],'uncertain_count':x['uncertain_count']+y['uncertain_count'],
             'decisions':{},'evidence_sha256':digest([x['evidence_sha256'],y['evidence_sha256']])}
+        remembered={(r['title'],r.get('activity')):r for r in x.get('remembered',[])+y.get('remembered',[])}
+        if remembered:a['calendar_selection']['remembered']=list(remembered.values())
         a['complete']=a['complete'] and row['complete'];a['source_complete']=bool(source_complete)
         if 'analysis_records' in a or 'analysis_records' in row:a['analysis_records']=a.get('analysis_records',[])+row.get('analysis_records',[])
         a['outcome']='answer' if a['complete'] else 'clarification';merged[-1]=a
     return merged
 
 
-def uncertain_rows(events):
-    """Possible matches grouped by title, so one answer can settle repeated appointments."""
+def title_rows(events):
+    """Appointments grouped by title, so repeated activity occurrences read as one item."""
     from .reply_display import appointment_parts,weekday_short
     titles={}
     for e in events:titles.setdefault(e['title'],[]).append(e)
@@ -516,7 +556,7 @@ def result(output, at):
         gap=' ' if values['filter'][:1].isascii() else ''
         message=values['period']+' ยังไม่มีนัด'+gap+values['filter']+gap+'ที่ยืนยันได้ครับ'
     else:message=values['period']+(' มีนัดที่เข้าข่าย '+values['filter'] if 'filter' in values else ' มี')+f" {values['count']}ครับ"
-    message+=''.join('\n'+v for k,v in values.items() if k.startswith('row') or k in {'truncation','upcoming','uncertainty','uncertainty_limit'})
+    message+=''.join('\n'+v for k,v in values.items() if k.startswith('row') or k in {'truncation','upcoming','uncertainty','uncertainty_limit','remembered_match','remembered_exclude'} or k.startswith('remembered_similar'))
     data={'domain':output['domain'],'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
           'read_query':deepcopy(output['scope']),'query_facts':values,'tool_result':output}
     if output.get('calendar_candidates'):data['calendar_selection_at']=at.isoformat()

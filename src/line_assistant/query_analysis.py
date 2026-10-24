@@ -100,9 +100,12 @@ def calendar_dates(host,refs,start,end):
             if first<=last:occurrences.add(e['read_ref'])
             while first<=last:
                 dates.add(first.isoformat());first+=timedelta(days=1)
+    # Owner-stated labels behind these dates stay visible in the expense answer.
+    remembered={(r['title'],r.get('activity')):r for row in reads for r in row.get('calendar_selection',{}).get('remembered',[])}
     return {'dates':sorted(dates),'event_count':len(occurrences),
             'criteria':list(dict.fromkeys(row['scope'].get('filter_text') or 'นัดในปฏิทิน' for row in reads)),
-            'meaning':'all_expenses_on_matching_Bangkok_dates_not_proven_event_costs'}
+            'meaning':'all_expenses_on_matching_Bangkok_dates_not_proven_event_costs',
+            **({'remembered':list(remembered.values())} if remembered else {})}
 
 def finish(host,args):
     from .read_queries import result as render_query
@@ -165,7 +168,9 @@ def finish(host,args):
         message='เทียบกับผลค้นหาแรก:\n'+'\n'.join(
             headers[i+1]+f" — ต่างจากชุดแรก {value:+.2f} {unit}" if expenses
             else headers[i+1]+f" — ต่างจากชุดแรก {int(value):+d} {unit}" for i,value in enumerate(differences))
-    message+='\n\nผลค้นหาที่ใช้:\n'+'\n'.join(headers)
+    # Aggregates keep each read's remembered-label disclosure, not only its header.
+    notes=list(dict.fromkeys(v for report in reports for k,v in (report.data.get('query_facts') or {}).items() if k.startswith('remembered_')))
+    message+='\n\nผลค้นหาที่ใช้:\n'+'\n'.join(headers)+''.join('\n'+note for note in notes)
     return {**common,'status':'answer','message':message}
 
 def render(output):

@@ -44,6 +44,18 @@ def rpc_budget(limit, *, seconds=30):
         _rpc_remaining.reset(token)
 
 
+def rpc_left():
+    """Remaining provider calls and seconds in this owner turn, or None outside one."""
+    scope = _rpc_remaining.get()
+    return None if scope is None else (scope["remaining"], scope["deadline"]-monotonic())
+
+
+def rpc_exhausted():
+    """True when this owner turn's provider-call count or deadline is spent."""
+    scope = _rpc_remaining.get()
+    return scope is not None and (scope["remaining"] <= 0 or monotonic() >= scope["deadline"])
+
+
 def take_rpc(*,max_seconds=12):
     remaining = _rpc_remaining.get()
     if remaining is None or remaining["remaining"] <= 0 or monotonic() >= remaining["deadline"]:

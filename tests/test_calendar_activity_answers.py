@@ -126,3 +126,22 @@ def test_planner_context_and_tool_description_state_the_real_window():
         class calendar_flow:enabled=True
     sources=context(Host())['data_sources']
     assert sources['calendar']['query_window_days']==read_queries.MAX_QUERY_DAYS and sources['expense']['query_window_days']==read_queries.MAX_EXPENSE_DAYS
+
+
+def test_a_read_stops_before_the_turn_budget_so_the_turn_still_saves_and_replies(monkeypatch):
+    from line_assistant import calendar_provider
+    from line_assistant.pilot_http import take_rpc
+    # Leave the read less headroom than this turn has, as a busy multi-year window would.
+    monkeypatch.setattr(calendar_provider,'READ_RESERVE_CALLS',90)
+    api=SemanticHosted();exams(api);result,_=ask(api)
+    assert result.data['tool_result']['error_code']=='read_capacity' and not api.selection_bodies
+    assert 'มีมากเกินกว่าจะอ่านให้ครบในข้อความเดียว' in result.message and 'รูปแบบข้อมูล' not in result.message
+
+
+def test_a_spent_call_budget_in_a_read_is_reported_as_capacity(monkeypatch):
+    from line_assistant import read_queries
+    from line_assistant.pilot_http import rpc_budget,take_rpc
+    with rpc_budget(1):
+        take_rpc()
+        assert read_queries.capacity_or('schema_failure')=='read_capacity'
+    assert read_queries.capacity_or('schema_failure')=='schema_failure'

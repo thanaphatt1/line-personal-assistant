@@ -49,7 +49,7 @@ class AllCalendarsHosted(VoiceHosted):
         config={**values(enabled),'PILOT_CALENDAR_READ_ALL_ENABLED':'true' if self.read_all and enabled else 'false',
                 'PILOT_CALENDAR_READ_IDS':json.dumps(self.calendar_read_ids),
                 'PILOT_CALENDAR_CONNECTIONS_ENABLED':'true' if self.connections_enabled else 'false',
-                'PILOT_RESPONSE_REALIZATION_ENABLED':'true'}
+                'PILOT_RESPONSE_REALIZATION_ENABLED':'true',**getattr(self,'extra_config',{})}
         return create_history_cloud_run_app(config,transport=httpx.MockTransport(self.handle),
             secret_loader=lambda name:SecretStr('synthetic-'+name),clock=lambda:self.now)
 
