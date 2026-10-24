@@ -11,8 +11,11 @@ The assistant treats structured records as **tables** and appointments as **Cale
 - **Ask questions across data.** Filter, join, group, rank, compare and calculate running totals with SQL. Examples include daily spending with cumulative totals, income linked to people, or spending on dates selected from Calendar appointments.
 - **Maintain structured records.** Prepare inserts, updates and deletes for configured tables, including records with no date or amount columns. A new ordinary table uses metadata and an existing supported storage binding, without another table-specific query function.
 - **Manage appointments.** Read accessible calendars, prepare timed or single-date all-day events, and reschedule saved appointments when the relevant feature is enabled. Calendar retains its event/time tools and provider rules.
+- **Reuse owner activity labels.** With activity memory enabled, a whole-title answer can be remembered for later Calendar and activity-date spending questions. Answers disclose reused labels; the owner can correct or forget them. Choosing only some dates of a title keeps the answer scoped to that question.
 
 Expenses are one supported workflow, with catalog-name resolution, category choices, multiple entries and reviewed saving. Income belongs in a configured income table. The assistant asks which destination to use when the available metadata does not establish a unique one. The generic table registry is empty by default; startup does not create tables or discover unconfigured databases.
+
+Optional name matching suggests existing catalog names for unfamiliar expense spellings; the owner chooses an existing name or a new item. Remembering a spelling as a catalog alias requires a separate review and confirmation. Expense reviews show verified same-day duplicates and explain defaulted or reused dates before saving. See the [behavior examples](docs/behavior.md).
 
 ## How it works
 
@@ -31,6 +34,8 @@ SQL operates only on records actually read in the current owner turn. Incomplete
 Google Sheets and Firestore can store generic business records. [Table metadata](docs/tables.md) supplies their meaning and schema; a new storage provider still needs an adapter. The established expense/catalog workflow can use the [configured expense storage backend](docs/storage-backends.md). Firestore also holds internal history, state and recovery records separately from registered business collections.
 
 Calendar creation targets one configured calendar. Optional [all-calendar reads](docs/configuration.md#reading-all-calendars) combine calendars readable by the runtime account, and owners can [connect shared calendars through LINE](docs/configuration.md#connect-a-calendar-through-line). Conflict checks cover the configured write calendar. Creation does not support guests, recurrence, reminders or multi-day all-day ranges. [Saved-record changes](docs/saved-record-edits.md) use separate feature flags and reviewed workflows.
+
+The built-in expense read supports a window of up to 10 years; one Calendar read supports up to 3 years. These are query capacity bounds, not evidence of how much data a source contains. Pagination, source size and the remaining turn budget can stop a read earlier. The assistant reports incomplete coverage or asks for a shorter period instead of claiming a complete total. Activity answers group repeated titles, ask about uncertain matches and retain the spending goal when joining expenses to activity dates. [Read queries](docs/read-queries.md) describes these contracts and activity memory.
 
 Additional guides cover:
 
