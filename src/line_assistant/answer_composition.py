@@ -9,6 +9,7 @@ the renderer; effect execution and consent never use this path.
 from datetime import date, datetime
 from decimal import Decimal
 import re
+import unicodedata
 
 from .history_context import digest
 
@@ -29,7 +30,7 @@ INSTRUCTIONS = (
     'For several days you may group adjacent records under a shared date heading; preserve the query result order, especially rankings. '
     'Use {{index}} for optional list numbering; it is formatting, not a business count. '
     'Templates may use global fact IDs too. Field labels describe cells; units included in display values must not be changed. '
-    'For SQL cells whose labels specify units (e.g. total_baht), include those units in prose when the display value does not already include them. '
+    'Use explicit unit metadata, never output label spelling, to determine a SQL cell unit. '
     'Even an empty displayed cell is required unless covered_by explicitly permits omission; include it or use the safe fallback. '
     'fact_labels explain summary facts. Each fact is already a complete display value: do not repeat its words or units around it. '
     'For example, a period that already says เมื่อวาน (date) needs no extra เมื่อวาน or enclosing parentheses. '
@@ -116,6 +117,7 @@ def source_scopes(scope):
 
 def add_read(view, output, at):
     from .read_queries import facts, period_label, calendar_records
+    from .reply_display import money,named
     if not output.get('complete') or output.get('calendar_selection', {}).get('uncertain_count'):
         raise ValueError('incomplete_read')
     domain = output['domain']; scope = output.get('scope', {})
@@ -129,10 +131,10 @@ def add_read(view, output, at):
         if domain == 'expense':
             for g in output.get('groups', []):
                 view.row([('กลุ่ม', g['label'], 'date' if scope.get('group_by') == 'date' else None, None),
-                          ('ยอดรวม', g['amount'], None, 'บาท'), ('จำนวนรายการ', g['count'], None, 'รายการ')])
+                          ('ยอดรวม', money(g['amount']), None, 'บาท'), ('จำนวนรายการ', g['count'], None, 'รายการ')])
             for e in output.get('entries', []):
                 view.row([('วันที่', e['date'], 'date', None), ('รายการ', e['item'], None, None),
-                          ('ยอด', f"{Decimal(e['amount']):.2f}", None, 'บาท')], cover)
+                          ('ยอด', money(e['amount']), None, 'บาท')], cover)
         else:
             for e in calendar_records(output['events'], scope):
                 view.row([('วันที่', e['date'], 'date', None), ('เวลา/ช่วงนัด', e['when'], None, None),
@@ -142,20 +144,25 @@ def add_read(view, output, at):
         # Source scopes are evidence, not a claim that a derived query selects
         # every source row. Preserve source periods and filters explicitly.
         period_ids={};sources=source_scopes(scope)
+        for note in output.get('provenance_notes',[]):view.fact(note,'source provenance')
         same_day=bool(sources) and all(s.get('start') and s.get('start')==s.get('end')==sources[0].get('start') for s in sources)
         for source in sources:
             if source.get('start') and source.get('end'):
                 label = {'expense': 'ข้อมูลรายจ่าย', 'calendar': 'ข้อมูลปฏิทิน'}.get(source['domain'], 'ข้อมูลต้นทาง')
                 text = period_label(source, at)
                 if source.get('filter'): text += ' เฉพาะ ' + ' / '.join(source['filter'].values())
-                if source.get('filter_text'): text += ' เฉพาะนัดที่เข้าข่าย ' + source['filter_text']
+                if source.get('filter_text'): text += ' เฉพาะนัด' + named(source['filter_text'])
                 if source.get('calendar_basis'):
-                    text += ' เฉพาะวันที่มีนัดที่เข้าข่าย ' + ' / '.join(source['calendar_basis']['criteria'])
+                    text += ' เฉพาะวันที่มีนัด' + named(' / '.join(source['calendar_basis']['criteria']))
                     view.fact('รวมรายจ่ายทั้งหมดในวันที่ตรงกัน ไม่ได้ยืนยันว่าเป็นค่าใช้จ่ายของนัดนั้นโดยตรง')
                 fact_id=view.fact(text,'source scope: '+label)
                 if same_day:period_ids.setdefault(source['start'],[]).append(fact_id)
+        from .reply_display import quantity_text
+        units={c['name']:c.get('unit') for c in output.get('columns',[])}
         for row in output['rows']:
-            cells=[(k,v,'date' if isinstance(v,str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',v) and valid_date(v) else None,None)
+            # Money columns use the shared amount format; dates stay typed.
+            cells=[(k,quantity_text(v,units.get(k)) if v is not None else v,
+                    'date' if isinstance(v,str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',v) and valid_date(v) else None,units.get(k))
                    for k,v in row.items()]
             # A computed date can share an actual same-day source heading only
             # when its entire value agrees. Other dates remain required cells.
@@ -294,6 +301,34 @@ def valid_repair(value, view):
     return True
 
 
+LEADING_WORDS = ('เฉพาะ', 'เดือน', 'วันที่', 'ปี', 'รวม')
+
+
+def joined(text, values):
+    """Fill placeholders so prose and facts read as one sentence.
+
+    A word the model wrote right before a fact that already starts with it is
+    dropped (``เฉพาะ {{f}}`` with ``เฉพาะ อาหาร``), and digits are spaced from
+    adjacent letters (``ทั้งหมด20 บาท``). Values themselves never change.
+    """
+    def letter(ch):return bool(ch) and (ch.isalpha() or unicodedata.category(ch).startswith('M'))
+    out = ''; last = 0
+    for m in TOKEN.finditer(text):
+        segment = text[last:m.start()]; value = values[m[1]]
+        if out[-1:].isdigit() and letter(segment[:1]):segment = ' ' + segment
+        before = out + segment
+        for word in LEADING_WORDS:
+            if value.startswith(word) and before.rstrip().endswith(word):
+                before = before.rstrip()[:-len(word)].rstrip()
+                if before and not before.endswith('\n'):before += ' '
+                break
+        if value[:1].isdigit() and letter(before[-1:]):before += ' '
+        out = before + value; last = m.end()
+    rest = text[last:]
+    if out[-1:].isdigit() and letter(rest[:1]):rest = ' ' + rest
+    return out + rest
+
+
 def render(document, view):
     if not valid_view(view): raise AnswerError('invalid_answer_facts')
     if not isinstance(document, dict) or set(document) != {'blocks'}: raise AnswerError('answer_blocks')
@@ -318,9 +353,9 @@ def render(document, view):
         if index is not None: available['index'] = str(index)
         if any(ref not in available for ref in refs): raise AnswerError('unknown_answer_fact')
         seen_facts.update(ref for ref in refs if ref in facts)
-        # re.sub substitutes only the original template: source values that
-        # contain placeholder-like text are never recursively interpreted.
-        return TOKEN.sub(lambda m: available[m[1]], text), set(refs)
+        # Substitute only the original template: source values that contain
+        # placeholder-like text are never recursively interpreted.
+        return joined(text, available), set(refs)
 
     for block in blocks:
         if not isinstance(block, dict): raise AnswerError('answer_block')

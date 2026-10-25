@@ -55,6 +55,7 @@ BUILD_INPUTS = (
     "src/line_assistant/line_auth_check.py",
     "src/line_assistant/reply_check.py",
     "src/line_assistant/reply_display.py",
+    "src/line_assistant/relational_metadata.py",
     "src/line_assistant/name_matching.py",
     "src/line_assistant/activity_labels.py",
     "src/line_assistant/local_runtime.py",

@@ -29,7 +29,7 @@ def selected(body,labels=None,**extra):
     p=json.loads(body['input'][0]['content'])
     decisions={e['ref']:'match' for e in p['calendar_selection']['events']}
     if labels is not None:decisions=labels
-    value={'decisions':decisions,'lead':'พบ',**extra}
+    value={'decisions':decisions,**extra}
     response=generated(body,{})
     response['output'][0]['content'][0]['text']=json.dumps(value,ensure_ascii=False)
     return response
@@ -63,7 +63,7 @@ def test_whole_month_semantic_membership_is_model_selected_counted_and_rendered_
     api.labels={'e1':'match','e2':'exclude','e3':'match'}
     result,_=november(api)
     assert result.status=='answer' and result.data['tool_result']['complete']
-    assert result.data['tool_result']['count']==2 and 'พบนัดที่เข้าข่าย TA 2 ครั้งครับ' in result.message
+    assert result.data['tool_result']['count']==2 and 'เดือนพฤศจิกายน 2026 มี TA 2 ครั้งครับ' in result.message
     assert 'ช่วยสอน Lab' in result.message and 'TA seminar' in result.message and 'TAX consultation' not in result.message
     payload=json.loads(api.selection_bodies[0]['input'][0]['content'])['calendar_selection']
     assert payload['start']=='2026-11-01' and payload['end']=='2026-11-30'
@@ -77,15 +77,15 @@ def test_uncertain_membership_is_separate_from_confirmed_count_and_never_claims_
     output=result.data['tool_result']
     assert result.status=='clarification' and not output['complete'] and output['source_complete']
     assert output['count']==1 and output['calendar_selection']['uncertain_count']==1
-    assert 'เข้าข่ายชัดเจน TA 1 ครั้ง' in result.message and 'ยังไม่นับรวม' in result.message
-    assert 'นัดที่อาจเป็นTA' in result.message and 'งาน TA ที่ยังไม่ชัด' in result.message
+    assert 'มี TA 1 ครั้งครับ' in result.message and 'และมีอีก 1 นัดที่อาจเป็น TA ยังไม่ได้นับรวม' in result.message
+    assert 'นัดที่อาจเป็น TA' in result.message and 'งาน TA ที่ยังไม่ชัด' in result.message
 
 @pytest.mark.parametrize('empty',[False,True])
 def test_zero_matching_count_requires_complete_provider_read_and_valid_exclusions(empty):
     api=SemanticHosted()
     if not empty:api.calendar.events={'a':appointment('a',title='นัดทำฟัน')};api.labels={'e1':'exclude'}
     result,_=november(api)
-    assert result.data['tool_result']['complete'] and result.data['tool_result']['count']==0 and '0 ครั้ง' in result.message
+    assert result.data['tool_result']['complete'] and result.data['tool_result']['count']==0 and ('ไม่มี TA ครับ' in result.message or '0 ครั้ง' in result.message)
     assert len(api.selection_bodies)==(0 if empty else 1)
 
 def test_every_page_is_classified_before_display_limit_and_count_uses_all_matches():
@@ -137,7 +137,7 @@ def test_invalid_inference_never_becomes_a_guessed_count_or_retries(fault):
     def bad(body):
         if 'calendar_selection' not in json.loads(body['input'][0]['content']):return generated(body)
         value=selected(body)
-        document={'decisions':{'e1':'match'},'lead':'พบ'}
+        document={'decisions':{'e1':'match'}}
         if fault=='unknown':document['decisions']={'e999':'match'}
         if fault=='missing':document['decisions']={}
         if fault=='invalid_label':document['decisions']['e1']='probably'
@@ -148,7 +148,7 @@ def test_invalid_inference_never_becomes_a_guessed_count_or_retries(fault):
         if fault=='refusal':value['output'][0]['content']=[{'type':'refusal','refusal':'Synthetic refusal'}]
         if fault=='incomplete':value['status']='incomplete'
         if fault=='usage':value['usage']['output_tokens']=inference.MAX_OUTPUT+1
-        if fault=='duplicate_key':value['output'][0]['content'][0]['text']='{"decisions":{"e1":"match","e1":"exclude"},"lead":"พบ"}'
+        if fault=='duplicate_key':value['output'][0]['content'][0]['text']='{"decisions":{"e1":"match","e1":"exclude"}}'
         return value
     api.voice=bad;result,event_id=november(api)
     assert result.status=='clarification' and not result.data['tool_result']['complete']
@@ -192,7 +192,7 @@ def test_truncated_provider_details_are_flagged_and_untrusted_event_instructions
     payload=json.loads(api.selection_bodies[0]['input'][0]['content']);e=payload['calendar_selection']['events'][0]
     assert e['title']==title and e['description']=='x'*1000 and e['details_truncated'] is True
     assert 'attendees' not in e and 'private@example.invalid' not in json.dumps(payload)
-    assert not result.data['tool_result']['complete'] and 'ยังไม่มีนัด TA ที่ยืนยันได้' in result.message and '999 ครั้งครับ' not in result.message
+    assert not result.data['tool_result']['complete'] and 'มี 1 นัดที่อาจเป็น TA ครับ' in result.message and '999 ครั้งครับ' not in result.message
 
 @pytest.mark.parametrize('start,end,valid',[('2026-11-01','2029-11-01',True),('2026-11-01','2029-11-02',False)])
 def test_transport_accepts_bounded_multi_year_calendar_windows(start,end,valid):

@@ -8,10 +8,23 @@ vocabulary list on this path.
 For example, a single-day question can produce:
 
 ```text
-เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50.00 บาท จาก 2 รายการครับ
-• ขนม 30.00 บาท
-• ชา 20.00 บาท
+เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50 บาท จาก 2 รายการครับ
+• ขนม 30 บาท
+• ชา 20 บาท
 ```
+
+Facts are written to slot into natural Thai. A whole month or year is named
+(`เดือนพฤศจิกายน 2026`, `ปี 2026`) rather than spelled as a date range. Amounts
+use one owner-facing format everywhere (`reply_display.money`): thousands
+separators, with satang shown only when present (`1,250 บาท`, `32.50 บาท`).
+Stored values keep their original precision. SQL result cells use verified
+column units, not names such as `total` or `amount`; computed currency values
+retain any extra decimal places rather than being rounded for display.
+Latin-script names are spaced from
+Thai text; Thai names are not. When placeholders are filled, a word the model
+wrote right before a fact that already starts with it is dropped (`เฉพาะ {{f}}`
+with `เฉพาะ อาหาร`), and numbers are spaced from adjacent letters; fact values
+themselves never change.
 
 For several days, the model can use a shared date heading for adjacent records.
 Ranked results retain their actual query order. A scalar SQL result can become

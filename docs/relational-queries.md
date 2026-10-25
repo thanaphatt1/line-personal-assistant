@@ -2,15 +2,18 @@
 
 `query_relations` is the raw-history planner's main composable analysis layer,
 using read-only SQLite over observed records. Typed source tools and legacy
-operations remain useful for simple direct reads; broader questions
+operations remain available; expense planner tools always retrieve a complete
+source before selecting the final answer. Broader questions
 can compose SELECT, CTEs, joins, EXISTS, CASE, HAVING, UNION, subqueries and
 window functions without adding a handler for each question or table.
 
-Filtering also uses SQL as the primary path. Read the full requested expense
-period with `filter=null`, `view=list`, `continue_analysis=true`, then express
-the conditions in `WHERE`. The retained legacy source filter is **positive
-equality only**; passing an item there selects just that item. It cannot
-implement exclusions or boolean combinations. No separate exclusion action or
+Filtering uses SQL, including a single named item or category: read the full
+requested period with `filter=null`, `view=list`, `continue_analysis=true`, then
+express the conditions in `WHERE`. Resolve the requested label using catalog
+meanings and categorical choices in source metadata. Unresolved closed-choice
+labels need clarification rather than guessed predicates and empty-total claims.
+The retained typed filter supports positive equality for compatible direct
+callers. No separate exclusion action or
 list of natural-language keyword handlers is needed. The model chooses SQL
 predicates such as `!=`, `NOT IN`, `NOT LIKE`, `AND`, `OR` and subqueries.
 For example, excluding a known device purchase can use
@@ -57,6 +60,18 @@ SQL has ordinary bag/join semantics: the model must choose the intended
 join, overlapping-read and coverage semantics. Execution verifies sources
 and arithmetic, not whether a proposed SQL statement expresses the owner intent.
 
+Result units come from source column metadata and conservative expression
+lineage through aliases, CTEs, aggregates, windows and compatible branches.
+Counts and ratios do not inherit currency units. Mixed or unresolved units stay
+unknown. SQLGlot inspects a copy of the executed query for metadata only; SQLite
+remains the executor and authorization boundary. An unsupported metadata
+expression does not change the SQL result. Names such as `total`, `amount` or
+`total_baht` cannot create a unit. Currency display removes zero satang but keeps
+the full precision of computed values; other units and untyped text stay exact.
+Mandatory source provenance, such as an owner-confirmed activity label used to
+select dates, follows used relations through derived SQL results and remains
+required in both composed answers and the core fallback.
+
 Decimal columns are text with numeric `COLLATE decimal`. SUM/decimal_sum,
 including window sums, use decimal arithmetic. Derived decimal aliases need
 explicit `COLLATE decimal` when sorting. `decimal_add`, `decimal_sub`,
@@ -78,7 +93,10 @@ provider, create a review, confirm, grant access or escape the read-only loop.
 Mutation workflows retain their separate review and consent requirements.
 
 A delivered SQL result based on one unambiguous source scope retains that
-period and its executed logical SQL as follow-up context. Derived results
+period, executed logical SQL, result columns/units and row count as follow-up
+context. Source fetch controls (such as reading a full unfiltered list) stay
+inside the analysis inputs and do not describe the delivered answer view.
+Derived results
 carry the original source scope too. Several distinct periods/sources do not
 invent a single previous period. On a new turn, records and query references
 are never reused: the planner must read fresh data and rebuild the intended
@@ -86,10 +104,26 @@ conditions against its new relation names. A new general question clears old
 conditions. A complaint about selecting an excluded item is a correction to
 the earlier intent, not consent to select only that item.
 
+During a read-analysis continuation, the planner must choose a read tool or
+`finish_query_analysis`. Its `clarify` operation asks one unresolved condition
+question without promoting supporting input reads into a completed answer.
+The question carries no business numbers or write authority. Ordinary final
+reports still render verified result facts rather than model-generated totals.
+A text-only response in this required-tool phase is a protocol failure; it
+cannot cause supporting inputs to be automatically reported as the answer.
+Source snapshots marked `analysis_input_only` require a SQL projection or
+calculation before `report`; premature selection returns schema feedback to
+the planner. The model still chooses all predicates and result columns.
+Planner SQL calls continue into a review of the executed selection, output
+shape and unresolved requested conditions before reporting. A failed review
+returns to the same read-only repair loop. This adds a planner call for SQL
+answers; it is model-based intent checking, not a proof that arbitrary SQL
+captures every natural-language request.
+
 Resource bounds on VM work/time, expression size and result bytes return a
 failure instead of a partial total. A failed query can be repaired against
 the actual catalog/schemas using the existing progress-based repair loop.
 Unchanged diagnostics stop. An unresolved SQL failure cannot silently fall
 back to reporting the original, different read result. Query references expire
-when the owner turn ends. No new provider, dependency, access or collection is
+when the owner turn ends. No new provider, access or collection is
 required; the registry still controls which sources are available.

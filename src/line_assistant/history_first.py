@@ -1,4 +1,5 @@
 """Default-off history-first prototype. Direct tools, local effects only."""
+from .reply_display import money, named
 from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime,timedelta
@@ -1292,13 +1293,13 @@ class HistoryFirstAssistant(Assistant):
         from .reply_display import day
         notices=[]
         for row in output.get('absence_checked') or []:
-            notices.append(f"ตรวจแล้ว ยังไม่มี {row['item']} {row['amount']} บาท วันที่ {day(row['date'])}")
+            notices.append(f"ตรวจแล้ว ยังไม่มี {row['item']} {money(row['amount'])} บาท วันที่ {day(row['date'])}")
         if not output.get('absence_checked'):
             try:matches=self._saved_matches(output.get('entries',[]))
             except Exception:matches=[]
             for m in matches:
-                if m['same_amount']:notices.append(f"บันทึกไว้แล้ว: {m['item']} {m['amount']} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)")
-                else:notices.append(f"วันเดียวกันมี {m['item']} บันทึกไว้แล้ว {m['same_item']} รายการ ({', '.join(m['saved_amounts'])} บาท)")
+                if m['same_amount']:notices.append(f"บันทึกไว้แล้ว: {m['item']} {money(m['amount'])} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)")
+                else:notices.append(f"วันเดียวกันบันทึก{named(m['item'])}ไว้แล้ว {m['same_item']} รายการ ({', '.join(money(v) for v in m['saved_amounts'])} บาท)")
         for e in output.get('entries',[]):
             basis=e.get('date_basis') or {}
             if not e.get('date'):continue
@@ -1461,9 +1462,9 @@ class HistoryFirstAssistant(Assistant):
             return Result('answer','ข้อมูลรายการตรงตามที่ขออยู่แล้วครับ',{'tool_result':deepcopy(tool_output)})
         if tool_output and tool_output.get('ok') and tool_output.get('status')=='already_recorded':
             from .reply_display import day
-            lines=['มีอยู่แล้วครับ เลยยังไม่ได้เพิ่ม']+[f"บันทึกไว้แล้ว: {m['item']} {m['amount']} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)" for m in tool_output['existing']]
+            lines=['มีอยู่แล้วครับ เลยยังไม่ได้เพิ่ม']+[f"บันทึกไว้แล้ว: {m['item']} {money(m['amount'])} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)" for m in tool_output['existing']]
             if tool_output.get('absent'):
-                lines.append('ยังไม่มี: '+', '.join(f"{a['item']} {a['amount']} บาท" for a in tool_output['absent'])+' ถ้าต้องการเพิ่ม บอกได้เลยครับ')
+                lines.append('ยังไม่มี: '+', '.join(f"{a['item']} {money(a['amount'])} บาท" for a in tool_output['absent'])+' ถ้าต้องการเพิ่ม บอกได้เลยครับ')
             return Result('answer','\n'.join(lines),{'tool_result':deepcopy(tool_output)})
         if tool_output and tool_output.get('error')=='duplicate_check_unavailable':
             return Result('clarification','ยังตรวจไม่ได้ว่ามีรายการนี้บันทึกไว้แล้วหรือยัง จึงยังไม่ได้เพิ่มครับ ลองอีกครั้งได้ไหมครับ?',{'tool_result':deepcopy(tool_output)})
@@ -1543,7 +1544,7 @@ class HistoryFirstAssistant(Assistant):
                     choice=clarification(self,{**tool_output,'draft_ref':d['draft_ref'],'draft_version':d['version'],
                         'entries':deepcopy(d['entries']),'missing_fields':deepcopy(d['missing_fields'])})
                     if choice:return Result('clarification',choice[1],{'tool_result':choice[0]})
-                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}" for e in tool_output['entries'])
+                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {money(e.get('amount'))} บาท วันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}" for e in tool_output['entries'])
                 narrative=tool_output.get('history_summary','')
                 if narrative and not success_claim(narrative):rows+='\nสรุปบทสนทนา:\n'+narrative
                 return Result('answer',('รายจ่ายที่ยังไม่ได้บันทึก:\n'+rows if tool_output['entries'] else 'ไม่มีรายจ่ายที่รอบันทึก'+('\nสรุปบทสนทนา:\n'+narrative if narrative and not success_claim(narrative) else '')),{'tool_result':tool_output})
@@ -1589,7 +1590,7 @@ class HistoryFirstAssistant(Assistant):
         if tool_output and tool_output.get('status')=='review':
             d=self.state.drafts[tool_output['draft_ref']];command=f"ยืนยัน {d['draft_ref']} {d['review']['nonce']}"
             from .reply_display import day
-            rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {day(e['date'])}"+(f" หมายเหตุ {e['note']}" if e['note'] else '')+
+            rows='\n'.join(f"{e['item']} {money(e['amount'])} บาท วันที่ {day(e['date'])}"+(f" หมายเหตุ {e['note']}" if e['note'] else '')+
                            (f"\nเลือกชื่อเดิม: {e['item_resolution']['from']} → {e['item_resolution']['to']}" if e.get('item_resolution') else '')+
                            (f"\nเพิ่มชื่อใหม่ใน Database: {e['mapping']['category']}"+(f" / {e['mapping']['subcategory']}" if e['mapping']['subcategory'] else '') if e['mapping'] else '') for e in d['entries'])
             if self.semantic_enabled:
@@ -1605,7 +1606,7 @@ class HistoryFirstAssistant(Assistant):
             else:notices=['ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า'] if any(e.get('date_basis',{}).get('confirmed_event') for e in d['entries']) else []
             message=f'ตรวจสอบรายการ:\n{rows}\n'+''.join(v+'\n' for v in notices)+instruction
             prior=[e for e in d['entries'] if e.get('previous_price',{}).get('state')=='accepted']
-            if prior:message+='\n'+'\n'.join(f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {e['previous_price']['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}" for e in prior)
+            if prior:message+='\n'+'\n'.join(f"{e['item']}: ใช้ยอดเดียวกับที่บันทึกวันที่ {day(e['previous_price']['source_date'])} สำหรับรายจ่ายวันที่ {day(e['date'])}" for e in prior)
             data={'tool_result':tool_output,'confirm_command':command,**({'review_notices':notices} if notices else {})}
             if self.semantic_enabled:data['line_message']=semantic.render_actions(message,semantic.actions(self,d))
             return Result('preview',message,data)
@@ -1616,14 +1617,14 @@ class HistoryFirstAssistant(Assistant):
             if price_question:return Result('clarification',price_question,{'tool_result':tool_output})
             unresolved=[e for i,e in enumerate(tool_output['entries']) if any(f'entries[{i}].'+field in tool_output['missing_fields'] for field in ['item_resolution','existing_or_new'])]
             if unresolved and not model_text:
-                rows='\n'.join(f"{e['item']} {e['amount'] or '?'} บาท วันที่ {day_or(e['date'],'ยังไม่ระบุ')}" for e in unresolved)
+                rows='\n'.join(f"{e['item']} {money(e['amount'])} บาท วันที่ {day_or(e['date'],'ยังไม่ระบุ')}" for e in unresolved)
                 model_text='ยังไม่ได้บันทึก:\n'+rows+'\nชื่อนี้ตรงกับรายการเดิมใน Database หรือเป็นรายการใหม่ครับ?'
                 matches=tool_output.get('catalog_matches',[])
                 if matches:model_text+='\nชื่อใกล้เคียง: '+', '.join(v['item'] for v in matches if v.get('item'))
             labels={'item':'ชื่อรายการ','amount':'จำนวนเงิน','date':'วันที่','date.day':'วัน','date.month':'เดือน','category':'หมวด','subcategory':'หมวดย่อย','item_resolution':'ชื่อใน Database','existing_or_new':'ชื่อเดิมหรือรายการใหม่'}
             missing=[labels.get(re.sub(r'^entries\[\d+\]\.','',f),'ข้อมูลรายการ') for f in tool_output['missing_fields']]
             if self.raw_history_enabled and tool_output.get('validation_issues'):
-                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {e.get('amount') or '?'} บาท วันที่ {day_or(e.get('date'),'ยังตรวจสอบไม่ได้')}" for e in tool_output['entries'])
+                rows='\n'.join(f"{semantic.display_item(e.get('item'))} {money(e.get('amount'))} บาท วันที่ {day_or(e.get('date'),'ยังตรวจสอบไม่ได้')}" for e in tool_output['entries'])
                 model_text='ยังไม่ได้บันทึก:\n'+rows+'\nขอเฉพาะข้อมูลที่ยังตรวจสอบไม่ได้: '+', '.join(dict.fromkeys(missing))
             return Result('clarification',model_text or 'ขอข้อมูลเพิ่ม: '+', '.join(dict.fromkeys(missing)),{'tool_result':tool_output})
         if not model_text and tool_output:
@@ -1915,7 +1916,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                            production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -1965,15 +1966,19 @@ class HistoryFirstAssistant(Assistant):
                     if last and last.get('temporal_resolution') and last.get('ok'):
                         return self._finish(event,at,self._result(last))
                     if self._query_analysis_active:
-                        if last and last.get('relational_query'):
+                        if last and last.get('query_analysis') and last.get('ok') is False:
                             return self._finish(event,at,self._result(last))
                         if not self._query_reads:
                             from .query_followups import current,clarification
                             if current(self) is not None:return self._finish(event,at,clarification(self))
-                        if not self._query_reads and self._last_inventory:
-                            return self._finish(event,at,self._result(self._last_inventory))
-                        from .query_analysis import finish
-                        return self._finish(event,at,self._result(finish(self,{'query_refs':list(self._query_reads),'operation':'report','source_refs':[self._current['source_ref']]})))
+                            if self._last_inventory:return self._finish(event,at,self._result(self._last_inventory))
+                        # Required tool mode has an explicit report/clarify
+                        # exit. A protocol-violating text answer must not turn
+                        # supporting reads into an unrequested final report.
+                        return self._finish(event,at,Result('clarification','ยังเลือกผลค้นหาที่ตอบเงื่อนไขนี้ไม่ได้ครับ',
+                            {'domain':'query_analysis','query_analysis':True,'read_only':True,
+                             'tool_result':{'query_analysis':True,'ok':False,'complete':False,
+                                'error_code':'analysis_disposition_required','query_refs':list(self._query_reads)}}))
                     if previous and previous[1].get('review_refresh'):
                         return self._finish(event,at,self.calendar_flow.batches.refresh_unavailable())
                     return self._finish(event,at,self._result(last,saved['text']))
@@ -1982,6 +1987,12 @@ class HistoryFirstAssistant(Assistant):
                 if self.raw_history_enabled and call['name'] in {'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
                     signature=digest([call['name'],json.loads(call['arguments'])])
                     if signature in seen_reads:
+                        prior=next((row['result'] for row in reversed(self.trace)
+                            if digest([row['call']['name'],json.loads(row['call']['arguments'])])==signature),None)
+                        if prior and prior.get('ok') is False and (prior.get('status')=='stored_query' or prior.get('query_analysis')):
+                            stopped=self._result(prior)
+                            stopped.data['query_loop_stopped']='repeated_read'
+                            return self._finish(event,at,stopped)
                         return self._finish(event,at,Result('clarification','การค้นหาวนกลับคำขอเดิมโดยไม่มีข้อมูลเพิ่ม จึงหยุดรอบนี้ครับ',{'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'repeated_read'}))
                     seen_reads.add(signature)
                 from .action_trace import arguments,snapshot,outcome

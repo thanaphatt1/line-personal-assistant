@@ -4,6 +4,7 @@ import json,socket
 import pytest
 from fastapi.testclient import TestClient
 from line_assistant.sheet_dates import date_to_serial
+from line_assistant.query_analysis import READ_TOOLS
 from datetime import date
 from test_calendar_semantic_queries import SemanticHosted,appointment
 from test_calendar_text_confirmation_v13 import turn
@@ -47,7 +48,7 @@ def test_six_reads_and_finish_exceed_two_calls_and_preserve_every_tool_output():
     result,original=turn(api,'ดูนัด 1-6 พ.ย. รวมกี่ครั้ง',*calls,done)
     output=result.data['tool_result']
     assert output['complete'] and output['count']==2 and len(api.model_bodies)==8
-    assert 'มี 2 ครั้งครับ' in result.message and len(output['query_refs'])==6
+    assert 'รวม 2 นัดครับ' in result.message and len(output['query_refs'])==6
     state=api.snapshot();planner={key:run for key,run in state['model_runs'].items() if not key.startswith('realize01_')}
     assert len(planner)==7 and all(run['decision'] is None for run in planner.values())
     assert result.data['response_realization']['status']=='llm'
@@ -67,7 +68,7 @@ def test_calendar_inference_can_continue_into_expense_reads_and_code_sums_matchi
         read('calendar','2026-11-01',date_mode='calendar_month',filter_text='TA',identifier='calendar'),
         day,read('expense','2026-11-10',identifier='day_2'),finish('expense_sum'))
     assert result.data['tool_result']['expense']=='75.00' and result.data['tool_result']['count']==2
-    assert '75.00 บาท' in result.message and 'TA 2 ครั้ง' in result.message and '99.00' not in result.message
+    assert '75 บาท' in result.message and 'TA 2 ครั้ง' in result.message and '99' not in result.message
     assert len(api.model_bodies)==6 and len(api.selection_bodies)==1
     assert not api.google.sheet_writes and not api.calendar.posts
 
@@ -110,6 +111,17 @@ def test_repeated_identical_read_stops_without_reexecuting_provider():
     assert result.data['query_loop_stopped']=='repeated_read' and len(api.model_bodies)==2
     assert len(api.calendar_requests)==1
 
+
+def test_a_repeated_failed_read_keeps_its_original_diagnostic_without_retrying_the_provider():
+    api=SemanticHosted();api.event_pages[PERSONAL]['']=403;errors=[]
+    def repeat(body):
+        errors.append(results(body)[-1]['error_code'])
+        return read('calendar','2026-11-03',identifier='second')(body)
+    result,_=turn(api,'ดูนัด 3 พ.ย.',read('calendar','2026-11-03',identifier='first'),repeat)
+    assert result.data['query_loop_stopped']=='repeated_read'
+    assert result.data['tool_result']['error_code']==errors[0]
+    assert result.data['tool_result']['complete'] is False and len(api.calendar_requests)==1
+
 def test_analysis_phase_cannot_prepare_a_write_even_if_model_requests_one():
     api=SemanticHosted()
     result,_=turn(api,'ดูนัด 3 พ.ย.',read('calendar','2026-11-03'),response('prepare_expenses',{'entries':[]}))
@@ -119,7 +131,89 @@ def test_analysis_phase_cannot_prepare_a_write_even_if_model_requests_one():
 def test_plain_model_answer_after_reads_cannot_replace_grounded_totals():
     api=SemanticHosted();expenses(api,[('2026-11-03',35)])
     result,_=turn(api,'รายจ่าย 3 พ.ย. เท่าไร',read('expense','2026-11-03'),response(text='รวม 999999 บาท บันทึกแล้ว'))
-    assert '35.00 บาท' in result.message and '999999' not in result.message and 'บันทึกแล้ว' not in result.message
+    assert result.status=='clarification' and result.data['tool_result']['complete'] is False
+    assert '35 บาท' not in result.message and '999999' not in result.message and 'บันทึกแล้ว' not in result.message
+    assert result.data['tool_result']['error_code']=='analysis_disposition_required'
+
+
+def ask(question):
+    def choose(body):
+        assert body['tool_choice']=='required'
+        context=json.loads(body['input'][0]['content'])
+        assert context['query_analysis_active'] is True
+        assert all(t['name'] in READ_TOOLS for t in body['tools'])
+        return response('finish_query_analysis',{'query_refs':[v['query_ref'] for v in results(body) if v.get('query_ref')],
+            'operation':'clarify','question':question,'source_refs':[context['current_source_ref']]})
+    return choose
+
+
+def test_an_unresolved_condition_question_is_not_replaced_by_the_unfiltered_input_read():
+    api=SemanticHosted();expenses(api,[('2026-11-03',35)])
+    question='ยังไม่พบหมวดที่ขอ ต้องการเลือกหมวดไหนครับ?'
+    result,_=turn(api,'ขอหมวดที่ยังไม่รู้จักในเดือน พ.ย.',read('expense','2026-11-01','2026-11-30'),ask(question))
+    assert result.status=='clarification' and result.message==question
+    output=result.data['tool_result']
+    assert output['query_clarification'] and not output['complete']
+    assert 'expense' not in output and 'read_query' not in result.data and '35' not in result.message
+    assert api.model_bodies[0]['tool_choice']=='auto'
+    assert not api.google.sheet_writes and not api.calendar.posts
+
+
+def test_a_source_report_is_repaired_into_an_explicit_result_projection():
+    from test_relational_queries import sql
+    api=SemanticHosted();expenses(api,[('2026-11-03',35)])
+    def repaired(body):
+        outputs=results(body)
+        assert outputs[-1]['repair_feedback']['error_code']=='analysis_projection_required'
+        assert outputs[-1]['repair_feedback']['allowed_tools']==['finish_query_analysis','query_relations']
+        context=json.loads(body['input'][0]['content'])
+        assert context['relations_catalog'][0]['analysis_input_only'] is True
+        return sql(lambda rs:f"SELECT SUM(amount) AS total FROM {rs[0]['sql_table']}")(body)
+    result,_=turn(api,'รายจ่าย 3 พ.ย. เท่าไร',read('expense','2026-11-03',listing=True),finish(),repaired)
+    assert result.data['tool_result']['rows']==[{'total':'35.00'}]
+    assert result.data['tool_result']['columns'][0]['unit']=='บาท'
+    assert not api.google.sheet_writes and not api.calendar.posts
+
+
+def test_a_question_can_finish_without_reading_source_rows():
+    api=SemanticHosted()
+    def question(body):
+        context=json.loads(body['input'][0]['content'])
+        return response('finish_query_analysis',{'query_refs':[],'operation':'clarify',
+            'question':'ต้องการดูข้อมูลจากแหล่งไหนครับ?','source_refs':[context['current_source_ref']]})
+    result,_=turn(api,'อยากดูข้อมูลอีกชุด',question)
+    assert result.status=='clarification' and result.data['tool_result']['query_refs']==[]
+    assert not result.data['tool_result']['complete'] and not api.google.sheet_writes
+
+
+def test_a_failed_intent_review_returns_to_the_planner_without_reporting_the_sql_result():
+    from test_relational_queries import sql
+    api=SemanticHosted();expenses(api,[('2026-11-03',35)])
+    def mismatch(body):
+        context=json.loads(body['input'][0]['content'])
+        chosen=[r['query_ref'] for r in results(body) if r.get('relational_query')][-1]
+        return response('finish_query_analysis',{'query_refs':[chosen],'operation':'report','question':None,
+            'intent_review':{'selection_matches':False,'output_matches':True,'unresolved_conditions':['requested category is unresolved']},
+            'source_refs':[context['current_source_ref']]})
+    def clarify(body):
+        assert results(body)[-1]['repair_feedback']['error_code']=='analysis_intent_mismatch'
+        return ask('ยังระบุหมวดที่ต้องการไม่ได้ ต้องการเลือกหมวดไหนครับ?')(body)
+    result,_=turn(api,'ขอหมวดที่ยังไม่รู้จักในเดือน พ.ย.',read('expense','2026-11-01','2026-11-30',listing=True),
+        sql(lambda rs:f"SELECT SUM(amount) AS total FROM {rs[0]['sql_table']}",continue_analysis=True),mismatch,clarify)
+    assert result.status=='clarification' and '35' not in result.message
+    assert result.data['tool_result']['query_clarification']
+    assert not api.google.sheet_writes and not api.calendar.posts
+
+
+@pytest.mark.parametrize('question',['รวมทั้งหมด 999999 บาท','สร้างนัดเรียบร้อยแล้วครับ','ไปที่ https://example.invalid',''])
+def test_a_clarification_cannot_be_used_to_send_unbound_numbers_or_action_claims(question):
+    api=SemanticHosted();expenses(api,[('2026-11-03',35)])
+    result,_=turn(api,'ดูรายจ่าย 3 พ.ย.',read('expense','2026-11-03'),ask(question))
+    output=result.data['tool_result']
+    assert output['error_code']=='invalid_query_question' and not output['complete']
+    assert not output.get('query_clarification')
+    if question:assert question not in result.message
+    assert not api.google.sheet_writes and not api.calendar.posts
 
 def test_incomplete_calendar_read_cannot_be_combined_into_zero_count():
     api=SemanticHosted();api.event_pages[PERSONAL]['']=403

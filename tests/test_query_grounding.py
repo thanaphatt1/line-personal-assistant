@@ -30,23 +30,23 @@ def test_query_wording_cannot_invent_facts_units_or_success(mutation):
         return generated(body,{'blocks':blocks})
     api.voice=bad;r,_=turn(api,'ยอดวันนี้',plan())
     assert r.data['response_realization']=={**r.data['response_realization'],'status':'fallback','reason':'invalid_output'}
-    assert '0.00 บาท' in r.message and not api.google.sheet_writes
+    assert '0 บาท' in r.message and not api.google.sheet_writes
 
 
 def test_query_fact_slots_compose_inline_natural_thai():
     api=VoiceHosted()
     def natural(body):
-        p=json.loads(body['input'][0]['content']);assert p['answer_document'] and p['answer_facts']['facts']['f2']=='0.00 บาท'
+        p=json.loads(body['input'][0]['content']);assert p['answer_document'] and p['answer_facts']['facts']['f2']=='0 บาท'
         return generated(body,{'blocks':[{'kind':'text','template':'{{f1}} รายจ่ายรวม {{f2}} จาก {{f3}}ครับ'}]})
     api.voice=natural;r,_=turn(api,'วันนี้รวม',plan())
-    assert r.data['response_realization']['status']=='llm' and r.message=='วันนี้ (16 ต.ค. 2026) รายจ่ายรวม 0.00 บาท จาก 0 รายการครับ'
+    assert r.data['response_realization']['status']=='llm' and r.message=='วันนี้ (16 ต.ค. 2026) รายจ่ายรวม 0 บาท จาก 0 รายการครับ'
 
 
 def test_failed_realization_uses_natural_authoritative_fallback():
     api=VoiceHosted();api.voice=lambda body: (_ for _ in ()).throw(TimeoutError())
     r,_=turn(api,'วันนี้รวม',plan())
     assert r.data['response_realization']['status']=='fallback'
-    assert r.message=='วันนี้ (16 ต.ค. 2026) ใช้ไป 0.00 บาท จาก 0 รายการครับ'
+    assert r.message=='วันนี้ (16 ต.ค. 2026) ใช้ไป 0 บาท จาก 0 รายการครับ'
 
 
 def test_query_surface_does_not_include_semantic_parser_or_legacy_competing_read():

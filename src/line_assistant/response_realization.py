@@ -8,6 +8,7 @@ next question are still inserted by the server, never rewritten by the model.
 Linked documents can repair a received validation failure once within
 the same deadline, with a separate durable reservation and unchanged facts.
 """
+from .reply_display import money
 from copy import deepcopy
 from contextvars import copy_context
 from datetime import datetime
@@ -19,7 +20,7 @@ from .state import Claim,Result
 from .model_api import MODEL_ID,BudgetBlocked
 from .language import BANGKOK
 from . import answer_composition, operation_composition
-from .reply_display import day_or
+from .reply_display import day_or, day
 
 MAX_OUTPUT=768
 MAX_BODY_BYTES=24000
@@ -202,11 +203,11 @@ def facts_for(host,result):
             facts['status']=(f'มีรายจ่าย {len(entries)} รายการ รอให้ตรวจสอบก่อนบันทึกครับ' if result.status=='preview' else
                              f'มีรายจ่าย {len(entries)} รายการที่ยังต้องเติมหรือตรวจข้อมูลครับ')
             for i,e in enumerate(entries,1):
-                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {e.get('amount') or 'ยังไม่ระบุจำนวน'} บาท\nวันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
+                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {money(e.get('amount'),'ยังไม่ระบุจำนวน')} บาท\nวันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
             if result.status=='preview':
                 for i,e in enumerate(entries,1):
                     prior=e.get('previous_price')
-                    if prior and prior['state']=='accepted':facts[f'price_basis{i}']=f"{e['item']}: เลือกใช้ยอดที่เคยบันทึกวันที่ {prior['source_date']}; วันที่รายจ่ายใหม่นี้คือ {e['date']}"
+                    if prior and prior['state']=='accepted':facts[f'price_basis{i}']=f"{e['item']}: ใช้ยอดเดียวกับที่บันทึกวันที่ {day(prior['source_date'])} สำหรับรายจ่ายวันที่ {day(e['date'])}"
                 facts['instruction']='ตรวจรายการ จำนวนเงิน และวันที่ ถ้าถูกต้องตอบยืนยันทางข้อความได้ครับ'
                 if any(e.get('mapping') for e in entries):facts['catalog_change']='การยืนยันนี้จะเพิ่มชื่อใหม่ใน Database ตามหมวดที่แสดงด้วย'
             else:

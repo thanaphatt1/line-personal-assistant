@@ -87,6 +87,12 @@ def test_sql_scope_survives_cold_followup_correction_and_general_question_clears
     first, _ = turn(api, 'เดือน ก.ย. ไม่รวม Tablet Aurora', expense(continue_analysis=True),
                     aggregate("item != 'Tablet Aurora'"))
     assert first.data['read_query']['analysis']['sql'].endswith("WHERE item != 'Tablet Aurora'")
+    scope=first.data['read_query']
+    assert 'filter' not in scope and 'listing' not in scope
+    assert scope['analysis']['result_columns']==[{'name':'total_baht','type':'text','unit':'บาท'},
+                                                 {'name':'payments','type':'integer'}]
+    assert scope['analysis']['row_count']==1
+    assert scope['analysis']['inputs'][0]['scope']['listing'] is True
     def previous(body):
         c = json.loads(body['input'][0]['content'])
         assert c['previous_query']['start'] == '2026-09-01'
@@ -112,6 +118,8 @@ def test_derived_sql_keeps_original_period_for_next_turn_without_reusing_derived
     result, _ = turn(api, 'เดือน ก.ย. รวมโดยยกเว้น Tablet Aurora', expense(continue_analysis=True), first, last)
     assert result.data['tool_result']['rows'] == [{'total_baht': '125.00'}]
     assert result.data['read_query']['start'] == '2026-09-01'
+    assert [c['name'] for c in result.data['read_query']['analysis']['result_columns']]==['total_baht']
+    assert result.data['read_query']['analysis']['row_count']==1
     assert 'Tablet Aurora' in str(result.data['read_query']['analysis']['inputs'])
 
 
@@ -188,7 +196,7 @@ def test_derived_sql_reply_keeps_original_period_and_executed_source_evidence():
     last = sql(lambda rs: f"SELECT SUM(amount) AS total_baht FROM {next(r['sql_table'] for r in rs if r['domain']=='relation')}")
     result, _ = turn(api, 'เดือน ก.ย. รวมยกเว้น Tablet Aurora', expense(continue_analysis=True), first, last)
     payload = json.loads(api.voice_bodies[-1]['input'][0]['content'])
-    assert any('ก.ย. 2026' in v for v in payload['answer_facts']['facts'].values())
+    assert any('กันยายน 2026' in v for v in payload['answer_facts']['facts'].values())
     assert 'Tablet Aurora' in str(payload['read_evidence']['source_scopes'])
     assert result.data['response_realization']['status'] == 'llm'
 
@@ -204,6 +212,8 @@ def test_finishing_only_the_sql_result_retains_its_predicate_and_period_for_foll
     result, _ = turn(api, 'เดือน ก.ย. ไม่รวม Tablet Aurora', expense(continue_analysis=True), query, finish_sql)
     assert "!= 'Tablet Aurora'" in result.data['read_query']['analysis']['sql']
     assert result.data['read_query']['start'] == '2026-09-01'
+    assert [c['name'] for c in result.data['read_query']['analysis']['result_columns']]==['item','amount']
+    assert result.data['read_query']['analysis']['row_count']==4
     def previous(body):
         context = json.loads(body['input'][0]['content'])
         assert context['previous_query']['analysis']['sql'] == result.data['read_query']['analysis']['sql']

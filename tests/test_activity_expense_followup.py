@@ -21,6 +21,7 @@ from test_calendar_text_confirmation_v13 import turn, mutate
 from test_expense_query_operations import expense, seed
 from test_query_analysis_loop import finish, read
 from test_read_queries import event, plan
+from line_assistant.reply_display import money
 
 
 CASE = json.loads((Path(__file__).parent / 'fixtures/activity_expense_followup.json').read_text())
@@ -43,7 +44,7 @@ def assert_selected_day(result, case=CASE):
          'Resolve the day in the previous month; do not reuse the whole month'),
         (output.get('expense') == expected['expense'], 'Include only selected-day spending'),
         (output.get('count') == expected['count'], 'Count both selected-day payments'),
-        (expected['expense'] + ' บาท' in result.message, 'Render the grounded subtotal'),
+        (money(expected['expense']) + ' บาท' in result.message, 'Render the grounded subtotal'),
         ('ต้องการดูช่วงวันไหน' not in result.message, 'Do not ask again for the known period'),
     ]
     for valid, message in checks:
@@ -78,7 +79,8 @@ def uncertain_report():
         finish(),
     )
     assert first.status == 'clarification'
-    assert 'ยังยืนยันไม่ได้' in first.message
+    # Fact check: nothing confirmed yet, both candidates are shown as possible matches.
+    assert first.data['read_followup']['confirmed'] == [] and 'นัดที่อาจเป็นคุมสอบ' in first.message
     assert all(row['title'] in first.message for row in CASE['calendar_events'])
     assert 'ข้อมูลที่ใช้ค้นหายังไม่ชัดเจน' not in first.message
     assert 'เป็นคุมสอบไหมครับ?' in first.message or 'นัดไหนเป็นคุมสอบครับ?' in first.message
@@ -461,7 +463,7 @@ def test_guided_control_can_reread_confirmed_event_and_sum_only_its_day(uncertai
     assert_selected_day(result)
     assert result.data['read_query']['calendar_basis']['dates'] == [selected]
     assert result.data['read_query']['calendar_basis']['event_count'] == 1
-    assert 'ไม่ได้ยืนยันว่าแต่ละรายการเป็นค่าใช้จ่ายของนัดนั้นโดยตรง' in result.message
+    assert 'ไม่ได้แยกว่าเป็นค่าใช้จ่ายของนัดโดยตรง' in result.message
     selection = json.loads(api.selection_bodies[-1]['input'][0]['content'])
     assert [row['text'] for row in selection['owner_context']] == [CASE['question'], 'มีวันที่ 14']
     assert len(selection['calendar_selection']['events']) == 1

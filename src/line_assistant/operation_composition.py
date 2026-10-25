@@ -45,9 +45,9 @@ def saved_change(result):
         old_date,old_time=calendar_parts(before);new_date,new_time=calendar_parts(after)
         compare(view,'วันที่',old_date,new_date);compare(view,'เวลา',old_time,new_time)
     else:
-        from .reply_display import day
+        from .reply_display import day,money
         compare(view,'รายการ',before['item'],after['item'])
-        compare(view,'ยอด',str(before['amount'])+' บาท',str(after['amount'])+' บาท')
+        compare(view,'ยอด',money(before['amount'])+' บาท',money(after['amount'])+' บาท')
         compare(view,'วันที่',day(before['date']),day(after['date']))
     if preview:view.fact('ถ้าถูกต้อง ตอบ “ยืนยัน” หรือกดปุ่มยืนยันได้เลยครับ','instruction')
     return view.data()

@@ -55,7 +55,7 @@ def test_exact_reported_utterance_keeps_grounded_question_with_realization_ON(te
     e=r.data['tool_result']['entries'][0]
     assert r.status=='clarification' and e['item']=='Spotify' and e['amount'] is None
     assert e['date']=='2026-10-18' and e['previous_price']['amount']=='169.00'
-    assert all(s in r.message for s in ['169.00','2026-10-01','หลายยอด','ใช้ยอดเดิม','ยืนยันก่อนบันทึก'])
+    assert all(s in r.message for s in ['169 บาท','1 ต.ค. 2026','หลายยอด','ใช้ยอดเดิม','ยืนยันก่อนบันทึก'])
     assert 'ร่าง' not in r.message
     assert r.data['response_realization']['status']=='llm' and len(api.model_bodies)==2
     assert not api.google.sheet_writes and not next(iter(api.drafts().values()))['review']
@@ -75,7 +75,7 @@ def test_descriptive_catalog_name_is_visible_then_explicit_choice_offers_price_t
     r,_=choose_name(api,'Spotify service');assert r.status=='clarification'
     e=r.data['tool_result']['entries'][0]
     assert e['item']=='Spotify service' and e['amount'] is None and e['previous_price']['amount']=='169.00'
-    assert '169.00' in r.message and '2026-10-01' in r.message and 'ใช้ยอดเดิม' in r.message
+    assert '169 บาท' in r.message and '1 ต.ค. 2026' in r.message and 'ใช้ยอดเดิม' in r.message
     r,_=accepted(api,('Spotify service',));assert r.status=='preview'
     assert '1 ต.ค. 2026' in r.message and '18 ต.ค. 2026' in r.message and not api.google.sheet_writes
     r,_=turn(api,'ยืนยัน');assert r.status=='recorded' and api.google.sheet_writes==1
@@ -94,7 +94,7 @@ def test_multiple_plans_require_explicit_catalog_name_before_history_lookup():
     api=ReplyHosted(('Spotify Solo','Spotify Family'));turn(api,'ค่า Spotify',proposed('Spotify Solo',literal='ค่า Spotify'))
     r,_=choose_name(api,'Spotify Solo','เลือก Spotify Solo')
     assert r.status=='clarification' and r.data['tool_result']['entries'][0]['previous_price']['amount']=='169.00'
-    assert '169.00' in r.message and not api.google.sheet_writes
+    assert '169 บาท' in r.message and not api.google.sheet_writes
 
 
 def test_an_unknown_or_unmatched_name_never_borrows_another_items_price():
@@ -138,7 +138,7 @@ def test_wording_cannot_drop_the_catalog_question_fact():
 def test_optional_wording_failure_preserves_the_same_price_question():
     api=ReplyHosted();api.voice_failure=True;r,_=turn(api,'ค่า Spotify',proposed())
     assert r.data['response_realization']['status']=='fallback'
-    assert '169.00' in r.message and '2026-10-01' in r.message and 'ใช้ยอดเดิม' in r.message
+    assert '169 บาท' in r.message and '1 ต.ค. 2026' in r.message and 'ใช้ยอดเดิม' in r.message
     assert not api.google.sheet_writes
 
 
@@ -155,7 +155,7 @@ def test_old_invisible_offer_requires_a_fresh_question_and_preserves_the_pending
     r,_=choose_name(api,'Spotify service') if kind=='catalog' else accepted(api)
     assert r.status=='clarification' and api.drafts()==before and not api.google.sheet_writes
     d=next(iter(before.values()));r,_=turn(api,'ขอดูร่างค่า Spotify',response('read_expense_drafts',{'draft_ref':d['draft_ref']}))
-    assert 'Spotify service' in r.message if kind=='catalog' else '169.00' in r.message and '2026-10-01' in r.message
+    assert 'Spotify service' in r.message if kind=='catalog' else '169 บาท' in r.message and '1 ต.ค. 2026' in r.message
     r,_=choose_name(api,'Spotify service') if kind=='catalog' else accepted(api)
     assert r.status==('clarification' if kind=='catalog' else 'preview') and not api.google.sheet_writes
 

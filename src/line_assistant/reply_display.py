@@ -1,6 +1,41 @@
 """Display values only; provider timestamps and confirmation evidence stay intact."""
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from .language import BANGKOK, MONTHS
+
+
+def money(value, missing='?'):
+    """One owner-facing amount format: thousands separators, satang only when present."""
+    if value is None or value == '':
+        return missing
+    try:
+        amount = Decimal(str(value).replace(',', ''))
+    except InvalidOperation:
+        return str(value)
+    if not amount.is_finite():
+        return str(value)
+    return f'{amount:,.0f}' if amount == amount.to_integral_value() else f'{amount:,.2f}'
+
+
+def quantity_text(value, unit=None):
+    """Format a verified currency unit without rounding a computed fact."""
+    if unit not in {'บาท','THB'}:
+        return str(value)
+    try:amount=Decimal(str(value))
+    except InvalidOperation:return str(value)
+    if not amount.is_finite():return str(value)
+    places=0 if amount==amount.to_integral_value() else max(2,-amount.as_tuple().exponent)
+    return f'{amount:,.{places}f}'
+
+
+def polite(text):
+    """End a sentence with ครับ, keeping a space after Latin script."""
+    return text + (' ครับ' if text[-1:].isascii() and text[-1:].strip() else 'ครับ')
+
+
+def named(name):
+    """Spaces only where a Latin-script name meets Thai text."""
+    return (' ' if name[:1].isascii() else '') + name + (' ' if name[-1:].isascii() else '')
 
 
 def day(value):
@@ -56,6 +91,6 @@ def expense_lines(entries):
         when=entry.get('date')
         if when!=previous:
             rows.append(day(when) if when else 'ยังไม่ระบุวันที่');previous=when
-        rows.append(f"{entry.get('item') or 'ยังไม่ระบุชื่อ'} — {entry.get('amount') or 'ยังไม่ระบุยอด'} บาท"+
+        rows.append(f"{entry.get('item') or 'ยังไม่ระบุชื่อ'} — {money(entry.get('amount'),'ยังไม่ระบุยอด')} บาท"+
                     ('\nหมายเหตุ: '+entry['note'] if entry.get('note') else ''))
     return '\n'.join(rows)

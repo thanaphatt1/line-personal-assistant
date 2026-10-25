@@ -47,7 +47,7 @@ def confirm_exam(api):
 def test_a_whole_title_answer_is_remembered_and_offers_one_tap_undo():
     api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
     result=confirm_exam(api)
-    assert result.message.startswith('คุมสอบ 4 นัดครับ') and 'จำไว้แล้วว่า DSDE Exam เป็นคุมสอบ ครั้งหน้าจะนับให้เลยครับ' in result.message
+    assert result.data['tool_result']['count']==4 and 'จำไว้แล้วว่า DSDE Exam เป็นคุมสอบ ครั้งหน้าจะนับให้เลยครับ' in result.message
     buttons=[b['action'] for b in result.data['line_message']['contents']['footer']['contents']]
     assert buttons==[{'type':'message','label':'ไม่ต้องจำ','text':'ไม่ต้องจำว่า DSDE Exam เป็นคุมสอบ'}]
     assert [(r['title'],r['activity'],r['decision']) for r in labels(api).values()]==[('DSDE Exam','คุมสอบ','match')]
@@ -103,7 +103,7 @@ def test_choosing_some_dates_of_a_title_is_not_remembered_for_the_title():
     api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
     ask(api)
     result,_=turn(api,'27 ต.ค. เป็นคุมสอบ',answer(lambda rows:[r['candidate_ref'] for r in rows if r['start'].startswith('2026-10-27')]))
-    assert result.message.startswith('คุมสอบ 1 นัดครับ') and 'จำไว้แล้ว' not in result.message and not labels(api)
+    assert result.data['tool_result']['count']==1 and 'จำไว้แล้ว' not in result.message and not labels(api)
 
 
 @pytest.mark.parametrize('title,activity',[('x'*201,'คุมสอบ'),('DSDE Exam','x'*81)])
@@ -206,11 +206,35 @@ def test_an_expense_total_on_remembered_activity_dates_discloses_the_label():
         read('calendar','2026-11-01',date_mode='calendar_month',filter_text='คุมสอบ'),
         expense('2026-11-01','2026-11-30',view='total',continue_analysis=True,join=True),finish('report'))
     # Both the Calendar read and the expense basis it produced say which label they used.
-    assert '165.00 บาท' in result.message and result.message.count('นับ DSDE Exam เป็นคุมสอบตามที่เคยยืนยันไว้')==2
+    assert '165 บาท' in result.message and result.message.count('นับ DSDE Exam เป็นคุมสอบตามที่เคยยืนยันไว้')==2
     assert 'read_followup' not in result.data and len(api.selection_bodies)==before
 
 
-def test_a_calendar_read_for_spending_keeps_the_expense_goal_even_without_an_expense_call():
+def test_remembered_activity_disclosure_survives_two_sql_projections_and_is_required_in_the_answer():
+    from datetime import datetime
+    from types import SimpleNamespace
+    from line_assistant.answer_composition import for_result
+    from test_query_analysis_loop import read
+    from test_expense_query_operations import seed,expense
+    from test_relational_queries import sql
+    api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
+    confirm_exam(api)
+    seed(api,[('2026-11-01','ค่าข้าว',120),('2026-11-25','ค่ารถ',45),('2026-11-12','ค่าอาหาร',500)])
+    api.now=datetime.fromisoformat('2026-12-03T09:00:00+07:00');api.labels={'e1':'exclude'}
+    first=sql(lambda rs:f"SELECT SUM(amount) AS subtotal FROM {next(r['sql_table'] for r in rs if r['domain']=='expense')}",continue_analysis=True)
+    second=sql(lambda rs:f"SELECT subtotal AS total FROM {next(r['sql_table'] for r in rs if r['domain']=='relation')}")
+    result,_=turn(api,'เดือนพฤศจิกายนใช้เงินวันที่ไปคุมสอบไปเท่าไร',
+        read('calendar','2026-11-01',date_mode='calendar_month',filter_text='คุมสอบ'),
+        expense('2026-11-01','2026-11-30',view='list',continue_analysis=True,join=True),first,second)
+    output=result.data['tool_result'];note='นับ DSDE Exam เป็นคุมสอบตามที่เคยยืนยันไว้'
+    assert output['rows']==[{'total':'165.00'}] and output['provenance_notes']==[note]
+    assert output['message'].count(note)==1
+    view=for_result(SimpleNamespace(_current={'at':api.now.isoformat()}),result)
+    assert view and any(view['facts'][key]==note for key in view['required_facts'])
+
+
+@pytest.mark.parametrize('end_mode',['direct','clarify'])
+def test_a_calendar_read_for_spending_keeps_the_expense_goal_even_without_an_expense_call(end_mode):
     from datetime import datetime
     from test_read_queries import plan
     from test_expense_query_operations import seed
@@ -220,11 +244,17 @@ def test_a_calendar_read_for_spending_keeps_the_expense_goal_even_without_an_exp
     api.now=datetime.fromisoformat('2026-12-03T09:00:00+07:00')
     def spending(body):
         answer=plan('calendar','2026-11-01','2026-11-30',filter_text='คุมสอบ')(body);call=answer['output'][0]
-        call['arguments']=json.dumps({**json.loads(call['arguments']),'purpose':'expense_dates'},ensure_ascii=False);return answer
-    first,_=turn(api,'เดือนพฤศจิกายนใช้เงินวันที่ไปคุมสอบไปเท่าไร',spending)
-    assert first.data['read_followup']['goal']=='expense' and 'แล้วผมจะรวมรายจ่ายของวันที่ยืนยันให้ครับ' in first.message
+        call['arguments']=json.dumps({**json.loads(call['arguments']),'purpose':'expense_dates','continue_analysis':end_mode=='clarify'},ensure_ascii=False);return answer
+    def ask_existing(body):
+        from test_query_analysis_loop import results
+        context=json.loads(body['input'][0]['content'])
+        return response('finish_query_analysis',{'query_refs':[r['query_ref'] for r in results(body) if r.get('query_ref')],
+            'operation':'clarify','question':'DSDE Exam 2 นัดนี้เป็นคุมสอบไหมครับ?',
+            'source_refs':[context['current_source_ref']]})
+    first,_=turn(api,'เดือนพฤศจิกายนใช้เงินวันที่ไปคุมสอบไปเท่าไร',spending,*([ask_existing] if end_mode=='clarify' else []))
+    assert first.data['read_followup']['goal']=='expense' and 'ผมจะรวมรายจ่ายของวันนั้นให้' in first.message
     result,_=turn(api,'DSDE Exam เป็นคุมสอบ',answer(lambda rows:[r['candidate_ref'] for r in rows]))
-    assert '165.00 บาท' in result.message and 'คุมสอบ 2 นัดครับ' not in result.message
+    assert '165 บาท' in result.message and result.data['tool_result']['domain']=='expense'
 
 
 def test_a_count_summary_keeps_the_remembered_label_disclosure():
@@ -232,4 +262,46 @@ def test_a_count_summary_keeps_the_remembered_label_disclosure():
     api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
     confirm_exam(api);api.labels={'e1':'exclude'}
     result,_=turn(api,'เดือนหน้ามีคุมสอบกี่วัน',read('calendar','2026-11-01',date_mode='calendar_month',filter_text='คุมสอบ'),finish('calendar_count'))
-    assert 'มี 2 ครั้งครับ' in result.message and 'นับ DSDE Exam เป็นคุมสอบตามที่เคยยืนยันไว้' in result.message
+    assert result.data['tool_result']['count']==2 and 'นับ DSDE Exam เป็นคุมสอบตามที่เคยยืนยันไว้' in result.message
+
+
+def test_memory_keeps_the_newest_labels_within_its_bound(monkeypatch):
+    from types import SimpleNamespace
+    from line_assistant import activity_labels
+    monkeypatch.setattr(activity_labels,'MAX_LABELS',2)
+    state=HistoryState();state.owner_id='owner'
+    for i,title in enumerate(['A','B','C']):
+        host=SimpleNamespace(state=state,_current={'at':f'2026-10-24T1{i}:00:00+07:00'})
+        assert activity_labels.remember(host,'คุมสอบ',title,'match','msg_'+str(i))
+    assert sorted(r['title'] for r in state.activity_labels.values())==['B','C']
+
+
+def test_the_label_tool_remembers_an_explicit_match_and_forgetting_nothing_says_so():
+    api=MemoryHosted();exams(api)
+    stored,_=turn(api,'จำไว้ว่า DSDE Exam เป็นคุมสอบ',label('DSDE Exam','คุมสอบ','match'))
+    assert stored.message=='จำไว้แล้วครับ ครั้งหน้าจะนับ DSDE Exam เป็นคุมสอบเลย'
+    assert [(r['title'],r['decision']) for r in labels(api).values()]==[('DSDE Exam','match')]
+    missing,_=turn(api,'ไม่ต้องจำว่า facilitator เป็นคุมสอบ',label('facilitator','คุมสอบ','forget'))
+    assert missing.message=='ยังไม่ได้จำเรื่องนี้ไว้ครับ เลยไม่มีอะไรให้ลบ' and len(labels(api))==1
+
+
+def test_rejecting_a_whole_title_is_remembered_with_its_own_undo():
+    api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'uncertain'}
+    ask(api)
+    def reject(body):
+        c=json.loads(body['input'][0]['content']);pending=c['pending_query']
+        return response('resolve_activity_dates',{'clarification_ref':pending['clarification_ref'],
+            'candidate_refs':[r['candidate_ref'] for r in pending['candidates'] if r['title']=='facilitator'],
+            'decision':'exclude','selection_text':c['message'],'source_refs':[c['current_source_ref']]})
+    result,_=turn(api,'facilitator ไม่ใช่คุมสอบ',reject)
+    assert 'จำไว้แล้วว่า facilitator ไม่ใช่คุมสอบ ครั้งหน้าจะไม่นับครับ' in result.message
+    assert [(r['title'],r['decision']) for r in labels(api).values()]==[('facilitator','exclude')]
+    buttons=[b['action'] for b in result.data['line_message']['contents']['footer']['contents']]
+    assert buttons==[{'type':'message','label':'ไม่ต้องจำ','text':'ไม่ต้องจำว่า facilitator ไม่ใช่คุมสอบ'}]
+
+
+def test_restore_rejects_a_label_state_with_the_wrong_format_or_owner():
+    from line_assistant.activity_labels import validate
+    for value in [{'format':'other','owner':'owner','labels':{}},{'format':'activity-labels-v1','owner':'someone','labels':{}},
+                  {'format':'activity-labels-v1','owner':'owner','labels':{},'extra':1}]:
+        with pytest.raises(ValueError):validate(value,'owner')

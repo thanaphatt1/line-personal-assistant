@@ -36,7 +36,7 @@ class RepairLoop:
         # and retains it as evidence of the original goal. Do not intercept it
         # before that pipeline records the failed expense/calendar read.
         from .query_analysis import READ_TOOLS
-        if name in READ_TOOLS and self.h._query_analysis_active and not (result.get('temporal_resolution') or result.get('relational_query')):return None
+        if name in READ_TOOLS and self.h._query_analysis_active and not (result.get('temporal_resolution') or result.get('relational_query') or result.get('analysis_selection_required')):return None
         try:args=json.loads(call['arguments'])
         except (ValueError,TypeError):return None
         from .pending_records import views

@@ -237,6 +237,12 @@ class HistoryHttp(PilotHttp):
             raw.reservation(body)
         expected_choice='required' if raw_request and body['instructions']==raw.SUMMARY_INSTRUCTIONS else 'auto'
         planner_request=raw_request and body['instructions']!=raw.SUMMARY_INSTRUCTIONS
+        if planner_request:
+            context=json.loads(body['input'][0]['content'])
+            if context.get('query_analysis_active'):
+                from .query_analysis import READ_TOOLS
+                if any(t['name'] not in READ_TOOLS for t in body['tools']):raise LiveDisabled('Unbound analysis tools')
+                expected_choice='required'
         expected_effort=raw.PLANNER_REASONING_EFFORT if planner_request else 'none'
         expected_output=raw.PLANNER_MAX_OUTPUT_TOKENS if planner_request else MAX_OUTPUT_TOKENS
         proposal_choice={'type':'function','name':'propose_historical_categories'}

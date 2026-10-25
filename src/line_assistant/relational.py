@@ -29,9 +29,12 @@ class Plan(Strict):
 
 
 def definitions():
+    parameters=schema(Plan)
+    parameters['properties']['continue_analysis']={'type':'boolean','enum':[True],
+        'description':'Always true for the planner: inspect the executed predicates, result and source coverage against the owner request before finish_query_analysis report/clarify. Execution success alone does not establish intent coverage.'}
     return [{'type':'function','name':NAME,'strict':True,'description':
-        'Primary saved-data filtering and analysis: read-only SQLite SELECT/WHERE/NOT/AND/OR/JOIN/CASE/subquery/window over complete observed relations_catalog snapshots. Exact decimal SUM; no writes/provider SQL. First read sources with continue_analysis=true, expense filter=null and view=list.',
-        'parameters':schema(Plan)}]
+        'Primary saved-data filtering and analysis, including one named label, exclusions, several labels, joins, computed or ranked results: read-only SQLite SELECT/WHERE/NOT/AND/OR/JOIN/CASE/subquery/window over complete observed relations_catalog snapshots. Resolve labels using source metadata and categorical choices. Exact decimal SUM; no writes/provider SQL. First read sources with continue_analysis=true, expense filter=null and view=list.',
+        'parameters':parameters}]
 
 
 def columns(*values):return [{'name':name,'type':kind} for name,kind in values]
@@ -68,6 +71,10 @@ def materialize(h,ref):
                 value=(mapped.item if field=='canonical_item' else getattr(mapped,field)) if mapped else None
                 r[field]=value if value and value.strip() else None
                 if r[field] is None and field not in unavailable:unavailable.append(field)
+        if tax:
+            for c in cols:
+                if c['name'] in {'category','subcategory'}:
+                    c['choices']=sorted({getattr(r,c['name']) for r in tax.rows if getattr(r,c['name']) and getattr(r,c['name']).strip()})
     elif domain=='calendar':
         cols=columns(('read_ref','text'),('title','text'),('start','text'),('end','text'),('all_day','boolean'),('start_date','date'),('last_date','date'))
         for r in records:
@@ -85,10 +92,17 @@ def materialize(h,ref):
                 if any(r.get('details_truncated') for r in records):unavailable.append(name)
     elif domain=='relation':cols=deepcopy(output['columns'])
     else:raise PlanningError('relation_unsupported_source',kind='unsupported')
+    notes=list(output.get('provenance_notes',[]))
+    if domain in {'expense','calendar'}:
+        from .read_queries import facts
+        notes.extend(value for key,value in facts(output,datetime.fromisoformat(h._current['at'])).items()
+                     if key.startswith('remembered_'))
     return {'query_ref':ref,'sql_table':'q_'+digest(ref)[:16],'domain':domain,'columns':cols,
         'row_count':len(records),'records':records,'unavailable_fields':unavailable,
         'scope':{k:deepcopy(v) for k,v in output['scope'].items() if k not in {'binding','workbook','calendar','calendar_read_ids_hash'}},
-        'identity':'snapshot_only' if domain=='expense' else 'observed_rows'}
+        'identity':'snapshot_only' if domain=='expense' else 'observed_rows',
+        'analysis_input_only':bool(output.get('analysis_input_only')),
+        'provenance_notes':list(dict.fromkeys(notes))}
 
 
 def context(h):
@@ -101,18 +115,25 @@ def context(h):
         'unavailable':['provider SQL','files/extensions','writes','AVG','TOTAL','binary64 output']}}
 
 
-def message(rows,count):
+def message(rows,count,columns=()):
+    from .reply_display import quantity_text
+    units={c['name']:c.get('unit') for c in columns}
     def text(v):
         value=re.sub(r'[\x00-\x1f]',' ',str(v)) if v is not None else 'ไม่มีค่า'
         return value[:300]+('…' if len(value)>300 else '')
-    lines=['ผลวิเคราะห์จากข้อมูลที่อ่านครบครับ']
-    lines += [str(i)+'. '+' | '.join(text(k)+': '+text(v) for k,v in row.items()) for i,row in enumerate(rows,1)]
+    def cell(k,v):
+        unit=units.get(k)
+        return text(quantity_text(v,unit))+(' '+text(unit) if unit else '') if v is not None else text(v)
+    def label(k):
+        return (re.sub(r'\s*\(บาท\)|_?baht$','',text(k),flags=re.I) or text(k)) if units.get(k) in {'บาท','THB'} else text(k)
+    lines=['ผลลัพธ์ครับ']
+    lines += [(str(i)+'. ' if len(rows)>1 else '')+' | '.join(label(k)+': '+cell(k,v) for k,v in row.items()) for i,row in enumerate(rows,1)]
     if count>len(rows):lines.append(f'แสดง {len(rows)} จาก {count} แถวของผลลัพธ์ที่คำนวณครบแล้ว')
     if not count:lines.append('ไม่พบแถวที่ตรงเงื่อนไข')
     return '\n'.join(lines)
 
 
-def followup_scope(h,relations,used,sql):
+def followup_scope(h,relations,used,sql,result_columns,row_count):
     """Retain one verified source scope and SQL intent, never prior rows/refs.
 
     Multiple distinct source scopes have no single unambiguous previous period.
@@ -128,8 +149,13 @@ def followup_scope(h,relations,used,sql):
     if not scopes:return None
     bases=[{k:v for k,v in s.items() if k not in {'analysis','continue_analysis'}} for s in scopes]
     if any(s!=bases[0] for s in bases[1:]):return None
-    scope=deepcopy(bases[0])
-    scope['analysis']={'sql':sql,'inputs':[{k:deepcopy(r[k]) for k in ('sql_table','domain','columns','scope')}
+    # A complete input is often read as an unfiltered list even when the final
+    # answer is a filtered scalar or grouped result. Do not present these fetch
+    # controls as the last delivered selection/view. Keep them with the inputs.
+    scope={k:deepcopy(v) for k,v in bases[0].items()
+           if k not in {'filter','listing','view','group_by','order_by','descending','limit'}}
+    scope['analysis']={'sql':sql,'result_columns':deepcopy(result_columns),'row_count':row_count,
+        'inputs':[{k:deepcopy(r[k]) for k in ('sql_table','domain','columns','scope')}
         for r in relations if r['sql_table'] in used]}
     return scope
 
@@ -143,7 +169,8 @@ def execute(h,args):
         if len(set(p.query_refs))!=len(p.query_refs):raise PlanningError('relation_duplicate_reference')
         relations=[materialize(h,ref) for ref in p.query_refs]
         names,records,used=run_sql(relations,p.sql)
-        cols=[{'name':name,'type':'integer' if any(type(r[name]) is int for r in records) else 'text'} for name in names]
+        from .relational_metadata import result_columns
+        cols=result_columns(relations,p.sql,names,records)
         # Derived decimal strings keep an explicit numeric ordering option;
         # SQLite does not propagate collation through aggregate aliases.
         scope={'domain':'relation','query_refs':[r['query_ref'] for r in relations if r['sql_table'] in used],
@@ -152,8 +179,12 @@ def execute(h,args):
         output={**base,'ok':True,'complete':True,'status':'answer','query_ref':ref,'scope':scope,'columns':cols,
             'count':len(records),'rows':records[:20],'analysis_records':records,'shown':min(len(records),20),
             'continue_analysis':p.continue_analysis,'numeric_semantics':'Exact decimal SUM/add/sub/mul; decimal_div explicitly rounds half-even to requested places',
-            'message':message(records[:20],len(records))}
-        previous=followup_scope(h,relations,used,p.sql)
+            'message':message(records[:20],len(records),cols)}
+        previous=followup_scope(h,relations,used,p.sql,cols,len(records))
+        notes=list(dict.fromkeys(note for r in relations if r['sql_table'] in used for note in r.get('provenance_notes',[])))
+        if notes:
+            output['provenance_notes']=notes
+            output['message']+='\n'+'\n'.join(notes)
         if previous:output['followup_scope']=previous
         h._query_reads[ref]=deepcopy(output)
         return {k:v for k,v in output.items() if k!='analysis_records'}

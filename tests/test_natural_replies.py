@@ -114,7 +114,7 @@ def test_calendar_review_document_keeps_status_notice_values_and_instruction():
     natural={'blocks':[{'kind':'text','template':'{{'+ids['status']+'}}'},
         {'kind':'rows','record_refs':['r1'],'heading':'','template':'{{c1}} วัน{{c2}} ช่วง {{c3}} ในปฏิทิน {{'+ids['ปฏิทิน']+'}}'},
         {'kind':'text','template':'{{'+ids['หมายเหตุ']+'}}'},{'kind':'text','template':'{{'+ids['instruction']+'}}'}]}
-    assert 'ตรวจฟัน วัน17 ต.ค. 2026 ช่วง 14:00–14:45' in render(natural,view)
+    assert 'ตรวจฟัน วัน 17 ต.ค. 2026 ช่วง 14:00–14:45' in render(natural,view)
 
 
 @pytest.mark.parametrize('mutation',['drop_notice','success_claim','copied_time'])

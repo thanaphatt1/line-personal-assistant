@@ -1,4 +1,5 @@
 """Owner-selected past expense amounts; no unit-price inference or effects."""
+from .reply_display import money
 from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime
@@ -129,7 +130,11 @@ class PreviousPrices:
             or not any(e.get('previous_price')==offer for e in out.get('entries',[]))):raise ValueError('previous_price_not_delivered_latest')
         from .line_api import visible_text
         visible=visible_text(shown)
-        if not self.h._has_item(visible,old['item']) or offer['amount'] not in visible or offer['source_date'] not in visible:raise ValueError('previous_price_not_visible')
+        # Offers delivered before the readable format used raw values; accept either rendering.
+        from .reply_display import day
+        shown_amount=any(v in visible for v in (offer['amount'],money(offer['amount'])+' บาท'))
+        shown_date=any(v in visible for v in (offer['source_date'],day(offer['source_date'])))
+        if not self.h._has_item(visible,old['item']) or not shown_amount or not shown_date:raise ValueError('previous_price_not_visible')
         text=self.h._current['text'].strip()
         if NO.search(text) or not (ACCEPT.search(text) or re.fullmatch(r'(?:ใช่|ได้|ตกลง)(?:ครับ|ค่ะ|คะ)?',text)):raise ValueError('previous_price_owner_choice_required')
         active=[x for x in self.h.state.drafts.values() if x['status']!='recorded']
@@ -188,6 +193,7 @@ class PreviousPrices:
             value=entry.get('previous_price')
             if value and value['state']=='offered':
                 label=entry['item'].replace('\n',' ')[:200]
-                lines.append(f"{label}: ยอดที่เคยบันทึกล่าสุด {value['amount']} บาท วันที่ {value['source_date']}"+(' (ประวัติมีหลายยอด)' if value['varied'] else ''))
+                from .reply_display import day
+                lines.append(f"{label}: ยอดที่เคยบันทึกล่าสุด {money(value['amount'])} บาท วันที่ {day(value['source_date'])}"+(' (ประวัติมีหลายยอด)' if value['varied'] else ''))
         if not lines:return None
         return 'ยังไม่ได้ระบุยอดและยังไม่ได้บันทึก:\n'+'\n'.join(lines)+'\nจะใช้ยอดเดิมที่แสดงนี้ หรือระบุยอดใหม่ครับ? ถ้ามีหลายรายการ กรุณาระบุชื่อหรือเลือกทั้งหมด\nเมื่อเลือกแล้วจะให้ตรวจสอบรายการและยืนยันก่อนบันทึก'

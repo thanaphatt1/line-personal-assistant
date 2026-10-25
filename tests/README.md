@@ -1,5 +1,10 @@
 # Test guide
 
+[SQL result units](test_relational_result_units.py) check counts with misleading
+aliases, source units through projections/CTEs/windows/aggregates, ratios,
+conflicting units, repeated analysis and exact decimal display. These contracts
+cover generic structured records as well as expense data.
+
 [Create-then-reschedule regressions](test_calendar_created_reschedule.py) use a
 single synthetic Calendar through signed creation, cold restoration and ETag
 updates. They cover a day-only follow-up after 28 minutes, intervening replies,
@@ -50,6 +55,16 @@ the multi-year window bound, month-split reads answered as one question, and
 that a paraphrased filter returns to the planner instead of ending the turn, and
 that a read stops before the turn's provider-call budget so the turn still saves
 and replies (`read_capacity`) instead of failing the webhook.
+The [answer units and periods](test_answer_units_and_periods.py) check the shared
+amount format, Latin-name spacing, named months/years, day counting (distinct
+dates, not appointments) in reads, confirmations and subtotals, the asked period
+on confirmed-date subtotals and the single polite zero-confirmed lead.
+
+The [read planning contracts](test_read_planning_contracts.py) cover server-computed
+relative days, next appointments without period words, a misquoted period returned
+to the planner, the typed single-label filter and balance guidance, SQL fallback
+amounts and Thai table-review dates.
+
 The [activity memory contracts](test_activity_memory.py) cover remembering a
 whole-title answer with a one-tap undo, applying and disclosing labels on the
 next read, skipping the classifier when every title is known, forgetting,

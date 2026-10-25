@@ -65,6 +65,19 @@ def safe_output(output):
     return {k: deepcopy(v) for k, v in output.items() if k not in {'analysis_records', 'scope'}}
 
 
+def shown(value):
+    """Owner-facing cell text: Thai dates, never raw ISO."""
+    if value is None:return 'ว่าง'
+    if value is True:return 'ใช่'
+    if value is False:return 'ไม่ใช่'
+    text=str(value)
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}',text):
+        from .reply_display import day
+        try:return day(text)
+        except ValueError:pass
+    return text
+
+
 def render(output):
     if not output.get('ok'):
         code = output.get('error_code', 'unavailable')
@@ -86,8 +99,7 @@ def render(output):
         labels = output.get('column_labels', {})
         lines = [f"{output['label']}: พบ {output['count']} รายการครับ"]
         for i, row in enumerate(output['rows'], 1):
-            parts = [labels.get(k, k) + ': ' + ('ว่าง' if v is None else 'ใช่' if v is True else 'ไม่ใช่' if v is False else str(v))
-                     for k, v in row.items() if k != 'id']
+            parts = [labels.get(k, k) + ': ' + shown(v) for k, v in row.items() if k != 'id']
             lines.append(str(i) + '. ' + ' | '.join(parts))
         if output['truncated']:
             lines.append(f"แสดง {output['shown']} จาก {output['result_count']} แถวผลลัพธ์ การนับและคำนวณใช้ข้อมูลที่ตรงเงื่อนไขทั้งหมด")
@@ -101,11 +113,12 @@ def render(output):
         draft = output['table_draft']
         labels = output['column_labels']
         operation = {'insert': 'เพิ่ม', 'update': 'แก้ไข', 'delete': 'ลบ'}[draft['operation']]
-        lines = [operation + 'ข้อมูลใน ' + output['label']]
+        from .reply_display import named
+        lines = [operation + 'ข้อมูลใน' + named(output['label']).rstrip()]
         if draft['before']:
-            lines.append('เดิม: ' + ' | '.join(labels[k] + ': ' + str(v) for k, v in draft['before']['values'].items() if v is not None))
+            lines.append('เดิม: ' + ' | '.join(labels[k] + ': ' + shown(v) for k, v in draft['before']['values'].items() if v is not None))
         if draft['operation'] != 'delete':
-            lines.extend(labels[k] + ': ' + str(v) for k, v in draft['values'].items() if v is not None)
+            lines.extend(labels[k] + ': ' + shown(v) for k, v in draft['values'].items() if v is not None)
         if output.get('missing'):
             lines.append('ขอข้อมูลเพิ่ม: ' + ', '.join(labels[k] for k in output['missing']))
         else:

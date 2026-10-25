@@ -1,4 +1,5 @@
 """Catalog identity proposals stay separate from literal owner name evidence."""
+from .reply_display import money
 from .catalog import normalized
 from .source_spans import finditer
 from .conversation_evidence import command_text
@@ -103,7 +104,7 @@ def clarification(h,output):
     else:question=f'ยังไม่พบชื่อ {label} ที่ตรงใน Database ครับ ให้เตรียมเพิ่มเป็นรายการใหม่ไหมครับ?'
     if names and getattr(h,'previous_prices',None) and h.previous_prices.enabled and next(e for e in output['entries'] if e['entry_ref']==selected['entry_ref'])['amount'] is None:
         question+='\nเลือกชื่อก่อนครับ แล้วจะตรวจยอดที่เคยบันทึกให้ ยังไม่ได้บันทึกรายจ่าย'
-    rows='\n'.join(f"{e['item'] or '(ยังไม่ระบุชื่อ)'} {e['amount'] or '?'} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in output['entries'])
+    rows='\n'.join(f"{e['item'] or '(ยังไม่ระบุชื่อ)'} {money(e['amount'])} บาท วันที่ {e['date'] or 'ยังไม่ระบุ'}" for e in output['entries'])
     enhanced={**output,'catalog_matches':offered,'catalog_query':label,'catalog_entry_ref':selected['entry_ref'],'catalog_question':question}
     return enhanced,'รายจ่ายที่ยังไม่ได้บันทึก:\n'+rows+'\n'+question
 

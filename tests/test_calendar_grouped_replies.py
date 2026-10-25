@@ -59,7 +59,7 @@ def test_overnight_appointment_preserves_actual_boundaries_and_is_counted_once(s
 def test_empty_calendar_keeps_zero_count_without_inventing_day_groups():
     h=Harness();result=h.send('ดูนัด',plan('calendar','2026-10-19','2026-10-25'))
     assert result.data['tool_result']['complete'] and result.data['tool_result']['count']==0
-    assert '0 นัด' in result.message and not any(key.startswith('row') for key in result.data['query_facts'])
+    assert result.data['tool_result']['count']==0 and 'ไม่มีนัด' in result.message and not any(key.startswith('row') for key in result.data['query_facts'])
     assert '\n' not in result.message
 
 

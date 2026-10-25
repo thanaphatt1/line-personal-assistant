@@ -23,17 +23,33 @@ def unverified_claim(text):
                 or re.search(verbs+r'.{0,60}(?:เรียบร้อยแล้ว|เสร็จแล้ว)',text))
 
 
+class IntentReview(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    selection_matches:bool
+    output_matches:bool
+    unresolved_conditions:list[str]=Field(max_length=8)
+
+
 class Finish(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
-    query_refs:list[str]=Field(min_length=1)
-    operation:Literal['report','expense_sum','calendar_count','compare']
+    query_refs:list[str]
+    operation:Literal['report','expense_sum','calendar_count','compare','clarify']
     source_refs:list[str]=Field(min_length=1,max_length=16)
+    question:str|None=None
+    intent_review:IntentReview|None=None
 
 def definitions():
     return [{'type':'function','name':'finish_query_analysis','strict':True,
-        'description':'Finish read-only analysis using current-request query_refs that answer the requested output. For spending on Calendar-selected dates select the resulting expense query_ref, not only the supporting Calendar ref. report shows grounded results; expense_sum requires disjoint complete date ranges; calendar_count deduplicates event refs; compare computes same-domain differences. No model totals or writes.',
-        'parameters':object_schema({'query_refs':{'type':'array','items':{'type':'string'},'minItems':1},
-            'operation':{'type':'string','enum':['report','expense_sum','calendar_count','compare']},
+        'description':'Finish read-only analysis using current-request query_refs. report selects final results, never an analysis_input_only source: use query_relations to project/filter/aggregate that input first. clarify asks one unresolved scope/condition question. For spending on Calendar-selected dates select the resulting expense query_ref, not only the supporting Calendar ref. expense_sum requires disjoint complete date ranges; calendar_count deduplicates event refs; compare computes same-domain differences. No model totals or writes.',
+        'parameters':object_schema({'query_refs':{'type':'array','items':{'type':'string'},'description':'Actual current-request result refs. May be empty only for clarify when no source rows could be read.'},
+            'operation':{'type':'string','enum':['report','expense_sum','calendar_count','compare','clarify']},
+            'question':{'anyOf':[{'type':'null'},{'type':'string','minLength':1,'maxLength':500}],
+                'description':'Only for clarify: one natural clarification question, no totals, calculations, action claims, URLs or numeric data literals. Do not copy data numbers into the question. Null for other operations.'},
+            'intent_review':object_schema({
+                'selection_matches':{'type':'boolean','description':'Compare CURRENT owner intent and retained follow-up conditions to the actual selected SQL WHERE/JOIN/grouping/source scope. False if any requested condition was dropped, broadened, narrowed or guessed, even when SQL succeeded.'},
+                'output_matches':{'type':'boolean','description':'Compare actual selected projections/grouping/order to the requested answer and last delivered presentation. A changed selection alone does not request replacing a list with a total or removing duplicate occurrences.'},
+                'unresolved_conditions':{'type':'array','items':{'type':'string'},'maxItems':8,
+                    'description':'Requested conditions still not resolved against actual source metadata/choices. Empty only if all conditions are accounted for. Unknown closed-choice labels must remain unresolved, never be replaced with all choices.'}}),
             'source_refs':{'type':'array','items':{'type':'string'},'minItems':1}})}]
 
 def remember(host,output,at,step):
@@ -50,6 +66,10 @@ def remember(host,output,at,step):
         host.state.claims.setdefault(key,Claim(parent.fingerprint,parent.expires_at))
         result=response_realization.realize(host,key,result)
         output=result.data['tool_result']
+    scope=output.get('scope',{})
+    if (output.get('domain')=='expense' and scope.get('listing') and not scope.get('filter')
+            and scope.get('group_by','none')=='none'):
+        output={**output,'analysis_input_only':True}
     ref='read_'+digest([host._active_event_id,len(host._query_reads),output['scope']])[:20]
     host._query_reads[ref]=deepcopy(output)
     value={k:deepcopy(v) for k,v in output.items() if k not in {'scope','analysis_records','calendar_candidates'}}
@@ -112,11 +132,44 @@ def finish(host,args):
     try:
         p=Finish.model_validate(args);host._owner_sources(p.source_refs)
         if host._current['source_ref'] not in p.source_refs or len(set(p.query_refs))!=len(p.query_refs):raise ValueError()
+        if not p.query_refs and p.operation!='clarify':raise ValueError()
         selected=[host._query_reads[ref] for ref in p.query_refs]
         if p.operation=='report':
             from .read_queries import coalesce
             selected=coalesce(selected)
     except (ValueError,TypeError,KeyError):return fail('invalid_query_refs','ยังอ้างอิงผลค้นหาที่อ่านจริงไม่ครบครับ กรุณาระบุสิ่งที่ต้องการค้นอีกครั้ง')
+    if p.operation=='clarify':
+        if selected and all(row.get('domain')=='calendar' for row in selected) and any(
+                row.get('calendar_selection',{}).get('uncertain_count') for row in selected):
+            # The source already has a grounded candidate question, including
+            # any dates/counts. Preserve its selection and follow-up contract
+            # instead of validating copied numbers in new free-form prose.
+            return finish(host,{'query_refs':p.query_refs,'operation':'report','source_refs':p.source_refs})
+        from .history_first import success_claim
+        question=p.question.strip() if p.question else ''
+        if (not 1<=len(question)<=500 or any(c.isnumeric() for c in question)
+                or re.search(r'https?://|[<>\x00-\x1f]|'
+                    r'(?:เพิ่ม|แก้ไข|ลบ|ยกเลิก|สร้าง|เลื่อน).{0,20}(?:แล้ว|สำเร็จ|เรียบร้อย)|'
+                    r'\b(?:saved|created|updated|deleted|confirm|execute)\b',question,re.I)
+                or success_claim(question) or unverified_claim(question)):
+            return fail('invalid_query_question','ยังระบุคำถามที่ต้องถามให้ชัดเจนไม่ได้ครับ')
+        return {'query_analysis':True,'query_clarification':True,'ok':True,'complete':False,
+                'status':'clarification','read_only':True,'financial_write_authorized':False,
+                'calendar_write_authorized':False,'query_refs':p.query_refs,'operation':'clarify','message':question}
+    if p.question is not None:return fail('invalid_query_question','คำถามเพิ่มเติมต้องแยกจากผลสรุปที่ตรวจสอบแล้วครับ')
+    if p.operation=='report' and p.intent_review is not None and (
+            not p.intent_review.selection_matches or not p.intent_review.output_matches or p.intent_review.unresolved_conditions):
+        from .tool_errors import recovery
+        return {**fail('analysis_intent_mismatch','ผลค้นหายังไม่ตรงกับเงื่อนไขหรือรูปแบบที่ถามครับ'),
+                'analysis_selection_required':True,'recovery':recovery(kind='assistant_arguments',
+                    required=['Correct the selected SQL to match owner intent; clarify genuinely unresolved conditions instead of reporting a substitute'],
+                    tools=['query_relations','finish_query_analysis'])}
+    if p.operation=='report' and any(row.get('analysis_input_only') for row in selected):
+        from .tool_errors import recovery
+        return {**fail('analysis_projection_required','ยังไม่ได้เลือกหรือคำนวณข้อมูลให้ตรงกับคำถามครับ'),
+                'analysis_selection_required':True,'recovery':recovery(kind='assistant_arguments',
+                    required=['query_relations SELECT the requested output from the source; clarify unresolved conditions'],
+                    tools=['query_relations','finish_query_analysis'])}
     at=datetime.fromisoformat(host._current['at'])
     from .table_workflow import render as render_table
     reports=[render(row) if row.get('relational_query') or row.get('read_failure') else render_table(row) if row.get('table_query') else render_query(row,at) for row in selected]
@@ -145,7 +198,8 @@ def finish(host,args):
             return fail('overlap','ช่วงวันที่รายจ่ายที่เลือกซ้อนกันครับ จึงยังบวกรวมเพราะอาจนับรายการซ้ำ')
         total=sum((Decimal(row['expense']) for row in expenses),Decimal(0))
         common.update(expense=f'{total:.2f}',count=sum(row['count'] for row in expenses))
-        message=f"รายจ่ายรวมจากช่วงวันที่เลือก {total:.2f} บาท จาก {common['count']} รายการครับ"
+        from .reply_display import money
+        message=f"รายจ่ายรวมจากช่วงวันที่เลือก {money(total)} บาท จาก {common['count']} รายการครับ"
     elif p.operation=='calendar_count':
         if any(row['domain']!='calendar' for row in selected):return fail('domain','การนับนัดต้องเลือกผลค้นหาปฏิทินครับ')
         occurrences={}
@@ -155,7 +209,13 @@ def finish(host,args):
                 return fail('missing_event_refs','ยังไม่มีหลักฐานอ้างอิงนัดครบทุกนัดครับ จึงยังรวมจำนวนไม่ได้')
             for event in records:occurrences[event['read_ref']]=event
         common['count']=len(occurrences)
-        message=f"นัดที่ไม่ซ้ำกันจากผลค้นหาที่เลือกมี {len(occurrences)} ครั้งครับ"
+        message=f"รวม {len(occurrences)} นัดครับ"
+        if any(row['scope'].get('count_unit')=='days' for row in selected):
+            from .read_queries import covered_days
+            days=set()
+            for row in selected:days.update(covered_days([e for e in row.get('analysis_records',[])],row['scope']['start'],row['scope']['end']))
+            common['day_count']=len(days)
+            message=f"รวม {len(days)} วันครับ"+(f" ({len(occurrences)} นัด)" if len(days)!=len(occurrences) else '')
     else:
         if any(row['domain']=='table' for row in selected):
             return fail('comparison_basis','กรุณาใช้การจัดกลุ่มและคำนวณผ่าน query_table เพื่อเปรียบเทียบคอลัมน์ที่ต้องการครับ')

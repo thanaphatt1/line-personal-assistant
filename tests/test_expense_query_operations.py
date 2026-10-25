@@ -50,7 +50,7 @@ def test_item_ranking_groups_all_payments_before_sorting_not_largest_single_paym
     output=result.data['tool_result']
     assert output['groups']==[{'label':'กาแฟ','amount':'800.00','count':2},{'label':'รถไฟ','amount':'700.00','count':1}]
     assert output['expense']=='1500.00' and output['count']==3
-    assert 'กาแฟ — 800.00 บาท' in result.message and '2 รายการ' in result.message
+    assert 'กาแฟ — 800 บาท' in result.message and '2 รายการ' in result.message
 
 @pytest.mark.parametrize('options,labels',[
     ({'order_by':'amount'},['B','A','C']),
@@ -87,12 +87,20 @@ def test_grouped_categories_use_current_verified_mapping_and_exact_sums(grouping
 
 @pytest.mark.parametrize('options',[
     {'order_by':'count'}, {'group_by':'item'}, {'limit':0},{'limit':21},{'limit':True},{'order_by':'arbitrary_sql'},
-    {'view':'total','order_by':'amount','descending':True},
+    {'view':'total','group_by':'item'},
 ])
 def test_invalid_operations_are_rejected_instead_of_silently_showing_chronological_rows(options):
     api=SemanticHosted();seed(api,[('2026-09-01','กาแฟ',700)])
     result,_=turn(api,'เดือน ก.ย. เรียงรายการ',expense(**options))
-    assert result.data['tool_result']['error_code']=='invalid_arguments' and 'entries' not in result.data['tool_result']
+    # Schema errors stay invalid; a conflicting view/sort/group goes back to the planner.
+    assert result.data['tool_result']['error_code'] in {'invalid_arguments','expense_view_conflict'} and 'entries' not in result.data['tool_result']
+
+
+def test_a_total_ignores_sort_flags_instead_of_refusing_the_read():
+    api=SemanticHosted();seed(api,[('2026-09-01','กาแฟ',700),('2026-09-02','ชา',50)])
+    result,_=turn(api,'เดือน ก.ย. รวมเท่าไหร่',expense(view='total',order_by='amount',descending=True))
+    output=result.data['tool_result']
+    assert output['complete'] and output['expense']=='750.00' and not output['entries'] and 'order_by' not in output['scope']
 
 def test_sort_followup_keeps_verified_month_across_clarification_and_yes():
     api=SemanticHosted();seed(api,[('2026-09-01','A',1),('2026-09-30','B',100)])
@@ -140,8 +148,8 @@ def test_activity_spending_joins_unique_calendar_dates_and_sums_all_matching_pay
     output=result.data['tool_result'];basis=output['scope']['calendar_basis']
     assert output['expense']=='85.00' and output['count']==3
     assert basis['dates']==['2026-09-03','2026-09-10'] and basis['event_count']==3
-    assert 'วันที่มีนัดที่เข้าข่าย คุมสอบ' in result.message and '85.00 บาท' in result.message
-    assert 'ไม่ได้ยืนยันว่าแต่ละรายการเป็นค่าใช้จ่ายของนัดนั้นโดยตรง' in result.message
+    assert 'เฉพาะวันที่มีนัดคุมสอบ' in result.message and '85 บาท' in result.message
+    assert 'ไม่ได้แยกว่าเป็นค่าใช้จ่ายของนัดโดยตรง' in result.message
     before=(len(api.model_bodies),len(api.calendar_requests),len(api.extra_requests))
     with TestClient(api.app()) as client:assert api.send(client,deepcopy(original)).status_code==200
     assert before==(len(api.model_bodies),len(api.calendar_requests),len(api.extra_requests))
@@ -152,7 +160,7 @@ def test_join_and_group_are_composable_with_grounded_finisher_and_followup_scope
     seed(api,[('2026-09-03','A',35),('2026-09-10','A',40),('2026-09-11','A',999)])
     result,_=turn(api,'เดือนที่แล้ววันที่คุมสอบใช้ไรเยอะสุด',cal,
         expense(start=None,end=None,date_mode='previous',group_by='item',order_by='amount',descending=True,continue_analysis=True,join=True),finish())
-    assert 'A — 75.00 บาท' in result.message and '2 รายการ' in result.message
+    assert 'A — 75 บาท' in result.message and '2 รายการ' in result.message
     assert result.data['read_query']['calendar_basis']['dates']==['2026-09-03','2026-09-10']
     # A later turn cannot silently broaden this conditional query to all days.
     result,_=turn(api,'ขอเรียงยอด',expense(start=None,end=None,date_mode='previous',order_by='amount',descending=True))

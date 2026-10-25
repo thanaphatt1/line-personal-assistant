@@ -122,7 +122,7 @@ def test_single_day_signed_reply_uses_date_once_and_replay_is_exact_without_new_
     api.voice=composed
     result,original=turn(api,'เมื่อวานจ่ายอะไรไปบ้าง',plan(start='2026-10-15',listing=True))
     assert result.data['response_realization']['status']=='llm',result
-    assert result.message=='เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50.00 บาท จาก 2 รายการครับ\n- ขนม 30.00 บาท\n- ชา 20.00 บาท'
+    assert result.message=='เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50 บาท จาก 2 รายการครับ\n- ขนม 30 บาท\n- ชา 20 บาท'
     before=len(api.model_bodies)
     with TestClient(api.app()) as client:assert api.send(client,deepcopy(original)).status_code==200
     assert len(api.model_bodies)==before and not api.google.sheet_writes and not api.calendar.posts
@@ -133,7 +133,7 @@ def test_invalid_composition_uses_compact_fallback_after_one_rejected_repair():
     api.voice=lambda body:generated(body,document(paragraph('{{f1}} ใช้ไป 999 บาท')))
     result,_=turn(api,'เมื่อวานจ่ายอะไรไปบ้าง',plan(start='2026-10-15',listing=True))
     assert result.data['response_realization']['reason']=='invalid_output'
-    assert result.message.count('15 ต.ค. 2026')==1 and '50.00 บาท' in result.message and '999' not in result.message
+    assert result.message.count('15 ต.ค. 2026')==1 and '50 บาท' in result.message and '999' not in result.message
     assert len(api.voice_bodies)==2 and not api.google.sheet_writes
     assert result.data['response_realization']['repair_count']==1
 
@@ -156,11 +156,11 @@ def test_calendar_group_heading_keeps_original_spanning_time_and_all_day_range()
 def test_sql_scalar_answer_is_natural_prose_with_linked_computed_cells():
     api=VoiceHosted();seed(api,[('2026-09-01','ชา',20),('2026-09-02','ขนม',30)])
     api.voice=lambda body:generated(body,document(paragraph('{{f1}}'),
-        rows(['r1'],'รวมใช้ไป {{c1}} บาท จาก {{c2}} รายการครับ')))
+        rows(['r1'],'รวมใช้ไป {{c1}} จาก {{c2}} รายการครับ')))
     result,_=turn(api,'รายจ่าย ก.ย. รวมเท่าไร',expense(continue_analysis=True),
         sql(lambda rs:f"SELECT SUM(amount) AS total,COUNT(*) AS n FROM {rs[0]['sql_table']}"))
     assert result.data['response_realization']['status']=='llm',result
-    assert 'รวมใช้ไป 50.00 บาท จาก 2 รายการครับ' in result.message
+    assert 'รวมใช้ไป 50 บาท จาก 2 รายการครับ' in result.message
     assert 'total:' not in result.message and 'ข้อมูลรายจ่าย:' not in result.message and not api.google.sheet_writes
 
 

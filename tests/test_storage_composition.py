@@ -37,7 +37,7 @@ def api(request):
 def test_missing_price_selection_confirmation_and_duplicate_delivery(api):
     original = deepcopy(api.google.cells)
     result, _ = offer(api)
-    assert result.status == 'clarification' and '169.00' in result.message
+    assert result.status == 'clarification' and '169 บาท' in result.message
     assert api.expense_writes == 0
     result, _ = accepted(api)
     assert result.status == 'preview' and api.expense_writes == 0

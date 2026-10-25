@@ -15,6 +15,7 @@ from .history_context import digest
 from .language import BANGKOK
 from .model_api import object_schema
 from .conversation_ui import render_actions, utf16_limit
+from .reply_display import named
 from .state import Result
 from .transport import ApiError, NotReady, OutcomeUnknown
 
@@ -142,15 +143,15 @@ def annotate(host, result):
     # One question per repeated title settles every occurrence at once. The
     # buttons only send owner text; resolution still runs the typed tool.
     if len(titles) == 1:
-        prompt = '\n\n' + label_text(titles[0]) + ' เป็น' + activity + 'ไหมครับ?'
+        prompt = '\n\n' + label_text(titles[0]) + ' เป็น' + named(activity) + 'ไหมครับ?'
         actions = [{'type': 'message', 'label': 'ใช่', 'text': titles[0] + ' เป็น' + activity},
                    {'type': 'message', 'label': 'ไม่ใช่', 'text': titles[0] + ' ไม่ใช่' + activity}]
     else:
-        prompt = '\n\nนัดไหนเป็น' + activity + 'ครับ? ตอบชื่อนัดได้เลย'
+        prompt = '\n\nนัดไหนเป็น' + named(activity) + 'ครับ? ตอบชื่อนัดได้เลย'
         actions = [{'type': 'message', 'label': utf16_limit(title, 20), 'text': title + ' เป็น' + activity} for title in titles[:3]]
         actions.append({'type': 'message', 'label': 'ไม่ใช่ทั้งหมด', 'text': 'ไม่มีนัดไหนเป็น' + activity})
     if pending['goal'] == 'expense':
-        prompt += ' แล้วผมจะรวมรายจ่ายของวันที่ยืนยันให้ครับ'
+        prompt += ' ถ้าใช่ ผมจะรวมรายจ่ายของวันนั้นให้เลย'
     message += prompt
     if len(message.encode('utf-16-le')) > 9000:
         message = render_query(row, now).message + prompt
@@ -253,8 +254,10 @@ def execute(host, args):
                        unconfirmed_count=pending['unconfirmed_count'] - len(chosen))
         pending['ref'] = 'follow_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
         events = sorted(confirmed.values(), key=lambda e: (e['start'], e['title']))
+        from .read_queries import covered_days
         return {'query_followup_result': True, 'ok': True, 'complete': not pending['unconfirmed_count'], 'status': 'activity_confirmed',
-                'read_only': True, 'pending': pending, 'events': events, 'count': len(events), 'learned': learned}
+                'read_only': True, 'pending': pending, 'events': events, 'count': len(events), 'learned': learned,
+                'day_count': len(covered_days(events, scope['start'], scope['end'])), 'at': host._current['at']}
     ref = 'read_' + digest([host._active_event_id, pending['ref'], p.candidate_refs])[:20]
     host._query_reads[ref] = {'domain': 'calendar', 'complete': True, 'count': len(confirmed),
         'scope': {**scope, 'start': a, 'end': b}, 'analysis_records': list(confirmed.values())}
@@ -296,9 +299,9 @@ def remembered_note(output, activity):
     if not titles:
         return '', []
     if learned['decision'] == 'match':
-        line, undo = f'จำไว้แล้วว่า {names(titles)} เป็น{activity} ครั้งหน้าจะนับให้เลยครับ', ' เป็น'
+        line, undo = f'จำไว้แล้วว่า {names(titles)} เป็น{named(activity).rstrip()} ครั้งหน้าจะนับให้เลยครับ', ' เป็น'
     else:
-        line, undo = f'จำไว้แล้วว่า {names(titles)} ไม่ใช่{activity} ครั้งหน้าจะไม่นับครับ', ' ไม่ใช่'
+        line, undo = f'จำไว้แล้วว่า {names(titles)} ไม่ใช่{named(activity).rstrip()} ครั้งหน้าจะไม่นับครับ', ' ไม่ใช่'
     actions = [{'type': 'message', 'label': 'ไม่ต้องจำ', 'text': 'ไม่ต้องจำว่า ' + titles[0] + undo + activity}] if len(titles) == 1 else []
     return '\n' + line, actions
 
@@ -313,10 +316,10 @@ def render(output):
         'expense_unavailable': 'ตรวจนัดที่ยืนยันแล้ว แต่อ่านรายจ่ายไม่ครบครับ จึงยังสรุปยอดไม่ได้'}
     pending = output.get('pending')
     if output.get('status') == 'activity_confirmed':
-        from .read_queries import label_text, title_rows
-        from .reply_display import day
+        from .read_queries import label_text, title_rows, period_label, count_text
         scope = pending['scope'];activity = label_text(scope['filter_text'])
-        message = (f"{activity} {output['count']} นัดครับ ({day(scope['start'])} ถึง {day(scope['end'])})\n"
+        when = period_label(scope, datetime.fromisoformat(output['at']))
+        message = (f"{when} มี{named(activity).rstrip()} {count_text(output, scope)}ครับ\n"
                    + '\n'.join(title_rows(output['events'])))
         if pending['unconfirmed_count']:
             message += f"\nยังมีอีก {pending['unconfirmed_count']} นัดที่ยังไม่ได้ยืนยันครับ"
@@ -336,7 +339,8 @@ def render(output):
     elif output['ok']:
         safe = {k: v for k, v in output.items() if k != 'pending'}
         result = render_query(safe, datetime.fromisoformat(output['at']))
-        message = 'ยอดเฉพาะวันที่ยืนยัน:\n' + result.message
+        # The prefix matters only while other candidates remain unconfirmed.
+        message = ('ยอดเฉพาะวันที่ยืนยันแล้ว:\n' if pending['unconfirmed_count'] else '') + result.message
         data = result.data
         if pending['unconfirmed_count']:
             message += f"\nยังไม่รวมอีก {pending['unconfirmed_count']} นัดที่ยังไม่ยืนยัน จึงยังไม่ใช่ยอดครบทุกวันของกิจกรรมในช่วงเดิมครับ"

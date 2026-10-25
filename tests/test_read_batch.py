@@ -69,5 +69,6 @@ def test_failed_member_cannot_disappear_when_model_ends_with_only_partial_prose(
         expense(continue_analysis=True),expense('2026-10-01','2026-10-31',continue_analysis=True),mutate=wrong_span),
         response(text='เดือนตุลาคมใช้ไป 37 บาท แต่ยังเปรียบเทียบไม่ได้ครับ'))
     assert result.status=='clarification' and result.data['tool_result']['complete'] is False
-    assert len(result.data['tool_result']['query_refs'])==2 and '37.00' in result.message
+    assert len(result.data['tool_result']['query_refs'])==2 and '37 บาท' not in result.message
+    assert result.data['tool_result']['error_code']=='analysis_disposition_required'
     assert not api.google.sheet_writes and not api.calendar.posts

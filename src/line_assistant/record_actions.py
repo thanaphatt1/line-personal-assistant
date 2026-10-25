@@ -1,4 +1,5 @@
 """Delivered-record buttons select stable IDs; only a separate review can write."""
+from .reply_display import money
 from copy import deepcopy
 from datetime import datetime,timedelta
 from urllib.parse import quote
@@ -89,7 +90,7 @@ class RecordActions:
             selection={'ref':ref,'operation':operation,'nonce':nonce}
             if index=='*':
                 if len(records)<2:raise ValueError('invalid_record_selection')
-                message=LABELS[operation]+'รายการไหนครับ?\n'+'\n'.join(f"{i}. {r['item']} — {r['amount']} บาท วันที่ {r['date']}" for i,r in enumerate(records,1))
+                message=LABELS[operation]+'รายการไหนครับ?\n'+'\n'.join(f"{i}. {r['item']} — {money(r['amount'])} บาท วันที่ {r['date']}" for i,r in enumerate(records,1))
                 actions=[self.button(operation,value,str(i),label=f"{i+1}. {r['item']}") for i,r in enumerate(records)]
                 return Result('clarification',message,{'record_action_selection':selection,'line_message':render_actions(message,actions)})
             if not index.isascii() or not index.isdecimal() or str(int(index))!=index or not 0<=int(index)<len(records):raise ValueError('invalid_record_selection')
@@ -106,7 +107,7 @@ class RecordActions:
             result=self.h.saved_edits.result(output)
             question='ต้องการเปลี่ยนยอดเป็นเท่าไรครับ?' if operation=='amount' else 'ต้องการเปลี่ยนเป็นวันที่เท่าไรครับ?'
             from .reply_display import day
-            message=f"{record['item']} — {record['amount']} บาท วันที่ {day(record['date'])}\n"+question
+            message=f"{record['item']} — {money(record['amount'])} บาท วันที่ {day(record['date'])}\n"+question
             return Result('clarification',message,{**result.data,'record_action_focus':operation})
         except (ValueError,Conflict,NotFound,ApiError,NotReady,WriteBlocked):
             # Buttons never fall through to the LLM as fabricated owner facts.
@@ -114,7 +115,7 @@ class RecordActions:
     def source(self,record):
         sheets=self.h.sheets
         from .reply_display import day
-        message=f"ต้นทางของ {record['item']} — {record['amount']} บาท วันที่ {day(record['date'])}"
+        message=f"ต้นทางของ {record['item']} — {money(record['amount'])} บาท วันที่ {day(record['date'])}"
         if getattr(sheets,'backend',None)=='firestore':
             message+='\nฐานข้อมูลรายจ่าย '+sheets.target.dataset_id+'\nรหัสรายการ: '+record['id']
             url='https://console.cloud.google.com/firestore/databases?project='+quote(sheets.target.project_id,safe='')

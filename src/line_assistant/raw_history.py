@@ -250,7 +250,7 @@ def request(state,text,at,event,definitions,previous=None,*,production=False,sum
     context['available_tools']=[t['name'] for t in definitions]
     if summary:context['rolling_summary']=checked
     body={'model':MODEL_ID,'instructions':request_instructions(definitions,calendar=calendar_drafts is not None),'input':[{'role':'user','content':json.dumps(context,ensure_ascii=False,separators=(',',':'))}],
-          'tools':deepcopy(definitions),'tool_choice':'auto','parallel_tool_calls':False,'reasoning':{'effort':PLANNER_REASONING_EFFORT},
+          'tools':deepcopy(definitions),'tool_choice':'required' if context.get('query_analysis_active') else 'auto','parallel_tool_calls':False,'reasoning':{'effort':PLANNER_REASONING_EFFORT},
           'max_output_tokens':PLANNER_MAX_OUTPUT_TOKENS,'store':False,'service_tier':'default','truncation':'disabled'}
     if previous:
         exchanges=previous if isinstance(previous,list) else [previous]

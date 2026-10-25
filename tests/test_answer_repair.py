@@ -70,7 +70,7 @@ def test_received_failure_gets_precise_feedback_then_one_corrected_reply_and_exa
     result,event=turn(api,'เมื่อวานจ่ายอะไรไปบ้าง',plan(start='2026-10-15',listing=True))
     meta=result.data['response_realization']
     assert meta['status']=='llm' and meta['repair_count']==1 and meta['repair_from']==code
-    assert result.message=='เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50.00 บาท จาก 2 รายการครับ\nขนม 30.00 บาท\nชา 20.00 บาท'
+    assert result.message=='เมื่อวาน (15 ต.ค. 2026) ใช้ไป 50 บาท จาก 2 รายการครับ\nขนม 30 บาท\nชา 20 บาท'
     assert len(api.voice_bodies)==2 and len(api.model_bodies)==3
     assert api.google.cells==original_cells and not api.google.sheet_writes and not api.calendar.posts
     snapshot=api.snapshot();assert not snapshot['actions']

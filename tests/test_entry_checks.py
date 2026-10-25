@@ -33,7 +33,7 @@ def test_review_shows_same_day_duplicate_and_same_name_with_other_amount_before_
     assert again.data['review_notices'] and len(h.sheets.entries)==1
     h.send('ยกเลิก '+again.data['tool_result']['draft_ref'])
     other=add(h,'ค่ากระดาษ 100 บาท',amount=100)
-    assert other.status=='preview' and 'วันเดียวกันมี ค่ากระดาษ บันทึกไว้แล้ว 1 รายการ' in other.message and len(h.sheets.entries)==1
+    assert other.status=='preview' and 'วันเดียวกันบันทึกค่ากระดาษไว้แล้ว 1 รายการ' in other.message and len(h.sheets.entries)==1
 
 
 def test_review_states_when_the_date_was_defaulted_to_today():
@@ -87,7 +87,7 @@ def test_another_payment_after_an_already_recorded_check_uses_that_date():
         return response(name='prepare_expenses',args={'draft_ref':None,'entries':[data(amount=100,date_ref=ref,source_refs=[c['current_source_ref']])]})
     r=h.send('เพิ่มอีกอันนึงเป็นค่ากระดาษ 100 บาท',call,response(text='ขอข้อมูลเพิ่มครับ'))
     assert r.status=='preview' and r.data['tool_result']['entries'][0]['date']=='2026-10-12'
-    assert 'ตามที่ถามก่อนหน้า' in r.message and 'วันเดียวกันมี ค่ากระดาษ บันทึกไว้แล้ว 1 รายการ' in r.message
+    assert 'ตามที่ถามก่อนหน้า' in r.message and 'วันเดียวกันบันทึกค่ากระดาษไว้แล้ว 1 รายการ' in r.message
 
 
 def test_question_date_is_offered_only_right_after_that_read():

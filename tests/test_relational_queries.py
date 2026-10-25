@@ -8,7 +8,7 @@ from test_calendar_mvp import response
 from test_calendar_semantic_queries import SemanticHosted,appointment
 from test_calendar_text_confirmation_v13 import turn
 from test_expense_query_operations import seed,expense
-from test_query_analysis_loop import read,finish
+from test_query_analysis_loop import read,finish,results
 from test_table_workflow import harness,call
 from test_tables import seed as table_seed
 
@@ -84,9 +84,12 @@ def test_derived_result_can_be_queried_again_and_finished_by_reference():
     api=SemanticHosted();seed(api,[('2026-09-01','A',10),('2026-09-01','B',20)])
     def second(rs):
         derived=name(rs,'relation');return f"SELECT item,decimal_div(total,'30',2) AS fraction FROM {derived} ORDER BY total COLLATE decimal DESC"
+    def finish_last(body):
+        ref=[r['query_ref'] for r in results(body) if r.get('relational_query')][-1]
+        return finish(refs=[ref])(body)
     r,_=turn(api,'ก.ย. แต่ละร้านคิดเป็นสัดส่วนเท่าไร',expense(continue_analysis=True),
         sql(lambda rs:f"SELECT item,SUM(amount) AS total FROM {name(rs,'expense')} GROUP BY item",continue_analysis=True),
-        sql(second,continue_analysis=True),finish(refs=None))
+        sql(second,continue_analysis=True),finish_last)
     assert r.status=='answer' and 'B — 0.67' in r.message,r
 
 

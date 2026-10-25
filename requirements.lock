@@ -23,6 +23,7 @@ pydantic_core==2.50.0
 Pygments==2.21.0
 pytest==8.4.2
 starlette==1.7.0
+sqlglot==30.24.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.54.0

@@ -1,4 +1,5 @@
 """Owner-scoped semantic preparation/read tools; model calls cannot grant writes."""
+from .reply_display import money
 from .expense_storage import storage_scope
 from copy import deepcopy
 from datetime import date,datetime
@@ -202,7 +203,7 @@ def postback(h,payload):
                 actions=[a for a in h.state.actions.values() if a.metadata.get('draft_ref')==ref and a.status=='completed' and a.result and a.result.status=='recorded']
                 if actions:
                     from .reply_display import day
-                    rows='\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {day(e['date'])}" for e in d['entries'])
+                    rows='\n'.join(f"{e['item']} {money(e['amount'])} บาท วันที่ {day(e['date'])}" for e in d['entries'])
                     return Result('stale','รายการนี้บันทึกไปแล้ว\n'+rows+('\nการยกเลิกนี้ไม่ลบรายจ่ายที่บันทึกแล้ว' if op=='cancel' else '\nไม่ได้บันทึกซ้ำ'),{'resolved_outcome':'recorded','financial_effects':0})
             for receipt in h.state.receipts.values():
                 cancelled=receipt.result.data.get('tool_result',{}).get('cancelled_draft') if receipt.result.status=='cancelled' else None

@@ -8,7 +8,7 @@ EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
     'conversation_mocks','domain_notes','domain_tools','domain_runtime','tool_loop','draft_patch',
     'history_context','history_dates','history_first','semantic_tools','raw_history','planner_instructions','catalog_aliases','record_actions',
     'performance','read_batch','clarifications',
-    'history_persistence','history_integration','production_history_state','state_records','state_record_codec','state_record_migration','state_record_cleanup','relational','relational_sql',
+    'history_persistence','history_integration','production_history_state','state_records','state_record_codec','state_record_migration','state_record_cleanup','relational','relational_sql','relational_metadata',
     'production_history','history_cloud_run','expense_evidence','draft_workflow','catalog_names',
     'expense_sources','validation_explanations','pending_records','pending_catalog','tool_errors','tool_repair','temporal','calendar_dates','calendar_provider','calendar_workflow',
     'calendar_transport','calendar_sources','calendar_batches','calendar_connections','calendar_inference','query_analysis','response_realization','answer_composition','operation_composition','name_matching','activity_labels','calendar_event_types','read_queries',

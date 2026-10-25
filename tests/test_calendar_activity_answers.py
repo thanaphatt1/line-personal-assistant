@@ -47,8 +47,8 @@ def test_one_read_covers_months_and_repeated_titles_share_one_semantic_decision(
 def test_zero_confirmed_leads_with_possible_matches_grouped_by_title_and_one_question():
     api=SemanticHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
     result,_=ask(api);text=result.message
-    assert text.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 ยังไม่มีนัดคุมสอบที่ยืนยันได้ครับ')
-    assert 'แต่มี 4 นัดที่อาจเป็นคุมสอบ' in text and 'DSDE Exam (4 นัด)' in text and '0 ครั้ง' not in text
+    assert text.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มี 4 นัดที่อาจเป็นคุมสอบครับ') and result.data['tool_result']['count']==0
+    assert 'มี 4 นัดที่อาจเป็นคุมสอบครับ' in text and 'DSDE Exam (4 นัด)' in text and '0 ครั้ง' not in text
     assert '• อ. 27 ต.ค. 2026 07:30–12:30' in text and '• พ. 2 ธ.ค. 2026 07:30–17:00' in text
     assert 'facilitator' not in text and text.rstrip().endswith('DSDE Exam เป็นคุมสอบไหมครับ?')
     buttons=[b['action'] for b in result.data['line_message']['contents']['footer']['contents']]
@@ -66,7 +66,7 @@ def test_answering_for_a_title_settles_every_occurrence_without_a_write():
     result,_=turn(api,'DSDE Exam เป็นคุมสอบ',confirm_title)
     assert len(first.data['read_followup']['candidates'])==4
     assert result.status=='answer' and result.data['tool_result']['count']==4 and result.data['tool_result']['complete']
-    assert result.message.startswith('คุมสอบ 4 นัดครับ') and 'บาท' not in result.message and 'DSDE Exam (4 นัด)' in result.message
+    assert result.message.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มีคุมสอบ 4 ครั้งครับ') and 'บาท' not in result.message and 'DSDE Exam (4 นัด)' in result.message
     assert not api.calendar.posts and not api.google.sheet_writes
 
 
@@ -99,8 +99,8 @@ def test_a_period_split_into_month_reads_is_still_answered_as_one_question(empty
         return response('query_sources',{'reads':[read('2026-10-24','2026-10-31'),read('2026-11-01','2026-11-30'),read('2026-12-01','2026-12-31')]})
     result,_=turn(api,'มีวันไหนที่ต้องไปคุมสอบบ้างจนถึงธันวา',months,response(text='สรุปให้แล้วครับ'))
     text=result.message
-    assert len(api.selection_bodies)==(2 if empty_month else 3) and text.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 ยังไม่มีนัดคุมสอบที่ยืนยันได้ครับ')
-    assert text.count('ยังไม่มีนัดคุมสอบ')==1 and f'DSDE Exam ({count} นัด)' in text and text.rstrip().endswith('DSDE Exam เป็นคุมสอบไหมครับ?')
+    assert len(api.selection_bodies)==(2 if empty_month else 3) and text.startswith(f'24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มี {count} นัดที่อาจเป็นคุมสอบครับ')
+    assert text.count('นัดที่อาจเป็นคุมสอบ')==1 and f'DSDE Exam ({count} นัด)' in text and text.rstrip().endswith('DSDE Exam เป็นคุมสอบไหมครับ?')
     assert len(result.data['read_followup']['candidates'])==count and result.data['line_message']['contents']['footer']['contents']
 
 
@@ -112,7 +112,7 @@ def test_a_paraphrased_activity_filter_goes_back_to_the_planner_to_quote_the_own
     result,_=turn(api,'มีวันไหนที่ต้องไปคุมสอบบ้างจนถึงธันวา',plan('calendar','2026-10-24','2026-12-31',filter_text='วันที่ต้องไปคุมสอบ'),quoted)
     returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
     assert returned[-1]['repair_feedback']['error_code']=='filter_text_not_quoted' and returned[-1]['repair_feedback']['invalid_fields']==['filter_text']
-    assert result.message.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 ยังไม่มีนัดคุมสอบที่ยืนยันได้ครับ') and len(result.data['read_followup']['candidates'])==4
+    assert result.message.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มี 4 นัดที่อาจเป็นคุมสอบครับ') and len(result.data['read_followup']['candidates'])==4
 
 
 def test_planner_context_and_tool_description_state_the_real_window():
