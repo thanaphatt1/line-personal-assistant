@@ -68,7 +68,7 @@ def schema():
 
 def display(value, kind=None, unit=None):
     from .read_queries import day_label
-    if value is None: return 'ว่าง'
+    if value is None or isinstance(value,str) and not value.strip(): return 'ว่าง'
     if type(value) is bool: return 'ใช่' if value else 'ไม่ใช่'
     if kind == 'date': value = day_label(value)
     text = re.sub(r'[\x00-\x1f]', ' ', str(value))
@@ -82,12 +82,13 @@ class View:
     def fact(self, value, label='verified fact'):
         key = 'f' + str(len(self.facts) + 1); self.facts[key] = value; self.fact_labels[key] = label; return key
 
-    def row(self, cells, covered_by=None):
+    def row(self, cells, covered_by=None, *, omit_empty=()):
         # Stable local cell IDs allow arbitrary provider column names, including
         # names that look like template syntax, without interpreting those names.
         fields = {'c' + str(i): {'label': label, 'display': display(value, kind, unit),
                                'group_key': digest([label, value, kind, unit])}
-                  for i, (label, value, kind, unit) in enumerate(cells, 1)}
+                  for i, (label, value, kind, unit) in enumerate(cells, 1)
+                  if i not in omit_empty}
         if not fields: raise ValueError('empty_record')
         self.records.append({'id': 'r' + str(len(self.records) + 1), 'fields': fields,
                              'required_fields': list(fields), 'covered_by': covered_by or {}})
@@ -158,6 +159,7 @@ def add_read(view, output, at):
                 fact_id=view.fact(text,'source scope: '+label)
                 if same_day:period_ids.setdefault(source['start'],[]).append(fact_id)
         from .reply_display import quantity_text
+        from .relational_metadata import display_fields
         units={c['name']:c.get('unit') for c in output.get('columns',[])}
         for row in output['rows']:
             # Money columns use the shared amount format; dates stay typed.
@@ -168,7 +170,8 @@ def add_read(view, output, at):
             # when its entire value agrees. Other dates remain required cells.
             cover={'c'+str(i):period_ids[v] for i,(_,v,kind,_) in enumerate(cells,1)
                    if kind=='date' and v in period_ids}
-            view.row(cells,cover)
+            selected=display_fields(row,output.get('columns',[]))
+            view.row(cells,cover,omit_empty={i for i,k in enumerate(row,1) if k not in selected})
         if not output['count']: view.fact('ไม่พบแถวที่ตรงเงื่อนไข')
         if output['count'] > output['shown']:
             view.fact(f"แสดง {output['shown']} จาก {output['count']} แถวของผลลัพธ์ที่คำนวณครบแล้ว")

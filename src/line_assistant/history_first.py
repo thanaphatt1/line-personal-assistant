@@ -778,6 +778,9 @@ class HistoryFirstAssistant(Assistant):
         return chosen
 
     def _entry(self,value,old,index):
+        if getattr(self,'_literal_expense',None) is not None or value.entry_ref in getattr(self,'_patch_field_sources',{}):
+            from .expense_proposals import entry
+            return entry(self,value,old,index)
         price=self.previous_prices.selection(value,old)
         if old and old.get('previous_price',{}).get('state')=='accepted':
             from .previous_prices import FOREIGN
@@ -1026,7 +1029,11 @@ class HistoryFirstAssistant(Assistant):
                 'source_refs':list(dict.fromkeys((old['source_refs'] if old else [])+[r['source_ref'] for r in sources]+(date_basis.get('source_refs',[]) if date_basis.get('temporal') else [])))},missing,invalid,sources
 
     def _prepare(self,args,*,interpreted_patch=False):
+        if self.raw_history_enabled and 'groups' in args:
+            from .expense_proposals import prepare
+            return prepare(self,args)
         p=Prepare.model_validate(args)
+        literal=getattr(self,'_literal_expense',None)
         self._previous_price_refs={e.previous_price_ref for e in p.entries if e.previous_price_ref is not None}
         self._name_plans={};self._group_date_answer=False
         if not p.entries:
@@ -1041,7 +1048,7 @@ class HistoryFirstAssistant(Assistant):
         if guard and (not self.semantic_enabled or guard=='negated'):return {'ok':False,'error':'owner_no_write'}
         # Validation must not clear a live review before a replacement exists.
         old=deepcopy(self._draft(p.draft_ref)) if p.draft_ref else None
-        if self.raw_history_enabled and not old:
+        if self.raw_history_enabled and not old and literal is None:
             p=p.model_copy(update={'entries':[semantic.reuse_expense_fields(self,e) for e in p.entries]})
         if self.raw_history_enabled and not old and any(all(getattr(e,k) in {None,''} for k in ['item','amount','date','date_text','note']) for e in p.entries):
             return {'ok':False,'error':'expense_facts_missing','clarification_required':True,'next_tool':'prepare_expenses',
@@ -1070,7 +1077,11 @@ class HistoryFirstAssistant(Assistant):
                 return self._enroll_item({'draft_ref':old['draft_ref'],'draft_version':old['version'],
                     'entry_ref':target['entry_ref'],'existing_item':match.canonical,'category':None,
                     'subcategory':None,'resolution_step':'use_existing_item'})
-        if self.raw_history_enabled:
+        if self.raw_history_enabled and (literal is not None or interpreted_patch):
+            from .catalog_names import identity
+            amount_sources=[self._entry_sources(e,None if not old else next(v for v in old['entries'] if v['entry_ref']==e.entry_ref)) for e in p.entries]
+            self._occurrence_views={i:c['occurrence'] for i,c in enumerate(literal or []) if c.get('occurrence')}
+        elif self.raw_history_enabled:
             from .expense_evidence import canonical,assign,item_mentions
             from .catalog_names import plan,identity
             source_lists=[self._entry_sources(e,None if not old else next((v for v in old['entries'] if v['entry_ref']==e.entry_ref),old['entries'][0] if len(old['entries'])==1 else None)) for e in p.entries]
@@ -1086,7 +1097,14 @@ class HistoryFirstAssistant(Assistant):
             current_names={name for _,_,name in mentions}
             def distinct_owner_mention(item):
                 return any(not any(a<=m.start() and m.end()<=b for a,b,name in mentions) for m in self._item_spans(command,item))
-            if not old and current_names and any(e.item and identity(e.item,self._taxonomy().catalog) not in current_names and not distinct_owner_mention(e.item) for e in p.entries):raise ValueError('item_source_conflicts_with_current_expense')
+            if not old and current_names:
+                from .expense_evidence import failed_batch_sibling
+                for i,e in enumerate(p.entries):
+                    if (e.item and identity(e.item,self._taxonomy().catalog) not in current_names
+                            and not distinct_owner_mention(e.item)
+                            and not failed_batch_sibling(self,e.item,source_lists[i],current_names)):
+                        raise PlanningError('item_source_conflicts_with_current_expense',
+                            fields=[f'entries[{i}].item'],required=['current_item_or_verified_failed_batch_source'])
             if not old:
                 from .expense_sources import clauses,roles
                 labels=[*current_names,*(e.item for e in p.entries if e.item)]
@@ -1168,7 +1186,7 @@ class HistoryFirstAssistant(Assistant):
                     datetime.fromisoformat(self._current['at'])==datetime.fromisoformat(old['updated_at']) and not interpreted_patch):raise ValueError('older_draft_update')
         active=sum(len(d['entries']) for d in self.state.drafts.values() if d['status']!='recorded')
         selected=set()
-        if old and self.raw_history_enabled:
+        if old and self.raw_history_enabled and not interpreted_patch:
             from .expense_evidence import selected_ordinals
             selected=selected_ordinals(self._current['text'],len(old['entries']),[e['item'] for e in old['entries']])
             requested={i for i,e in enumerate(old['entries']) if supplied is not None and e['entry_ref'] in supplied}
@@ -1187,7 +1205,7 @@ class HistoryFirstAssistant(Assistant):
             assigned=assign(changes,change_sources,targets=targets,catalog=self._taxonomy().catalog,interpreted=True) if not interpreted_patch else {}
             self._occurrence_views={targets[i]:proof for i,proof in assigned.items()}
         group_date_answer=False
-        if old and self.raw_history_enabled:
+        if old and self.raw_history_enabled and not interpreted_patch:
             from .expense_sources import GROUP
             from .validation_explanations import latest_scope_question
             output=latest_scope_question(self)
@@ -1318,6 +1336,8 @@ class HistoryFirstAssistant(Assistant):
                 if m['same_amount']:notices.append(f"บันทึกไว้แล้ว: {m['item']} {money(m['amount'])} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)")
                 else:notices.append(f"วันเดียวกันบันทึก{named(m['item'])}ไว้แล้ว {m['same_item']} รายการ ({', '.join(money(v) for v in m['saved_amounts'])} บาท)")
         for e in output.get('entries',[]):
+            for context in e.get('context_numbers',[]):
+                notices.append(f"ไม่ได้ลงเป็นยอดรายจ่าย: {context['text']} ({context['reason']})")
             basis=e.get('date_basis') or {}
             if not e.get('date'):continue
             if basis.get('policy')=='previous-question-date-v01':text=f"ใช้วันที่ {day(e['date'])} ตามที่ถามก่อนหน้า"
@@ -1343,7 +1363,8 @@ class HistoryFirstAssistant(Assistant):
             output=contextualize(self,call,output)
         if self.raw_history_enabled:
             from .validation_explanations import enrich
-            return enrich(self,call,output)
+            from .expense_evidence import failed_request_sources
+            return failed_request_sources(self,call,enrich(self,call,output))
         return output
 
     def _tool(self,call):
@@ -1791,7 +1812,7 @@ class HistoryFirstAssistant(Assistant):
         from . import raw_history as raw
         if self.state.owner_id!=self.settings.owner_id:return Result('denied','')
         self._patch_stamp=stamp;self.trace=[];self.context_stats=[]
-        self._request_views={};self._read_views={};self._pending_record_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set();self._inflight_expense_repair=None
+        self._request_views={};self._read_views={};self._pending_record_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set();self._inflight_expense_repair=None;self._literal_expense=None
         self._temporal_values={};self._temporal_bases={}
         self.saved_edits.request_candidates={}
         self.table_flow.candidates={}

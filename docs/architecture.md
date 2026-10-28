@@ -90,7 +90,7 @@ resource or grant access. The generic registry is empty by default.
 | Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
 | Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |
 | Pending patches, temporal calculations and repair | `pending_records`, `temporal`, `tool_errors`, `tool_repair` |
-| Expense drafts/catalog and storage | `draft_workflow`, `pending_catalog`, `expense_sources`, `expense_evidence`, `catalog_names`, `sheets_api`, `firestore_expenses` |
+| Expense drafts/catalog and storage | `draft_workflow`, `expense_proposals` (current quoted groups), `pending_catalog`, `catalog_names`, `sheets_api`, `firestore_expenses`; `expense_sources`/`expense_evidence` retain legacy parsing |
 | Calendar drafts, batches and provider | `calendar_workflow`, `calendar_batches`, `calendar_provider` |
 | Saved-record changes | `saved_edits`, `expense_edits`, `calendar_reschedule` |
 | State, journal and recovery | `firestore_state`, `production_history_state`, `history_persistence`, `raw_history` |

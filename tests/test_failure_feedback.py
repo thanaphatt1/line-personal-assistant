@@ -210,10 +210,11 @@ def test_hosted_diagnostic_generation_failure_returns_actionable_fallback_and_re
     api=VoiceHosted()
     def prepare(b):
         c=json.loads(b['input'][0]['content'])
-        props=next(t for t in b['tools'] if t['name']=='prepare_expenses')['parameters']['properties']['entries']['items']['properties']
         rows=[]
         for name in ['หอยทอด','หมูย่าง']:
-            row={k:None for k in props};row.update(item=name,amount=50,source_refs=[c['current_source_ref']]);rows.append(row)
+            # Legacy-shaped diagnostic fixture; current-protocol schema is
+            # exercised by test_expense_proposals.
+            rows.append({'item':name,'amount':50,'source_refs':[c['current_source_ref']]})
         return response(name='prepare_expenses',args={'draft_ref':None,'draft_version':None,'entries':rows})
     turn(api,'หอยทอด 50 บาท กับ หมูย่าง 50 บาท',prepare)
     def invalid_choice(b):

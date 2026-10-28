@@ -48,7 +48,12 @@ def clauses(text,at,items,find):
     if len(names)<2:return [{'view':text,'item':names[0][2] if names else None,'date_issue':None}]
     boundaries=[0]
     for before,after in zip(names,names[1:]):
-        links=list(JOIN.finditer(text,before[1],after[0]))
+        # A list comma between prices still belongs to the preceding item.
+        # Only a separator after its last numeric role can begin the next
+        # item clause. With no such separator, split at the next literal name.
+        prices=roles(text[before[1]:after[0]],at)['money']
+        last_price=before[1]+max((v.end for v in prices),default=0)
+        links=[m for m in JOIN.finditer(text,before[1],after[0]) if m.start()>=last_price]
         boundaries.append(links[-1].end() if links else after[0])
     boundaries.append(len(text))
     leading=cues(text[:names[0][0]],at)[1]

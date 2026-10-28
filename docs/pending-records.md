@@ -50,17 +50,37 @@ category; normalization removes the redundant action, never adds facts or
 permissions. Multiple category/subcategory choices remain constrained by the
 actual catalog pairs.
 
-Expense evidence keeps item names, row selectors, occurrence counts, dates and
-money in separate roles. A list such as `Metro 61, 61, 19` retains three payments,
-including the duplicate amount. Whitespace after a list comma separates cells;
-`1,261.50` remains one amount and malformed grouping is rejected. Several
-adjacent price/count cells, such as `Metro 61 2 ครั้ง กับ 19 1 ครั้ง`, retain
-independent occurrences at the original price spans. An optional leading total
-count must agree with those occurrences. A lone price with several trips still
-needs a clear per-trip or total basis.
-When a clarification supplies only prices/counts, explicit field citations can
-bind the earlier owner name to the new amount group without repeating the
-name. A price scoped to another named item cannot supply that group.
+Current `prepare_expenses` calls give the model responsibility for grouping
+and field ownership. The strict schema contains `groups`, individual `entries`,
+`counts` and `context_numbers`. A quotation contains the original owner
+`source_ref`, exact `text` and its zero-based `occurrence`. The server derives
+coordinates without asking the model to count Unicode offsets.
+
+Each group provides the full original item quotation and its source portions;
+interleaved groups can select separate portions of one message. Groups must be disjoint;
+their item and amount proofs must lie inside them. An entry selects a group,
+one literal numeric amount, a date quotation or offered date ref, and an
+optional literal note. Shared dates may lie outside groups. Source quotations
+remain immutable; proposed catalog spellings never replace the owner's words.
+
+The server checks quotation existence, numeric values, field overlap and
+numeric coverage across the whole current message and selected historical
+portions. A duplicated numeric span needs an explicit per-payment occurrence
+count covering exactly those entries; a batch count cannot authorize reuse.
+Distinct equal amounts keep distinct source occurrences. Numeric non-payment
+context requires an explicit explanation displayed in the bound review.
+Missing evidence returns field diagnostics to the existing repair loop.
+The code does not rediscover groups from punctuation, Thai conjunctions,
+name/amount adjacency or a fixed sentence grammar. It does not expand counts
+into rows: the model proposes every occurrence. Interpreting a total versus a
+per-payment amount remains a semantic model responsibility, checked by the
+owner's complete review. Literal provenance is not proof of semantic intent.
+
+Pending field patches also use their already-validated source spans directly
+instead of regrouping the entire message. Existing catalog, numeric/date,
+identity, version and final-confirmation checks remain. A delivered previous
+amount offer is an explicit `previous_price_ref` choice in the pending schema;
+it still needs its original offer checks and a new owner review.
 
 A correction can apply a shared date to several pending rows while changing
 one row's amount. The ordinal in `แก้รายการ 2` identifies a row; it cannot become
@@ -98,6 +118,13 @@ When a new proposal retains verified facts after rejecting a field, a corrected
 creation may replace only that same turn's undelivered partial proposal. This
 repair cannot replace earlier pending work, reuse a delivered review or obtain
 write consent. An unsuccessful repair retains verified facts for clarification.
+Failed preparation receipts retain verified owner source references for
+continuation. The current model selects relevant earlier visible quotations;
+the new path does not require a keyword match against the latest item. Reusing
+recorded facts never reuses consent, and overlapping pending work still needs
+its owned patch tool. Legacy internal calls and historical receipt helpers
+retain their prior source/grouping checks. They are not an alternative schema
+offered to the current model. No stored history is rewritten.
 
 Date/time changes may cite a verified `temporal_ref` instead of copying a
 normalized value from the owner text. The original span remains evidence;

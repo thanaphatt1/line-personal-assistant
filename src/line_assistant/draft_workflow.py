@@ -5,7 +5,6 @@ No owner-text routing, automatic enrollment or write permission is inferred here
 from copy import deepcopy
 from .catalog import normalized
 from .history_context import draft_index
-from .model_api import object_schema
 from .catalog_names import choices as name_choices,focused_choice
 
 def views(h):
@@ -54,35 +53,9 @@ def definitions(base,available,date_references=(),*,previous_prices=False):
     for t in result:
         p=t['parameters']['properties']
         if t['name']=='prepare_expenses':
-            p['draft_ref']['description']='Null for a new payment set. Pending changes use the offered pending-record tool and its current IDs.'
-            p['entries'].update(minItems=1,maxItems=5)
-            entry=p['entries']['items']
-            entry['properties']['entry_ref']['description']='Null for a new payment. An existing record is selected only through its current owned pending view.'
-            if previous_prices:
-                offered=[e['previous_price']['ref'] for d in available for e in d.get('entries',[]) if e.get('previous_price',{}).get('state')=='offered']
-                entry['properties']['previous_price_ref']={'type':['string','null'],'enum':[None,*offered],
-                    'description':'Only when owner explicitly accepts the latest delivered past-amount offer: copy its exact ref and leave amount=null. Otherwise null. An explicit new amount always uses amount and its owner evidence. This fills a draft only, never saves.'}
-                entry['required'].append('previous_price_ref')
-            entry['properties']['item_text']={'type':['string','null'],'description':'Literal full owner item name when item proposes a different real Database name (for example a typo). Copy the original mention; never replace source evidence with the proposed spelling. Null when unchanged.'}
-            entry['required'].append('item_text')
-            entry['properties']['item']['description']='Full original owner item label, preserving all words and internal spaces, or a proposed real Database name. Supply item_text for spelling differences; uncertain names ask for a choice before review. Never split trailing name words into note or invent a catalog identity.'
-            entry['properties']['amount']['description']='Supply the actual positive amount from owner evidence. For a referenced recorded payment only, null with explicit field_sources.amount copies its unique verified amount. Null without that citation means missing.'
-            entry['properties']['note']['description']='Null unless the owner explicitly supplies or clears a หมายเหตุ/note field outside the item name. Preserve the full literal note value; never treat trailing item words as a note. Null retains an existing note.'
-            for field in ['category','subcategory','date','date_context']:
-                entry['properties'].pop(field,None)
-                if field in entry['required']:entry['required'].remove(field)
-            entry['properties']['date_ref']={'type':['string','null'],'enum':[None,*[v['date_ref'] for v in date_references]],
-                'description':'Optional date_references ref when the owner means that date, such as another payment on the day just asked about (previous_question) or the last confirmed expense. Null uses explicit owner date wording or today.'}
-            entry['required'].append('date_ref')
-            p['only_if_absent']={'type':'boolean','description':'True when the owner asks to add a payment only if it is not already recorded (check first, then add). The server compares saved records with the same date, catalog item and amount and prepares nothing when one exists. Use it directly for such requests instead of reading first. Never writes.'}
-            t['parameters']['required'].append('only_if_absent')
-            fields=object_schema({name:{'type':'array','items':{'type':'string'},'maxItems':16} for name in ['item','amount','date','note']})
-            entry['properties']['field_sources']={'anyOf':[{'type':'null'},fields],
-                'description':'Optional original OWNER refs for individual fields when their evidence comes from different messages. Null uses the entry source_refs for verification. These refs locate evidence; they do not fill missing values except explicitly selected verified recorded facts.'}
-            entry['required'].append('field_sources')
-            entry['properties']['source_refs']['description']='Original visible OWNER message refs containing this payment name, amount and date evidence. Include earlier factual messages when the current message only refers to them, and include current_source_ref for current intent. Never cite assistant text or an unrelated pending record.'
-            entry['properties']['date_text']['description']='Literal owner date expression; server resolves it using cited originals and Bangkok time. Null keeps an existing date. Do not generate an ISO or a context mode.'
-            t['description']='Prepare all requested payment occurrences; catalog matching is included. Supply every known item and amount explicitly from the cited original owner messages. Null means genuinely missing, except when explicit field_sources select a unique verified recorded fact for reuse. For dates use literal date_text or an offered date_ref, never both; omitted new date defaults to Bangkok today. Existing null fields retain certified facts. Never writes.'
+            from .expense_proposals import definition
+            t.clear();t.update(definition(date_references))
+            continue
         if t['name']=='prepare_item_enrollment':
             steps=['show_choices']
             if any(r['step']=='choose_existing_or_new' for r in pending):steps+=['begin_new_item','use_existing_item','choose_category']

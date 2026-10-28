@@ -16,6 +16,7 @@ class Quantity:
     unit: str | None = None
     scalar: bool = False
     zero: bool = False
+    omit_empty: bool = False
 
 
 UNKNOWN = Quantity()
@@ -37,7 +38,7 @@ def result_columns(relations, sql, names, records):
     inferred = []
     try:
         sources = {r['sql_table'].casefold(): {
-            c['name'].casefold(): Quantity(c.get('unit')) for c in r['columns']
+            c['name'].casefold(): Quantity(c.get('unit'),omit_empty=c.get('omit_empty') is True) for c in r['columns']
         } for r in relations}
         schema = {r['sql_table']: {c['name']: 'INT' if c['type'] in {'integer', 'boolean'} else 'TEXT'
                                   for c in r['columns']} for r in relations}
@@ -60,8 +61,11 @@ def result_columns(relations, sql, names, records):
             def value(node):
                 if node is None or isinstance(node, exp.Null):
                     return ZERO
-                if isinstance(node, (exp.Alias, exp.Paren, exp.Window, exp.Cast, exp.Collate)):
+                if isinstance(node, (exp.Alias, exp.Paren, exp.Collate)):
                     return value(node.this)
+                if isinstance(node, (exp.Window, exp.Cast)):
+                    q=value(node.this)
+                    return Quantity(q.unit,q.scalar,q.zero)
                 if isinstance(node, exp.Column):
                     if node.table:
                         return available.get(node.table.casefold(), {}).get(node.name.casefold(), UNKNOWN)
@@ -76,7 +80,8 @@ def result_columns(relations, sql, names, records):
                 if isinstance(node, exp.Distinct):
                     return value(node.expressions[0]) if len(node.expressions) == 1 else UNKNOWN
                 if isinstance(node, (exp.Sum, exp.Avg, exp.Abs, exp.Neg)):
-                    return value(node.this)
+                    q=value(node.this)
+                    return Quantity(q.unit,q.scalar,q.zero)
                 if isinstance(node, (exp.Min, exp.Max, exp.Coalesce)):
                     return same([value(node.this), *[value(n) for n in node.expressions]])
                 if isinstance(node, exp.Case):
@@ -98,7 +103,8 @@ def result_columns(relations, sql, names, records):
                 if isinstance(node, exp.Anonymous):
                     args = node.expressions; name = node.name.casefold()
                     if name in {'decimal_sum', 'lag', 'lead', 'first_value', 'last_value', 'nth_value'} and args:
-                        return value(args[0])
+                        q=value(args[0])
+                        return Quantity(q.unit,q.scalar,q.zero)
                     if name in {'decimal_add', 'decimal_sub'} and len(args) == 2:
                         return same([value(n) for n in args])
                     if name in {'decimal_mul', 'decimal_div'} and len(args) >= 2:
@@ -130,4 +136,16 @@ def result_columns(relations, sql, names, records):
     if len(inferred) != len(names):
         inferred = [UNKNOWN] * len(names)
     return [{'name': name, 'type': 'integer' if any(type(r[name]) is int for r in records) else 'text',
-             **({'unit': info.unit} if info.unit else {})} for name, info in zip(names, inferred)]
+             **({'unit': info.unit} if info.unit else {}),
+             **({'omit_empty':True} if info.omit_empty else {})} for name, info in zip(names, inferred)]
+
+
+def display_fields(row, columns):
+    """Suppress empty optional annotations, retaining raw results and rows.
+
+    Metadata must explicitly permit omission. Zero, false, unrelated nulls and
+    blank-only results remain visible; output names never determine policy.
+    """
+    optional={c['name'] for c in columns if c.get('omit_empty') is True}
+    selected=[k for k,v in row.items() if k not in optional or not (v is None or isinstance(v,str) and not v.strip())]
+    return selected or list(row)

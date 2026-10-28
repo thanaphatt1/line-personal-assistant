@@ -49,9 +49,10 @@ def test_final_workflow_schema_preserves_item_and_reference_meanings(enrollment)
     expense=next(t for t in serialized if t['name']=='prepare_expenses')
     properties=expense['parameters']['properties']
     entry=properties['entries']['items']['properties']
-    assert 'Full original owner item label' in entry['item']['description']
-    assert entry['item']['description']!=entry['note']['description']
-    for reference in [properties['draft_ref'],entry['entry_ref']]:
+    group=properties['groups']['items']['properties']
+    assert 'item' in group and 'item_source' in group
+    assert 'Literal owner note value' in entry['note_source']['description']
+    for reference in [properties['draft_ref'],entry['group_ref']]:
         assert 'note' not in reference.get('description','').lower()
     for tool in serialized:
         strict_objects(tool['parameters'])
@@ -71,10 +72,10 @@ def test_actual_planner_request_keeps_item_writable_when_creation_refs_are_restr
     expense=next(t for t in body['tools'] if t['name']=='prepare_expenses')
     properties=expense['parameters']['properties']
     fields=properties['entries']['items']['properties']
-    assert 'Full original owner item label' in fields['item']['description']
-    assert 'Null unless' in fields['note']['description']
-    assert 'enum' not in fields['item']
+    group=properties['groups']['items']['properties']
+    assert 'item_source' in group and 'sources' in group
+    assert 'enum' not in group['item']
     assert 'enum' not in fields['note']
     if pending:
         assert properties['draft_ref']['enum']==[None]
-        assert 'enum' not in fields['entry_ref']
+        assert 'entry_ref' not in fields

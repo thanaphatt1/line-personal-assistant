@@ -11,6 +11,9 @@ from .tool_errors import PlanningError
 
 from .expense_sources import COUNTS,COUNT,PER_UNIT,GROUP,SELECTOR,roles,clauses
 ORDINALS={'แรก':0,'หนึ่ง':0,'สอง':1,'สาม':2,'สี่':3,'ห้า':4}
+PRICE_JOIN=r'(?:กับ|และ|,|/|อีก\s*(?:หนึ่ง\s*)?(?:รายการ|ยอด))'
+# Explicit currency marks also separate price cells, without a conjunction.
+PRICE_SEPARATOR=re.compile(r'\s*(?:บาท\s*(?:'+PRICE_JOIN+r'\s*)?|'+PRICE_JOIN+r'\s*)')
 
 def canonical(proposed,sources,tax):
     if not proposed:return proposed
@@ -45,6 +48,77 @@ def item_mentions(text,tax):
     return accepted
 
 def literal_items(text,tax):return {name for _,_,name in item_mentions(text,tax)}
+
+
+def failed_request_sources(h,call,output):
+    """Keep verified source refs in the existing failed preparation receipt.
+
+    A follow-up may complete the same failed batch without repeating every
+    sibling. This is evidence context, never a pending write or fresh consent.
+    """
+    if (call.get('name')!='prepare_expenses' or output.get('ok') is not False
+            or output.get('recovery',{}).get('kind')!='assistant_arguments'):return output
+    import json
+    try:
+        args=json.loads(call['arguments']);refs=[h._current['source_ref']]
+        for entry in args.get('entries',[]):
+            refs+=entry.get('source_refs') or []
+            for values in (entry.get('field_sources') or {}).values():refs+=values
+        # Current proposals carry literal field quotations instead of legacy
+        # message lists. Retain their visible refs without parsing their text.
+        def quoted(value):
+            if isinstance(value,dict):
+                if isinstance(value.get('source_ref'),str):refs.append(value['source_ref'])
+                for child in value.values():quoted(child)
+            elif isinstance(value,list):
+                for child in value:quoted(child)
+        if 'groups' in args:quoted(args)
+        verified=[]
+        for ref in dict.fromkeys(refs):
+            try:h._owner_sources([ref])
+            except (ValueError,TypeError):continue
+            verified.append(ref)
+        return {**output,'failed_expense_sources':verified}
+    except (ValueError,TypeError,KeyError,AttributeError):return output
+
+
+def failed_batch_sibling(h,item,sources,current_names):
+    """A historical sibling must share a priced source with the current item.
+
+    Only the latest delivered failed preparation supplies eligible refs. A
+    previous read, unrelated failure, completed proposal or arbitrary history
+    does not establish a batch continuation.
+    """
+    shown_row,shown=h._presented_result()
+    previous=shown.data.get('tool_result',{}) if shown else {}
+    if previous.get('ok') is not False:return False
+    allowed=set(previous.get('failed_expense_sources',[]))
+    if 'failed_expense_sources' not in previous and shown_row:
+        # Prior-runtime receipts have no source annotation. Recover only
+        # consecutive delivered preparation failures, stopping at a successful
+        # or unrelated turn. No snapshot or history rewrite.
+        from .history_context import source_ref
+        from . import semantic_tools as semantic
+        for speaker in sorted((r for r in h.state.history if r['role']=='assistant'
+                and r['at']<=shown_row['at']),key=lambda r:r['at'],reverse=True):
+            receipt=h.state.receipts.get(speaker['event'])
+            if not receipt or receipt.expires_at<=h.clock():break
+            if getattr(h,'production',False):
+                reply=h.state.replies.get(speaker['event'])
+                if not reply or reply.status!='sent' or reply.content_hash!=semantic.message_hash(semantic.rendered_message(receipt.result)):break
+            output=receipt.result.data.get('tool_result',{})
+            feedback=output.get('validation_feedback',{})
+            if output.get('ok') is not False or feedback.get('tool')!='prepare_expenses' or feedback.get('kind')!='model_arguments':break
+            allowed.update(output.get('failed_expense_sources',[source_ref(speaker['event'])]))
+    catalog=h._taxonomy().catalog
+    for row in sources:
+        if row['source_ref'] not in allowed or row['source_ref']==h._current['source_ref']:continue
+        try:
+            if (occurrences(row,item,catalog=catalog,items=current_names,interpreted=True)
+                    and any(occurrences(row,name,catalog=catalog,items=[item,*current_names],interpreted=True) for name in current_names)):
+                return True
+        except ValueError:continue
+    return False
 
 def connector(text):
     text=COUNT.sub(' ',text.translate(DIGITS))
@@ -123,7 +197,7 @@ def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
             count=2
         if len(values)>1 and (len(names)==1 or not names and not selectors):
             separators=[text[a.end:b.start] for a,b in zip(values,values[1:])]
-            if not local_counts and not all(re.fullmatch(r'\s*(?:บาท\s*)?(?:กับ|และ|,|/|อีก\s*(?:หนึ่ง\s*)?(?:รายการ|ยอด))\s*',s) for s in separators):continue
+            if not local_counts and not all(PRICE_SEPARATOR.fullmatch(s) for s in separators):continue
             if not local_counts and count is not None and count!=len(values):raise ValueError('count_amount_mismatch')
         if len(names)>1:
             if any(not any(m.end()<=v.start and (i+1==len(names) or v.end<=names[i+1].start()) for i,m in enumerate(names)) for v in values):continue

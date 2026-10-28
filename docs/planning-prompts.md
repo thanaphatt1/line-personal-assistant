@@ -20,6 +20,15 @@ not change validators, provider permissions, confirmation or mutation rules.
 The planner receives the same owner history, current source ref, previous
 query scope, pending views and configured table metadata as before.
 
+Expense creation now uses model-selected groups and exact per-field owner
+quotations. Python validates positions, typed values, numeric coverage and
+repetition rather than parsing the same sentence into groups again. Pending
+field changes use their explicit evidence directly. See
+[pending records](pending-records.md) for the current schema and compatibility
+boundary. These checks establish provenance and a reviewable proposal;
+semantic grouping and deciding total versus per-payment meaning remain model
+responsibilities. Strict JSON schema cannot prove that interpretation correct.
+
 ## Keeping instructions general
 
 Use semantic principles for new versus additional records, references to

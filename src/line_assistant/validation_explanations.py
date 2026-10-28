@@ -50,13 +50,35 @@ REASONS={
  'tool_unavailable':'รอบนี้ผมตรวจรายการไม่สำเร็จ จึงยังไม่ได้บันทึก และยังบอกสาเหตุที่ชัดกว่านี้ไม่ได้ครับ',
 }
 
+PROPOSAL_ERRORS={
+ 'expense_quote_not_found':'ข้อความต้นทางที่ผมอ้างไม่ตรงกับข้อความของคุณครับ',
+ 'expense_numeric_quote_required':'ผมยังอ้างตัวเลขต้นทางของรายการนี้ไม่ถูกต้องครับ',
+ 'expense_partial_numeric_quote':'ผมเลือกมาเพียงบางส่วนของตัวเลข จึงยังใช้ยอดนั้นไม่ได้ครับ',
+ 'expense_duplicate_group':'ผมอ้างกลุ่มรายการซ้ำกันครับ',
+ 'expense_groups_overlap':'ผมแบ่งกลุ่มรายการทับกัน จึงยังจับคู่แต่ละยอดไม่ได้ครับ',
+ 'expense_item_evidence_required':'ผมยังอ้างชื่อเต็มของรายการจากข้อความของคุณไม่ครบครับ',
+ 'expense_field_outside_group':'ผมผูกชื่อหรือยอดกับข้อความคนละกลุ่มรายการครับ',
+ 'expense_field_overlap':'ผมใช้ข้อความส่วนเดียวกันเป็นข้อมูลคนละชนิดครับ',
+ 'expense_unknown_group':'รายการที่ผมเตรียมยังอ้างกลุ่มชื่อไม่ถูกต้องครับ',
+ 'expense_amount_evidence_required':'ผมยังไม่ได้อ้างตัวเลขต้นทางของยอดที่เสนอครับ',
+ 'expense_amount_mismatch':'ยอดที่ผมเสนอยังไม่ตรงกับตัวเลขต้นทางครับ',
+ 'expense_amount_value_required':'ผมอ้างยอดไว้แต่ยังใส่ยอดในรายการไม่ครบครับ',
+ 'expense_note_mismatch':'หมายเหตุที่ผมเสนอยังไม่ตรงกับข้อความต้นทางครับ',
+ 'expense_note_value_required':'ผมอ้างหมายเหตุไว้แต่ยังใส่ข้อมูลไม่ครบครับ',
+ 'expense_unused_group':'ผมยังเตรียมรายการจากกลุ่มที่เลือกไม่ครบครับ',
+ 'expense_count_mismatch':'จำนวนรายการที่ผมเตรียมยังไม่ตรงกับจำนวนที่อ้างครับ',
+ 'expense_amount_reused_without_count':'ผมใช้ยอดจากตำแหน่งเดิมซ้ำ โดยยังไม่มีจำนวนครั้งรองรับครับ',
+ 'expense_unaccounted_number':'ผมยังใส่ข้อมูลหรืออธิบายตัวเลขในข้อความของคุณไม่ครบครับ',
+}
+REASONS.update(PROPOSAL_ERRORS)
+
 ENROLLMENT_ERRORS={'new_item_requires_category_clarification','category_step_not_ready',
  'subcategory_step_not_ready','category_not_offered','subcategory_not_in_selected_category','new_item_already_started'}
 MODEL_ERRORS=ENROLLMENT_ERRORS|{'invalid_tool_arguments','amount_occurrence_missing_or_reused',
  'expense_batch_incomplete','reused_expense_fields_required','amount_source','item_source','full_item_name_required','note_source',
  'date_text_source','date_source','source_not_in_visible_context','field_source_unavailable',
  'field_source_not_owner_fact','category_fields_belong_to_item_resolution','cancelled_fact_source','source_expired_or_removed',
- 'stale_or_unrelated_fact_source','item_source_conflicts_with_current_expense'}
+ 'stale_or_unrelated_fact_source','item_source_conflicts_with_current_expense'}|PROPOSAL_ERRORS.keys()
 
 
 def enrich(h,call,output):

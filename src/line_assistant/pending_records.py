@@ -49,6 +49,9 @@ def views(h):
         for ordinal,e in enumerate(d['entries'],1):
             fields=[field('item','ชื่อรายการ'),field('amount','จำนวนเงิน','decimal'),
                     field('date_text','ข้อความวันที่'),field('note','หมายเหตุ')]
+            offer=e.get('previous_price',{})
+            if h.previous_prices.enabled and offer.get('state')=='offered':
+                fields.append(field('previous_price_ref','ใช้ยอดที่เสนอ','enum',choices=[offer['ref']],interpretation='choice'))
             resolution=next((r for r in view['item_resolutions'] if r['entry_ref']==e['entry_ref']),None)
             categories=resolution['category_choices'] if resolution else tax.choices(e['item'] or '')['categories']
             if categories and h.item_enrollment_enabled:
@@ -257,7 +260,7 @@ def staged_expense(h,p):
     stage._request_views[p.draft_ref]=stage._view(d)
     facts=[]
     for record in p.records:
-        changes=[v for v in record.changes if v.field in {'item','amount','date_text','note'}]
+        changes=[v for v in record.changes if v.field in {'item','amount','date_text','note','previous_price_ref'}]
         if not changes:continue
         args={v.field:v.value for v in changes}
         for v in changes:

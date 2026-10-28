@@ -56,6 +56,7 @@ def materialize(h,ref):
     elif domain=='expense':
         cols=columns(('date','date'),('item','text'),('amount','decimal'),('note','text'))
         cols[2]['unit']='บาท'
+        cols[3]['omit_empty']=True
         # Catalog identity is source metadata, not a model classification. Keep
         # raw labels available; block uses of incomplete mapping columns so
         # SQL NULL/NOT semantics cannot silently omit unknown memberships.
@@ -117,6 +118,7 @@ def context(h):
 
 def message(rows,count,columns=()):
     from .reply_display import quantity_text
+    from .relational_metadata import display_fields
     units={c['name']:c.get('unit') for c in columns}
     def text(v):
         value=re.sub(r'[\x00-\x1f]',' ',str(v)) if v is not None else 'ไม่มีค่า'
@@ -127,7 +129,7 @@ def message(rows,count,columns=()):
     def label(k):
         return (re.sub(r'\s*\(บาท\)|_?baht$','',text(k),flags=re.I) or text(k)) if units.get(k) in {'บาท','THB'} else text(k)
     lines=['ผลลัพธ์ครับ']
-    lines += [(str(i)+'. ' if len(rows)>1 else '')+' | '.join(label(k)+': '+cell(k,v) for k,v in row.items()) for i,row in enumerate(rows,1)]
+    lines += [(str(i)+'. ' if len(rows)>1 else '')+' | '.join(label(k)+': '+cell(k,row[k]) for k in display_fields(row,columns)) for i,row in enumerate(rows,1)]
     if count>len(rows):lines.append(f'แสดง {len(rows)} จาก {count} แถวของผลลัพธ์ที่คำนวณครบแล้ว')
     if not count:lines.append('ไม่พบแถวที่ตรงเงื่อนไข')
     return '\n'.join(lines)

@@ -32,6 +32,14 @@ a sentence instead of a list of column names and values. Generic table cells
 come from the selected schema and columns; they do not require an expense
 amount or date.
 
+Source metadata can mark an optional annotation for omission when empty. For
+example, blank expense notes do not force an empty note label into a reply.
+This policy follows verified direct columns and aliases, not output names or
+computed expressions. Raw SQL values, row counts and nonempty annotations stay
+intact. Zero, false, unrelated missing fields and results consisting entirely
+of blank cells remain visible. Cell IDs keep their original column positions
+when an optional cell is omitted.
+
 ## Evidence and layout
 
 [`answer_composition.py`](../src/line_assistant/answer_composition.py) builds a
