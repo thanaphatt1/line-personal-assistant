@@ -75,7 +75,7 @@ class Amount:
     value: str | None
 
 
-def amounts(text: str, excluded=()) -> list[Amount]:
+def amounts(text: str, excluded=(), *, list_separators=False) -> list[Amount]:
     source = text.translate(DIGITS)
     occupied = list(excluded)
     found = []
@@ -85,6 +85,13 @@ def amounts(text: str, excluded=()) -> list[Amount]:
         if any(m.start() < b and m.end() > a for a, b in occupied):
             continue
         raw = m.group()
+        end = m.end()
+        # A comma followed by whitespace delimits list cells. Grouping commas
+        # inside the token remain subject to the strict money grammar. Keep
+        # original coordinates; never rewrite malformed grouping or decimals.
+        if list_separators and raw.endswith(',') and not raw.endswith(',,') and (end == len(source) or source[end].isspace()):
+            raw = raw[:-1]
+            end -= 1
         valid = re.fullmatch(r"(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d{1,2})?", raw)
         try:
             value = money_string(Decimal(raw.replace(",", ""))) if valid else None
@@ -92,7 +99,7 @@ def amounts(text: str, excluded=()) -> list[Amount]:
             value = None
         if re.search(r"(?:[-+]|ลบ)\s*$", source[:m.start()]):
             value = None
-        found.append(Amount(m.start(), m.end(), value))
+        found.append(Amount(m.start(), end, value))
         occupied.append((m.start(), m.end()))
     for m in re.finditer(rf"(?:{WORD_TOKEN})+(?:จุด(?:{'|'.join(WORD_DIGITS)})+)?", source):
         if any(m.start() < b and m.end() > a for a, b in occupied):

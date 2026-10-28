@@ -50,6 +50,23 @@ category; normalization removes the redundant action, never adds facts or
 permissions. Multiple category/subcategory choices remain constrained by the
 actual catalog pairs.
 
+Expense evidence keeps item names, row selectors, occurrence counts, dates and
+money in separate roles. A list such as `Metro 61, 61, 19` retains three payments,
+including the duplicate amount. Whitespace after a list comma separates cells;
+`1,261.50` remains one amount and malformed grouping is rejected. Several
+adjacent price/count cells, such as `Metro 61 2 ครั้ง กับ 19 1 ครั้ง`, retain
+independent occurrences at the original price spans. An optional leading total
+count must agree with those occurrences. A lone price with several trips still
+needs a clear per-trip or total basis.
+When a clarification supplies only prices/counts, explicit field citations can
+bind the earlier owner name to the new amount group without repeating the
+name. A price scoped to another named item cannot supply that group.
+
+A correction can apply a shared date to several pending rows while changing
+one row's amount. The ordinal in `แก้รายการ 2` identifies a row; it cannot become
+money evidence. All changed fields are validated and staged together, and
+untouched fields retain their original provenance.
+
 Catalog drift is revalidated during expense patch staging and fresh-review
 preparation. An unrelated name addition does not block completing an older
 pending record. The server rechecks every sibling's current identity and
@@ -75,6 +92,12 @@ provider faults are not automatically retried. Existing multi-source read
 analysis retains its own evidence/goal-preserving continuation. Failed patches
 retain verified focus and table drafts; free model text cannot report an
 unverified successful change.
+
+Omitted payment siblings and invalid field evidence also return to the planner.
+When a new proposal retains verified facts after rejecting a field, a corrected
+creation may replace only that same turn's undelivered partial proposal. This
+repair cannot replace earlier pending work, reuse a delivered review or obtain
+write consent. An unsuccessful repair retains verified facts for clarification.
 
 Date/time changes may cite a verified `temporal_ref` instead of copying a
 normalized value from the owner text. The original span remains evidence;

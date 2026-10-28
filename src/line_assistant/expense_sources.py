@@ -11,6 +11,8 @@ from .domain_notes import LABEL
 
 UNITS=r'รอบ|เที่ยว|ครั้ง|ขา|รายการ|ยอด'
 COUNTS={'หนึ่ง':1,'สอง':2,'สาม':3,'สี่':4,'ห้า':5}
+SELECTOR=re.compile(r'(?:(?:รอบ|เที่ยว|ขา|รายการ|แถว)(?:ที่)?|ยอดที่|ยอด(?=แรก|หนึ่ง|สอง|สาม|สี่|ห้า))\s*'
+                    r'(แรก|หนึ่ง|สอง|สาม|สี่|ห้า|[1-5])(?!\d|\.\d|,\d)(?!\s*บาท)')
 COUNT=re.compile(r'(?<![\d.])([+-]?\d+(?:\.\d+)?|หนึ่ง|สอง|สาม|สี่|ห้า)\s*(?:'+UNITS+r')(?:(?![ก-ฮ])|(?=นะ|ด้วย|ให้|ช่วย|ครับ|ค่ะ|คะ|วันที่|ทั้ง|โดย))')
 PER_UNIT=re.compile(r'(?:'+UNITS+r')ละ|ต่อ(?:'+UNITS+r')')
 GROUP=re.compile(r'วัน(?:ที่)?เดียวกัน(?:คือ)?|ทั้งหมด|ทุกรายการ|ทั้ง(?:สอง|2|๒)(?:รายการ)?|ทั้งคู่')
@@ -25,9 +27,10 @@ def roles(text,at,name_spans=()):
     """Return all role spans without rewriting or discarding numeric evidence."""
     _,dates,issue=cues(mask(text,name_spans),at)
     groups=[m.span() for m in GROUP.finditer(mask(text,name_spans))]
+    selectors=[m.span() for m in SELECTOR.finditer(mask(text.translate(DIGITS),name_spans))]
     counts=[m for m in COUNT.finditer(text.translate(DIGITS))
             if not any(m.start()<b and a<m.end() for a,b in [*name_spans,*dates,*groups])]
-    values=amounts(text,[*name_spans,*dates,*groups,*(m.span() for m in counts)])
+    values=amounts(text,[*name_spans,*dates,*groups,*selectors,*(m.span() for m in counts)],list_separators=True)
     count_values=[COUNTS.get(m[1],int(m[1]) if m[1].isdigit() else 0) for m in counts]
     count_values=[0 if re.search(r'ลบ\s*$',text[:m.start()]) else v for m,v in zip(counts,count_values)]
     return {'dates':dates,'date_issue':issue,'counts':counts,'count_values':count_values,'money':values}

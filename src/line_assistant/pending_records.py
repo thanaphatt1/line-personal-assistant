@@ -102,6 +102,11 @@ def contextualize(h,call,output):
         'ambiguous_or_recorded_reference':'ข้อมูลที่อ้างอิงถูกใช้กับรายการก่อนแล้วครับ หากต้องการเพิ่มอีกครั้งต้องเตรียมเป็นรายการใหม่'}
     result={**output,'pending_patch_error':True,'domain':view['domain'],
         'message':output.get('message',reasons.get(output.get('error'),'ขั้นตอนตรวจการแก้ไขรายการไม่สำเร็จ จึงยังระบุสาเหตุที่เจาะจงกว่านี้ไม่ได้'))}
+    if output.get('error')=='invalid_fields' and output.get('invalid_fields'):
+        from .validation_explanations import REASONS
+        codes=[v.rsplit('.',1)[-1] for v in output['invalid_fields']]
+        if all(code in REASONS for code in codes):
+            result['message']='; '.join(dict.fromkeys(REASONS[code] for code in codes))
     records=args.get('records',[])
     if isinstance(records,list) and len(records)==1 and isinstance(records[0],dict):
         target=records[0].get('record_ref')

@@ -192,6 +192,7 @@ def planner_failure(error):
 
 
 EVIDENCE_ERRORS={'full_item_name_required','item_source_conflicts_with_current_expense','amount_occurrence_missing_or_reused',
+    'expense_batch_incomplete',
     'source_not_in_visible_context','source_expired_or_removed','cancelled_fact_source','field_source_unavailable',
     'field_source_not_owner_fact','stale_or_unrelated_fact_source'}
 
@@ -1119,8 +1120,16 @@ class HistoryFirstAssistant(Assistant):
         self._pair_items=tuple(identity(name,self._taxonomy().catalog) for name in names) if self.raw_history_enabled else tuple(names)
         refs={r for e in p.entries for r in [*e.source_refs,
             *([] if e.field_sources is None else [r for values in e.field_sources.model_dump().values() for r in values])]}
+        repairing_creation=None
         if not old:
             overlap=[d for d in self.state.drafts.values() if refs & {r for e in d['entries'] for r in e['source_refs']}]
+            # Only this turn's undelivered, partially validated creation may be
+            # replaced by a corrected creation proposal. Other pending work,
+            # earlier turns and delivered reviews retain their normal fences.
+            inflight=getattr(self,'_inflight_expense_repair',None)
+            repairing_creation=next((d for d in overlap if d['draft_ref']==inflight
+                and d['created_at']==self._current['at'] and d['review'] is None and d['status']=='needs_information'),None)
+            overlap=[d for d in overlap if d is not repairing_creation]
             if overlap:
                 # A NEW request may reuse facts from a recorded payment. The
                 # planner selects that intent, but must cite each reused field
@@ -1139,11 +1148,10 @@ class HistoryFirstAssistant(Assistant):
                                 if not e.field_sources or not getattr(e.field_sources,field):missing_copy.append(f'entries[{index}].field_sources.{field}')
                         reusable=reusable and fresh and bool(e.field_sources and e.field_sources.item and e.field_sources.amount)
                 if missing_copy:
-                    from .tool_errors import recovery
                     return {'ok':False,'error':'reused_expense_fields_required','missing_fields':missing_copy,
                         'recovery':recovery(kind='assistant_arguments',required=missing_copy,tools=['prepare_expenses','resolve_temporal'])}
                 if not reusable:return {'ok':False,'error':'ambiguous_or_recorded_reference','clarification_required':True}
-            if sum(d['status']!='recorded' for d in self.state.drafts.values())>=MAX_DRAFTS:return {'ok':False,'error':'open_work_limit'}
+            if sum(d['status']!='recorded' and d is not repairing_creation for d in self.state.drafts.values())>=MAX_DRAFTS:return {'ok':False,'error':'open_work_limit'}
         if old and not self.raw_history_enabled and len(p.entries)!=len(old['entries']):return {'ok':False,'error':'complete_snapshot_required'}
         supplied=None
         if old and self.raw_history_enabled:
@@ -1235,6 +1243,9 @@ class HistoryFirstAssistant(Assistant):
             missing=list(dict.fromkeys(missing));invalid=[]
             if not any(e['item'] or e['amount'] or e['date'] for e in entries):invalid=retained_issues
         if invalid:return {'ok':False,'error':'invalid_fields','invalid_fields':invalid,'missing_fields':missing,
+                           **({'recovery':recovery(kind='assistant_arguments',fields=invalid,
+                                tools=['patch_pending_records','resolve_temporal'] if old and interpreted_patch else ['prepare_expenses','resolve_temporal'])}
+                              if self.raw_history_enabled and all(v.rsplit('.',1)[-1] in recoverable for v in invalid) else {}),
                            'date_details':[{'entry':i,'normalized_date':e['date'],'parts':{**e['date_basis'].get('defaulted_parts',{}),**e['date_basis'].get('explicit_parts',{})},'issue':e['date_issue']} for i,e in enumerate(entries) if e['date_issue']]}
         if old and not self.raw_history_enabled and any(e['item'] is None or e['amount'] is None for e in entries):
             return {'ok':False,'error':'complete_snapshot_required','missing_fields':missing,'invalid_fields':[]}
@@ -1253,7 +1264,7 @@ class HistoryFirstAssistant(Assistant):
             checked=[{k:e[k] for k in ('item','amount','date')} for e in entries]
         ref=p.draft_ref or 'draft_'+digest(self._active_event_id)[:20]
         expiry=min([datetime.fromisoformat(r['at'])+WINDOW for r in sources]+([datetime.fromisoformat(old['expires_at'])] if old else [self.clock()+WINDOW]))
-        d={'draft_ref':ref,'owner_id':self.settings.owner_id,'version':old['version']+1 if old else 1,
+        d={'draft_ref':ref,'owner_id':self.settings.owner_id,'version':old['version']+1 if old else repairing_creation['version']+1 if repairing_creation else 1,
            'entries':entries,'missing_fields':missing,'status':'needs_information' if missing else 'review',
            'created_at':old['created_at'] if old else self._current['at'],'updated_at':self._current['at'],'expires_at':expiry.isoformat(),
            'review':None,'catalog_hash':digest([[r.item,r.category,r.subcategory] for r in self._taxonomy().rows])}
@@ -1265,9 +1276,15 @@ class HistoryFirstAssistant(Assistant):
         # A ready review and its response are checkpointed together in _finish;
         # do not expose a durable draft-without-receipt gap on this return path.
         if missing:self.state.checkpoint()
-        return {'ok':True,'status':d['status'],'draft_ref':ref,'draft_version':d['version'],'entries':deepcopy(entries),'missing_fields':missing,
+        output={'ok':True,'status':d['status'],'draft_ref':ref,'draft_version':d['version'],'entries':deepcopy(entries),'missing_fields':missing,
                 'invalid_fields':[],**({'validation_issues':retained_issues} if retained_issues else {}),
                 **({'absence_checked':checked} if checked else {}),'confirmation_required':not bool(missing)}
+        if retained_issues:
+            self._inflight_expense_repair=ref
+            output.update(ok=False,error='invalid_fields',invalid_fields=retained_issues,
+                recovery=recovery(kind='assistant_arguments',fields=retained_issues,
+                    tools=['prepare_expenses','resolve_temporal']))
+        return output
 
     def _saved_matches(self,entries):
         """Saved records with the same date and catalog identity; a review/consent aid, never a write."""
@@ -1774,7 +1791,7 @@ class HistoryFirstAssistant(Assistant):
         from . import raw_history as raw
         if self.state.owner_id!=self.settings.owner_id:return Result('denied','')
         self._patch_stamp=stamp;self.trace=[];self.context_stats=[]
-        self._request_views={};self._read_views={};self._pending_record_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set()
+        self._request_views={};self._read_views={};self._pending_record_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set();self._inflight_expense_repair=None
         self._temporal_values={};self._temporal_bases={}
         self.saved_edits.request_candidates={}
         self.table_flow.candidates={}

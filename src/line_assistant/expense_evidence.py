@@ -7,9 +7,9 @@ from .history_dates import cues
 from .language import amounts,intent_guard,FILLER,DIGITS
 from .conversation_evidence import command_text
 from .source_spans import finditer,contains
+from .tool_errors import PlanningError
 
-from .expense_sources import COUNTS,COUNT,PER_UNIT,GROUP,roles,clauses
-SELECTOR=re.compile(r'(?:รอบ|เที่ยว|ขา|รายการ|แถว|ยอด)(?:ที่)?\s*(แรก|หนึ่ง|สอง|สาม|สี่|ห้า|[1-5])(?!\d)')
+from .expense_sources import COUNTS,COUNT,PER_UNIT,GROUP,SELECTOR,roles,clauses
 ORDINALS={'แรก':0,'หนึ่ง':0,'สอง':1,'สาม':2,'สี่':3,'ห้า':4}
 
 def canonical(proposed,sources,tax):
@@ -52,6 +52,35 @@ def connector(text):
     text=re.sub(r'อีก|เพิ่ม',' ',PER_UNIT.sub(' ',text))
     return bool(re.fullmatch(FILLER,text))
 
+
+def price_counts(text, values, facts):
+    """Bind local repetition counts to their adjacent original price spans.
+
+    Several price/count cells disambiguate per-price repetition. An optional
+    leading group count must equal their sum. A lone price still requires an
+    explicit per-unit basis, and unrelated prose/totals cannot be separators.
+    """
+    counts=facts['counts'];numbers=facts['count_values']
+    if any(not 1<=v<=5 for v in numbers):raise ValueError('unsupported_expense_count')
+    if len(counts)<=1:return (numbers[0] if numbers else None),[1]*len(values),False
+    local=[]
+    for i,value in enumerate(values):
+        stop=values[i+1].start if i+1<len(values) else len(text)
+        matches=[j for j,c in enumerate(counts) if value.end<=c.start()<stop
+                 and re.fullmatch(r'\s*(?:บาท\s*)?',text[value.end:c.start()])]
+        if len(matches)!=1:raise ValueError('unsupported_expense_count')
+        local.append(matches[0])
+    if len(values)<2:raise ValueError('unsupported_expense_count')
+    other=[j for j in range(len(counts)) if j not in local]
+    total=sum(numbers[j] for j in local)
+    if total>5:raise ValueError('unsupported_expense_count')
+    if len(other)>1 or other and (counts[other[0]].end()>values[0].start or numbers[other[0]]!=total):
+        raise ValueError('count_amount_mismatch')
+    for i in range(len(values)-1):
+        gap=text[counts[local[i]].end():values[i+1].start]
+        if not re.fullmatch(r'\s*(?:(?:กับ|และ|,|/)\s*)?',gap):raise ValueError('count_price_basis_ambiguous')
+    return total,[numbers[j] for j in local],True
+
 def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
     """Return independently selectable monetary occurrences and masked views.
 
@@ -67,7 +96,7 @@ def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
         find=lambda text,name:catalog_spans(text,name,catalog) if catalog else finditer(text,name)
         labels=[item,*items,*(catalog.items.values() if catalog else [])]
         originals.extend((part['view'],line_offset) for part in clauses(line,at,labels,find)
-                         if find(part['view'],item) or bound and SELECTOR.search(part['view']))
+                         if find(part['view'],item) or bound and (part['item'] is None or SELECTOR.search(part['view'])))
         line_offset+=len(original)
     for line,offset in originals:
         text=line.translate(DIGITS)
@@ -77,29 +106,32 @@ def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
             names=spans(text,item,catalog)
         overlap=lambda match:any(match.start()<n.end() and n.start()<match.end() for n in names)
         selectors=[m for m in SELECTOR.finditer(text) if not overlap(m)]
-        if not names and not (bound and selectors):continue
+        if not names and not bound:continue
         facts=roles(text,at,[m.span() for m in names]);dates=facts['dates']
         groups=[m for m in GROUP.finditer(text) if not overlap(m)]
-        counts=facts['counts'];count=None
-        if len(counts)==1:count=facts['count_values'][0]
-        if len(counts)>1 or count is not None and not 1<=count<=5:raise ValueError('unsupported_expense_count')
+        counts=facts['counts']
+        spans=[m.span() for m in names]+[m.span() for m in counts]+[m.span() for m in selectors]+[m.span() for m in groups]+dates
+        parsed=amounts(text,spans,list_separators=True)
+        # An invalid numeric cell is not evidence that the other cells form a
+        # complete group. In particular, never drop a malformed first price.
+        if any(v.value is None for v in parsed):continue
+        values=parsed
+        if not values:continue
+        count,repetitions,local_counts=price_counts(text,values,facts)
         if any(re.match(r'ทั้ง(?:สอง|2)',m[0]) for m in groups):
             if count is not None and count!=2:raise ValueError('count_amount_mismatch')
             count=2
-        spans=[m.span() for m in names]+[m.span() for m in counts]+[m.span() for m in selectors]+[m.span() for m in groups]+dates
-        values=[v for v in amounts(text,spans) if v.value is not None]
-        if not values:continue
-        if len(values)>1 and len(names)==1:
+        if len(values)>1 and (len(names)==1 or not names and not selectors):
             separators=[text[a.end:b.start] for a,b in zip(values,values[1:])]
-            if not all(re.fullmatch(r'\s*(?:บาท\s*)?(?:กับ|และ|,|/|อีก\s*(?:หนึ่ง\s*)?(?:รายการ|ยอด))\s*',s) for s in separators):continue
-            if count is not None and count!=len(values):raise ValueError('count_amount_mismatch')
+            if not local_counts and not all(re.fullmatch(r'\s*(?:บาท\s*)?(?:กับ|และ|,|/|อีก\s*(?:หนึ่ง\s*)?(?:รายการ|ยอด))\s*',s) for s in separators):continue
+            if not local_counts and count is not None and count!=len(values):raise ValueError('count_amount_mismatch')
         if len(names)>1:
             if any(not any(m.end()<=v.start and (i+1==len(names) or v.end<=names[i+1].start()) for i,m in enumerate(names)) for v in values):continue
         per_unit=bool(PER_UNIT.search(text))
         if count and count>1 and len(values)==1 and not per_unit:raise ValueError('count_price_basis_ambiguous')
-        multiplicity=count if len(values)==1 and count and per_unit else 1
+        if len(values)==1 and count and per_unit:repetitions=[count]
         for value_index,value in enumerate(values):
-            for ordinal in range(multiplicity):
+            for ordinal in range(repetitions[value_index]):
                 masked=list(line)
                 for m in counts:
                     masked[m.start():m.end()]=' '*(m.end()-m.start())
@@ -107,7 +139,8 @@ def occurrences(row,item,bound=False,*,catalog=None,items=(),interpreted=False):
                 for other in values:
                     if other is not value:masked[other.start:other.end]=' '*(other.end-other.start)
                 if len(values)>1:
-                    for m in re.finditer(r'กับ|และ',text):masked[m.start():m.end()]=' '*(m.end()-m.start())
+                    for before,after in zip(values,values[1:]):
+                        masked[before.end:after.start]=' '*(after.start-before.end)
                 # A repeated literal name on a different line is naturally scoped.
                 # On one line, mask unrelated same-name clauses as well.
                 if len(names)>1:
@@ -140,7 +173,7 @@ def expand_counted_entries(entries,source_lists,*,catalog,interpreted=False):
     for index,(entry,rows) in enumerate(zip(entries,source_lists)):
         proofs=[]
         if entry.item and groups[identity(entry.item,catalog)]==1:
-            proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
+            proofs=[v for row in rows for v in occurrences(row,entry.item,bound=bool(entry.field_sources and entry.field_sources.amount),catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
         complete=(len(proofs)>1 and len({v['source_ref'] for v in proofs})==1
                   and all(v['declared_count']==len(proofs) for v in proofs))
         consistent=(entry.amount is None or any(Decimal(v['amount'])==Decimal(str(entry.amount)) for v in proofs)
@@ -162,7 +195,7 @@ def assign(entries,source_lists,targets=None,*,catalog=None,interpreted=False):
         # by multirow allocation, rather than trusting proposed row count.
         for entry,rows in zip(entries,source_lists):
             if entry.item and groups[key(entry.item)]==1:
-                proofs=[v for row in rows for v in occurrences(row,entry.item,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
+                proofs=[v for row in rows for v in occurrences(row,entry.item,bound=bool(entry.field_sources and entry.field_sources.amount),catalog=catalog,items=[e.item for e in entries],interpreted=interpreted)]
                 if len(proofs)>1:raise ValueError('count_amount_mismatch' if any(v['declared_count'] for v in proofs) else 'expense_batch_incomplete')
     chosen={};used=set()
     for index,(entry,sources) in enumerate(zip(entries,source_lists)):
@@ -173,9 +206,11 @@ def assign(entries,source_lists,targets=None,*,catalog=None,interpreted=False):
             wanted=str(Decimal(wanted).normalize())
         except Exception:raise ValueError('amount_source')
         label=key(entry.item) if catalog is not None and catalog.resolve(entry.item or '').canonical else entry.item
-        candidates=[v for r in sources for v in occurrences(r,label,bound=targets is not None,catalog=catalog,items=[e.item for e in entries],interpreted=interpreted) if str(Decimal(v['amount']).normalize())==wanted]
+        candidates=[v for r in sources for v in occurrences(r,label,bound=targets is not None or bool(entry.field_sources and entry.field_sources.amount),catalog=catalog,items=[e.item for e in entries],interpreted=interpreted) if str(Decimal(v['amount']).normalize())==wanted]
         candidate=next((v for v in candidates if v['occurrence_ref'] not in used and (targets is None or v['target_index']==targets[index])),None)
-        if candidate is None:raise ValueError('amount_occurrence_missing_or_reused')
+        if candidate is None:
+            raise PlanningError('amount_occurrence_missing_or_reused',
+                fields=[f'entries[{index}].amount'],required=['unused_original_amount_occurrence'])
         used.add(candidate['occurrence_ref']);chosen[index]=candidate
     return chosen
 

@@ -57,6 +57,12 @@ snapshot; multiple expense windows in one batch share one validated Sheet read.
 Configured table schemas already live in the in-process registry. This adds no
 cross-turn data/metadata TTL and never bypasses fresh mutation/version checks.
 
+Expense list validation accepts repeated price occurrences and separates row
+ordinals from money evidence. This avoids unnecessary planning repairs for
+valid lists and combined date/amount corrections. Actual argument mistakes
+still return to the planner; repeated failures stop. Offline call-count checks
+cover these paths, without establishing a production latency improvement.
+
 ## Waiting and clarification
 
 After 0.8 seconds, the raw-history webhook can start one best-effort, 20-second
