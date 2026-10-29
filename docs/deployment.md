@@ -8,6 +8,13 @@ The current runtime composition is `line_assistant.history_cloud_run:app_factory
 2. Select your own project, region, attached account, state database, reviewed Sheet schema, secondary calendar and single LINE owner. Configure nonsecret values from [configuration](configuration.md); provision version-pinned mounted secrets separately.
 3. Keep the three integration secrets outside the repository and build context. Review least-privilege access and the LINE channel's webhook configuration separately. No setup command here changes IAM or creates live records.
 4. Review an explicit build/release budget. The generic `deploy/cloudbuild.json` requires an operator-selected `_IMAGE`, reviewed tag and checksum substitution. Builder and Python base image digests are pinned; update them deliberately after reviewing and testing dependency changes.
+5. Set an explicit Cloud Run request timeout of at least **90 seconds** in the
+   reviewed manifest. The assistant scope is 50 seconds and LINE delivery has a
+   separate 10-second scope; the ingress limit must also cover cold start and
+   finalization. Run `deployment_plan.check_request_timeout` on the exact
+   candidate and recovery manifests before staging. A successful startup or
+   `/health` check does not validate this timeout contract. This check is
+   offline and does not deploy or change service settings.
 
 The application is disabled by default. Do not enable a real transport using synthetic example targets or treat `PILOT_SHEET_SCHEMA_VERIFIED=true` as a substitute for inspecting the chosen workbook. No default owner, production project, spreadsheet or calendar is supplied.
 
@@ -19,6 +26,7 @@ Create an OFF bridge and ON candidate from the same new image. Both retain histo
 
 - Ready, exact image/configuration and reviewed CPU/memory/concurrency/scaling bounds;
 - signed startup with zero provider calls;
+- the reviewed request timeout covers assistant finalization, delivery and cold start;
 - `/health` success and invalid LINE signature rejection;
 - targeted sanitized error checks;
 - unchanged reviewed access/TTL policy and idle owner-lease metadata where required.

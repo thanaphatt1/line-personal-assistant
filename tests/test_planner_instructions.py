@@ -27,6 +27,7 @@ def offered(*names):return [{'name':name} for name in names]
     (('resolve_temporal',),'Temporal interpretation:','Stored category proposals:'),
     (('resolve_activity_dates',),'Pending activity clarification:','Calendar preparation:'),
     (('scan_historical_categories',),'Stored category proposals:','Pending changes:'),
+    (('finish_preparation_reply',),'Repair reply:','Expense preparation:'),
 ])
 def test_guidance_follows_capabilities_without_keyword_routing(names,present,absent):
     prompt=build(offered(*names))

@@ -1370,6 +1370,9 @@ class HistoryFirstAssistant(Assistant):
     def _tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='finish_preparation_reply':
+                from .response_realization import finish_repair_reply
+                return finish_repair_reply(self,args)
             from .catalog_aliases import NAMES as ALIAS_NAMES
             if self.raw_history_enabled and name in ALIAS_NAMES:return self.catalog_aliases.tool(name,args)
             if self.raw_history_enabled and name=='query_sources':
@@ -1813,7 +1816,7 @@ class HistoryFirstAssistant(Assistant):
         if self.state.owner_id!=self.settings.owner_id:return Result('denied','')
         self._patch_stamp=stamp;self.trace=[];self.context_stats=[]
         self._request_views={};self._read_views={};self._pending_record_views={};self._pair_items=();self._request_date_views={};self._occurrence_views={};self._entry_index=None;self._update_ordinals=set();self._inflight_expense_repair=None;self._literal_expense=None
-        self._temporal_values={};self._temporal_bases={}
+        self._temporal_values={};self._temporal_bases={};self._repair_reply=None
         self.saved_edits.request_candidates={}
         self.table_flow.candidates={}
         self.table_flow.selection_sets={}
@@ -1899,6 +1902,18 @@ class HistoryFirstAssistant(Assistant):
         self._query_reads={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
         for step in count():
             if not self.raw_history_enabled and step>=2:break
+            if self.raw_history_enabled:
+                from .pilot_http import remaining_model_seconds
+                remaining=remaining_model_seconds()
+                if remaining is not None and remaining<=0:
+                    emit('planning_stopped',reason='finalization_reserve')
+                    if self._query_analysis_active:
+                        stopped=Result('clarification','รอบนี้ค้นข้อมูลตามเงื่อนไขไม่ทันครับ จึงยังสรุปผลไม่ได้',
+                            {'domain':'query_analysis','query_analysis':True,'read_only':True,
+                             'tool_result':{'query_analysis':True,'ok':False,'complete':False,'error_code':'planning_deadline','query_refs':list(self._query_reads)}})
+                    else:stopped=self._result(last) if last else Result('model_unavailable',planner_failure_message({'kind':'timeout'}),{'model_failure':{'kind':'timeout'}})
+                    stopped.data['planning_stopped']='deadline'
+                    return self._finish(event,at,stopped)
             try:
                 if previous and (not exchanges or exchanges[-1] is not previous):
                     if any(old[0]['call_id']==previous[0]['call_id'] for old in exchanges):
@@ -1946,6 +1961,8 @@ class HistoryFirstAssistant(Assistant):
                     self._pending_record_views={v['draft_ref']:deepcopy(v) for v in pending}
                     definitions_for_request=planner_tools(definitions_for_request,pending)
                     definitions_for_request+=pending_definitions(pending)
+                    from .response_realization import repair_exit_definition
+                    definitions_for_request+=repair_exit_definition(self)
                     if repair_allowed is not None:definitions_for_request=[t for t in definitions_for_request if t['name'] in repair_allowed]
                     if self._query_analysis_active:definitions_for_request=[t for t in definitions_for_request if t['name'] in READ_TOOLS]
                     self.state.raw_tool_definitions=deepcopy(definitions_for_request)
@@ -1996,11 +2013,17 @@ class HistoryFirstAssistant(Assistant):
                      call_ref=ref((saved.get('call') or {}).get('call_id')),
                      tool=code((saved.get('call') or {}).get('name')) if saved.get('call') else None)
                 if saved.get('failure'):
+                    from .response_realization import finish_repair_text
+                    finished=finish_repair_text(self,'')
+                    if finished:return self._finish(event,at,finished)
                     if previous and previous[1].get('repair_feedback'):return self._finish(event,at,self._result(last))
                     detail=saved.get('diagnostic',{'kind':'unavailable'})
                     return self._finish(event,at,Result('model_unavailable',planner_failure_message(detail),{'model_failure':deepcopy(detail)}))
                 call=saved['call']
                 if call is None:
+                    from .response_realization import finish_repair_text
+                    finished=finish_repair_text(self,saved['text'])
+                    if finished:return self._finish(event,at,finished)
                     if last and last.get('temporal_resolution') and last.get('ok'):
                         return self._finish(event,at,self._result(last))
                     if self._query_analysis_active:
@@ -2040,7 +2063,9 @@ class HistoryFirstAssistant(Assistant):
                 emit('tool_result',tool=code(call['name']),call_ref=ref(call.get('call_id')),result=outcome(last),state=snapshot(self))
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
-                if last.get('ok'):repair_allowed=None
+                if last.get('prepared_reply_result'):
+                    return self._finish(event,at,Result(**last['prepared_reply_result']))
+                if last.get('ok'):repair_allowed=None;self._repair_reply=None
                 if last.get('read_batch'):
                     self._query_analysis_active=True;previous=(call,last);continue
                 if self.raw_history_enabled:
@@ -2050,6 +2075,11 @@ class HistoryFirstAssistant(Assistant):
                         last=corrected;self._query_analysis_active=True;previous=(call,last);continue
                     feedback=repairs.feedback(call,last)
                     if feedback is not None:
+                        from .response_realization import offer_repair_exit
+                        finish=offer_repair_exit(self,last) if call['name']!='finish_preparation_reply' else None
+                        if finish:
+                            feedback['repair_feedback']['final_reply']=finish
+                            feedback['repair_feedback']['allowed_tools'].append('finish_preparation_reply')
                         last=feedback;repair_allowed=set(feedback['repair_feedback']['allowed_tools']);previous=(call,last);continue
                     if last.get('repair_stopped'):return self._finish(event,at,self._result(last))
                 if last.get('temporal_resolution'):

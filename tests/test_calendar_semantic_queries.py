@@ -164,7 +164,12 @@ def test_incomplete_or_unavailable_analysis_cannot_claim_no_matches(failure,monk
     if failure=='loop':api.event_pages[PERSONAL]['']={'items':[],'nextPageToken':'again'};api.event_pages[PERSONAL]['again']=api.event_pages[PERSONAL]['']
     if failure=='capacity':monkeypatch.setattr(inference,'MAX_CANDIDATES',0)
     if failure=='body':monkeypatch.setattr(inference,'MAX_BODY_BYTES',1)
-    if failure=='deadline':monkeypatch.setattr('line_assistant.pilot_http.remaining_rpc_seconds',lambda:0.01)
+    if failure=='deadline':
+        from line_assistant import pilot_http
+        remaining=pilot_http.remaining_rpc_seconds
+        # Spend the semantic-classification window after the initial planner;
+        # an exhausted initial window now stops planning before any read.
+        monkeypatch.setattr(pilot_http,'remaining_rpc_seconds',lambda:0.01 if api.model_bodies else remaining())
     if failure=='model':api.voice=lambda body: (_ for _ in ()).throw(httpx.ReadTimeout('Synthetic inference failure'))
     if failure=='quota':
         def reserve_first(body):

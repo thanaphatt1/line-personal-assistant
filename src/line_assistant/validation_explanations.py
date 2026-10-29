@@ -69,6 +69,8 @@ PROPOSAL_ERRORS={
  'expense_count_mismatch':'จำนวนรายการที่ผมเตรียมยังไม่ตรงกับจำนวนที่อ้างครับ',
  'expense_amount_reused_without_count':'ผมใช้ยอดจากตำแหน่งเดิมซ้ำ โดยยังไม่มีจำนวนครั้งรองรับครับ',
  'expense_unaccounted_number':'ผมยังใส่ข้อมูลหรืออธิบายตัวเลขในข้อความของคุณไม่ครบครับ',
+ 'expense_date_evidence_required':'ผมยังอ้างข้อความวันที่สำหรับวันที่ที่เสนอไม่ครบครับ',
+ 'expense_date_value_invalid':'วันที่ที่ผมเสนอยังไม่ผ่านการตรวจรูปแบบหรือหลักฐานต้นทางครับ',
 }
 REASONS.update(PROPOSAL_ERRORS)
 

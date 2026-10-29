@@ -344,6 +344,11 @@ def parse(value,body):
     content=final.get('content',[])
     if not content or any(c.get('type')!='output_text' for c in content):raise ValueError('final_content')
     text=''.join(c['text'] for c in content)
+    return render_document(text,body)
+
+
+def render_document(text,body):
+    """Use the same fact renderer for received reply and planner-exit documents."""
     def pairs(values):
         if len(dict(values))!=len(values):raise ValueError('duplicate_keys')
         return dict(values)
@@ -400,6 +405,59 @@ def parse(value,body):
     if not result or len(result.encode('utf-16-le'))>9000:raise ValueError('reply_size')
     return result
 
+
+def offer_repair_exit(host,output):
+    """The repair planner may finish in its current call, with checked facts."""
+    if not getattr(host,'response_realization_enabled',False) or host._query_analysis_active:return None
+    core=host._result(output)
+    if selection.pending(core):return None
+    body=body_for(host,core)
+    if body is None:return None
+    ref='reply_'+hashlib.sha256(encoded([host._active_event_id,identity(core)])).hexdigest()[:24]
+    target=output.get('draft_ref');version=output.get('draft_version')
+    host._repair_reply={'ref':ref,'core':deepcopy(core),'body':body,'draft_ref':target,'version':version}
+    return {'response_ref':ref,'reply_context':json.loads(body['input'][0]['content']),
+        'instruction':'Repair with the offered tools when owner evidence is sufficient. If finishing with clarification or explanation instead, call finish_preparation_reply with this response_ref and a document over these facts. It preserves the current tool failure and pending facts; it cannot repair, save or authorize anything.'}
+
+
+def repair_exit_definition(host):
+    context=getattr(host,'_repair_reply',None)
+    if not context:return []
+    return [{'type':'function','name':'finish_preparation_reply','strict':True,
+        'description':'Finish this preparation/repair turn with a fact-checked reply document from repair_feedback.final_reply. Use its document schema and exact fact IDs; do not copy values or claim the failed operation succeeded. Never writes or confirms.',
+        'parameters':{'type':'object','additionalProperties':False,'properties':{
+            'response_ref':{'type':'string','enum':[context['ref']]},'document':deepcopy(context['body']['text']['format']['schema'])},
+            'required':['response_ref','document']}}]
+
+
+def finish_repair_reply(host,args):
+    from .tool_errors import PlanningError
+    context=getattr(host,'_repair_reply',None)
+    if not context or set(args)!={'response_ref','document'} or args['response_ref']!=context['ref']:
+        raise PlanningError('reply_reference_unavailable',fields=['response_ref'],tools=['finish_preparation_reply'])
+    target=context['draft_ref']
+    if target and host._draft(target)['version']!=context['version']:
+        raise PlanningError('reply_reference_stale',fields=['response_ref'])
+    try:text=render_document(json.dumps(args['document'],ensure_ascii=False),context['body'])
+    except (ValueError,TypeError,KeyError):
+        raise PlanningError('reply_document_invalid',fields=['document'],tools=['finish_preparation_reply']) from None
+    core=context['core'];result=apply(core,text,{'status':'planner','core_hash':identity(core),'source':'repair_exit'})
+    return {'ok':True,'prepared_reply_result':{'status':result.status,'message':result.message,'data':deepcopy(result.data)}}
+
+
+def finish_repair_text(host,text):
+    """A toolless repair exit never starts another composition request."""
+    context=getattr(host,'_repair_reply',None)
+    if not context:return None
+    core=deepcopy(context['core'])
+    metadata={'status':'fallback','core_hash':identity(core),'reason':'planner_reply_invalid','source':'repair_exit'}
+    try:
+        rendered=render_document(text,context['body'])
+        metadata.update(status='planner');metadata.pop('reason')
+        return apply(core,rendered,metadata)
+    except (ValueError,KeyError,TypeError):
+        return Result(core.status,core.message,{**core.data,'response_realization':metadata})
+
 def apply(result,text,metadata):
     if selection.pending(result):return selection.apply(result,text,metadata)
     data=deepcopy(result.data);data['response_realization']=metadata
@@ -426,9 +484,9 @@ def _attempt(host,event,key,body,finish_by,number):
     if cached is None:
         # Durable reservation/lease RPCs consume the same foreground time.
         # Recheck after them, before transmission, without refunding a reserve.
-        from .pilot_http import remaining_rpc_seconds
-        timeout=finish_by-monotonic();remaining=remaining_rpc_seconds()
-        if remaining is not None:timeout=min(timeout,remaining-2)
+        from .pilot_http import remaining_model_seconds
+        timeout=finish_by-monotonic();remaining=remaining_model_seconds()
+        if remaining is not None:timeout=min(timeout,remaining)
         if timeout<0.05:
             _inflight.release();cached={'status':'fallback','reason':'deadline'}
             host.guard.complete(key,cached)
@@ -485,13 +543,13 @@ def realize(host,event,result):
     if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')
     body=body_for(host,result)
     if body is None:return fallback('body_bound')
-    from .pilot_http import remaining_rpc_seconds
+    from .pilot_http import remaining_model_seconds
     deadline=(selection.TIMEOUT_SECONDS if selection.pending(result) else
               answer_composition.TIMEOUT_SECONDS if body['text']['format']['name'] in {'grounded_answer_document','grounded_operation_document'} else TIMEOUT_SECONDS)
     finish_by=started+deadline
     for number in range(2):
-        remaining=remaining_rpc_seconds();timeout=finish_by-monotonic()
-        if remaining is not None:timeout=min(timeout,remaining-2)
+        remaining=remaining_model_seconds();timeout=finish_by-monotonic()
+        if remaining is not None:timeout=min(timeout,remaining)
         if timeout<0.05:return fallback('deadline',repair_from)
         key='realize01_'+hashlib.sha256(encoded([event] if not number else [event,'answer_repair',number])).hexdigest()[:40]
         cached,reserved=_attempt(host,event,key,body,finish_by,number)

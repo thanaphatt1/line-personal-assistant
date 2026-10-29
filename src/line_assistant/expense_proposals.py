@@ -39,6 +39,8 @@ class Record(Strict):
     amount: str | int | None = Field(description='Positive THB amount as digits, with at most two decimals; no currency text or arithmetic. Null only when genuinely missing.')
     amount_source: Quote | None = Field(description='Quote just the original numeric amount for this occurrence. Reuse a numeric span only with an explicit occurrences count claim.')
     date_source: Quote | None = Field(description='Literal date expression, including shared dates, or null for Bangkok today. Resolve relative wording at the original source timestamp.')
+    date_value: str | None = Field(default=None, description='ISO YYYY-MM-DD interpreted from date_source and that original message timestamp. Supply together with date_source to resolve clear wording in this same call. Never guess a genuinely ambiguous date: use date_ambiguous=true instead. Null when omitted, ambiguous or an offered date_ref is selected. This is a reviewed proposal, never consent.')
+    date_ambiguous: bool = Field(default=False, description='True only when a quoted date/reference remains genuinely ambiguous after using visible history. Leave date_value/date_ref null; the server retains the other facts and asks for the date without a repair round. False when omitted or resolvable.')
     date_ref: str | None = Field(description='An offered date_references ref selected by the current conversational meaning, or null. Do not combine with date_source.')
     note: str | None = Field(max_length=300)
     note_source: Quote | None = Field(description='Literal owner note value, separate from the complete item name. Null when no note was requested.')
@@ -171,6 +173,16 @@ def compile_proposal(h, args):
             if fields[field] and any(overlaps(fields[field], v) for v in [item, fields.get('amount')] if v):
                 fail('expense_field_overlap', path + '.' + field + '_source')
         if record.date_ref and record.date_source: fail('conflicting_date_reference', path + '.date_ref')
+        resolution=None
+        if record.date_ambiguous and (not record.date_source or record.date_value is not None or record.date_ref):
+            fail('expense_date_evidence_required',path+'.date_ambiguous')
+        if record.date_value is not None:
+            if not record.date_source or record.date_ref:fail('expense_date_evidence_required',path+'.date_value')
+            from .temporal import execute, get
+            resolved_date=execute(h,{'source_ref':record.date_source.source_ref,'source_text':record.date_source.text,
+                'kind':'date','mode':'components','date':record.date_value})
+            if not resolved_date.get('ok'):fail('expense_date_value_invalid',path+'.date_value')
+            _,resolution=get(h,resolved_date['temporal_ref'],'date',source_ref=record.date_source.source_ref,source_text=record.date_source.text)
         if record.note is not None and (not fields['note'] or record.note != fields['note']['text']):
             fail('expense_note_mismatch', path + '.note')
         if record.note is None and fields['note']: fail('expense_note_value_required', path + '.note')
@@ -180,7 +192,8 @@ def compile_proposal(h, args):
             'amount': amount, 'date_text': fields['date']['text'] if fields['date'] else None,
             'date_ref': record.date_ref, 'note': record.note, 'source_refs': refs,
             'field_sources': {k: [v['source_ref']] if v else [] for k, v in fields.items()}})
-        contexts.append({'fields': fields, 'portions': portions})
+        contexts.append({'fields': fields, 'portions': portions, 'date_ambiguous':record.date_ambiguous,
+            **({'date_resolution':resolution} if resolution else {})})
     if set(groups) != {e.group_ref for e in p.entries}: fail('expense_unused_group', 'groups')
     money_proofs = [c['fields']['amount'] for c in contexts if c['fields'].get('amount')]
     other_proofs = [c['fields'][k] for c in contexts for k in ['item', 'date', 'note'] if c['fields'].get(k)]
@@ -266,8 +279,17 @@ def entry(h, value, old, index):
     units = [(date_field['text'], datetime.fromisoformat(date_field['at']), date_field['source_ref'])] if date_field else []
     if not old and not units: units = [('', datetime.fromisoformat(h._current['at']), h._current['source_ref'])]
     ref = date_field['source_ref'] if date_field else h._current['source_ref']
-    calculated, parts, basis, issue = resolve(units, old, ref, h.clock())
-    if date_field and not value.date_ref and not any(cues(text, at)[0] or cues(text, at)[2] for text, at, _ in units): invalid.append('date_expression_unresolved')
+    resolution=context.get('date_resolution') if context else None
+    ambiguous=bool(context and context.get('date_ambiguous'))
+    if ambiguous:
+        calculated=None;parts={};issue='date_clarification_required'
+        basis={'policy':'owner-date-clarification-v1','source_refs':[date_field['source_ref']],
+            'original_date_text':date_field['text'],'anchor_date':datetime.fromisoformat(date_field['at']).astimezone(BANGKOK).date().isoformat()}
+    elif resolution:
+        calculated=resolution['values']['date'];parts={};issue=None
+        basis={'policy':'semantic-temporal-v1','temporal':deepcopy(resolution),'source_refs':[resolution['source_ref']]}
+    else:calculated, parts, basis, issue = resolve(units, old, ref, h.clock())
+    if date_field and not resolution and not ambiguous and not value.date_ref and not any(cues(text, at)[0] or cues(text, at)[2] for text, at, _ in units): invalid.append('date_expression_unresolved')
     if value.date_ref:
         available = {v['date_ref']: v for v in semantic.date_targets(h)}
         target = available.get(value.date_ref)
@@ -283,7 +305,7 @@ def entry(h, value, old, index):
                 'date_ref': value.date_ref, 'referenced_date': calculated, 'source_refs': [],
                 **({'confirmed_event': target['confirmed_event']} if target.get('confirmed_event') else {})}
     if calculated and date.fromisoformat(calculated) > h.clock().astimezone(BANGKOK).date(): issue = 'future_expense_date'
-    if issue and issue not in {'missing_day', 'missing_month_for_future_day'}: invalid.append(issue)
+    if issue and issue not in {'missing_day', 'missing_month_for_future_day','date_clarification_required'}: invalid.append(issue)
     if not calculated: missing.append('date.month' if issue == 'missing_month_for_future_day' else 'date')
     mapping = deepcopy(old['mapping']) if same_item else None
     enrollment = deepcopy(old.get('enrollment')) if same_item else None

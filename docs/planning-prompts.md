@@ -29,6 +29,14 @@ boundary. These checks establish provenance and a reviewable proposal;
 semantic grouping and deciding total versus per-payment meaning remain model
 responsibilities. Strict JSON schema cannot prove that interpretation correct.
 
+Temporal guidance prefers an inline interpreted date where the target schema
+offers one; `resolve_temporal` remains available for other interpretations and
+arithmetic. A repair-only guidance section appears with
+`finish_preparation_reply`, directing the planner to the current checked reply
+facts when owner clarification is still needed. Ordinary requests do not load
+that section. This combines related work within a model call while preserving
+the original evidence and reply validators.
+
 ## Keeping instructions general
 
 Use semantic principles for new versus additional records, references to
@@ -67,6 +75,8 @@ separate from changes to model behavior and regrade received evidence offline.
 Compare factual results and selected arguments before comparing tokens or
 latency. A smaller prompt alone does not establish better generalization.
 
-The grounded reply composer is a separate stage. Changing planner instructions
-does not replace its output schema or weaken its factual checks. Development
+The grounded reply composer normally runs as a separate stage. A preparation
+repair may finish through that same document schema and factual renderer in
+its existing planner call. Changing planner instructions does not weaken those
+checks. Development
 evaluation does not publish source or deploy production.

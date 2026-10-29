@@ -31,6 +31,25 @@ webhook samples measure different things. Phase timings can overlap, so adding
 all phases does not produce total latency. Small samples are diagnostic, not a
 reliable production p95. This script does not fetch logs or call any provider.
 
+## Finish before the deadline
+
+Raw-history model calls share the 50-second foreground assistant scope and
+leave ten seconds inside it for durable accounting, response receipts and
+owner-lease release. Every model transport timeout honors that reserve. The
+planner stops before another call when its model window is spent; retained
+partial facts remain available, and unfinished analysis is not reported as a
+complete answer. Optional reply composition uses the same remaining model
+window and falls back to the checked core reply rather than spending the
+persistence reserve. This does not extend deadlines, retry unknown outcomes,
+clear reservations or authorize a write.
+
+LINE delivery starts only after the assistant receipt is persisted and has a
+separate ten-second RPC scope. Its existing 55-second local token deadline
+still applies. Cloud Run must allow the entire request, including cold start;
+the offline release gate requires at least 90 seconds. Increasing that ingress
+timeout alone cannot prevent a model from exhausting application persistence
+time. The [deployment procedure](deployment.md) checks both boundaries.
+
 ## Fewer planning round trips
 
 `query_sources` batches up to eight independent typed expense, Calendar or table
@@ -62,6 +81,19 @@ ordinals from money evidence. This avoids unnecessary planning repairs for
 valid lists and combined date/amount corrections. Actual argument mistakes
 still return to the planner; repeated failures stop. Offline call-count checks
 cover these paths, without establishing a production latency improvement.
+
+New expense proposals can include an interpreted date with its original
+quotation in the preparation call. The existing temporal validator produces
+the retained proof without another planner request. A genuinely ambiguous
+date instead retains the known facts for a focused owner question.
+
+Recoverable preparation feedback can offer a checked reply context and
+`finish_preparation_reply`. The repair planner can finish the reply using the
+existing document schema and fact renderer, avoiding a subsequent composer
+request. An invalid toolless exit uses the checked core fallback directly.
+A successful repair clears the earlier reply context and follows the normal
+review/composition path. These changes reduce specific round trips; they do
+not make every turn a single model call or establish a general speed target.
 
 ## Waiting and clarification
 

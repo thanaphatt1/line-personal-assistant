@@ -131,8 +131,11 @@ def test_optional_realization_never_bypasses_same_guard_or_changes_completed_sta
 
 def test_deadline_fallback_makes_no_optional_paid_request(monkeypatch):
     from line_assistant import pilot_http
-    monkeypatch.setattr(pilot_http,'remaining_rpc_seconds',lambda:0.01)
-    api=VoiceHosted();r,_=turn(api,text(),proposed)
+    api=VoiceHosted();remaining=pilot_http.remaining_rpc_seconds
+    # The planner still has time. Only optional composition sees the spent
+    # foreground window after the preparation response has been received.
+    monkeypatch.setattr(pilot_http,'remaining_rpc_seconds',lambda:0.01 if api.model_bodies else remaining())
+    r,_=turn(api,text(),proposed)
     assert r.status=='preview' and r.data['response_realization']['reason']=='deadline' and not api.voice_bodies
 
 def test_off_flag_uses_existing_one_planner_call_only():

@@ -32,6 +32,11 @@ CORE = (
     'Unknown errors and incomplete reads do not prove zero, absence or success.'
 )
 
+REPAIR_REPLY = (
+    'Repair reply: if owner clarification is still needed, call finish_preparation_reply with '
+    'repair_feedback.final_reply fact references. Do not answer in free text or claim a failed tool succeeded.'
+)
+
 EXPENSE = (
     'Expense preparation: prepare requested new payments from known owner facts, retaining incomplete facts for the server question. '
     'Include every payment occurrence separately with its own name and amount. Catalog matching is part of preparation; '
@@ -109,7 +114,7 @@ VOCABULARY = (
 )
 
 TEMPORAL = (
-    'Temporal interpretation: use resolve_temporal when the literal temporal parser is insufficient or arithmetic needs a verified basis. '
+    'Temporal interpretation: prefer an inline interpreted date if offered; otherwise use resolve_temporal. '
     'Keep original owner wording, timestamp and resolution proof together. Use the returned projections and temporal_ref '
     'in the target tool, preserving both date and time when a datetime crosses a day boundary. '
     'Read actual saved events before using them as temporal bases; do not resolve an ambiguous target or clock by guessing.'
@@ -146,6 +151,7 @@ def build(definitions):
     names={tool['name'] for tool in definitions}
     sections=[CORE]
     groups=(
+        ({'finish_preparation_reply'},REPAIR_REPLY),
         ({'prepare_expenses','read_expense_drafts','prepare_expense_review'},EXPENSE),
         ({'query_expenses','query_calendar','query_table','finish_query_analysis','query_sources'},READS),
         ({'query_relations'},RELATIONS),

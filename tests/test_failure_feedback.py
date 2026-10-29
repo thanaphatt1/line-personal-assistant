@@ -218,17 +218,22 @@ def test_hosted_diagnostic_generation_failure_returns_actionable_fallback_and_re
         return response(name='prepare_expenses',args={'draft_ref':None,'draft_version':None,'entries':rows})
     turn(api,'หอยทอด 50 บาท กับ หมูย่าง 50 บาท',prepare)
     def invalid_choice(b):
+        replies=[json.loads(v['output']).get('repair_feedback',{}).get('final_reply')
+                 for v in b['input'] if v.get('type')=='function_call_output']
+        if any(replies):
+            p=next(v['reply_context'] for v in replies if v)
+            assert p['validation_reply']
+            return response(text=json.dumps({'reason_codes':p['validation_feedback']['codes'],
+                'explanation':'ไม่มีสิทธิ์เลือกหมวดในฐานข้อมูลครับ'},ensure_ascii=False))
         d=json.loads(b['input'][0]['content'])['available_drafts'][0]
         return response(name='prepare_item_enrollment',args={'draft_ref':d['draft_ref'],'draft_version':d['version'],
             'entry_ref':d['entries'][0]['entry_ref'],'resolution_step':'begin_new_item',
             'category':'Food/Drink','subcategory':None,'existing_item':None})
-    def bad_prose(b):
-        p=json.loads(b['input'][0]['content']);assert p['validation_reply']
-        value=generated(b);value['output'][0]['content'][0]['text']=json.dumps({
-            'reason_codes':p['validation_feedback']['codes'],'explanation':'ไม่มีสิทธิ์เลือกหมวดในฐานข้อมูลครับ'},ensure_ascii=False)
-        return value
-    api.voice=bad_prose;r,event=turn(api,'เพิ่มเป็นรายการใหม่',invalid_choice)
-    assert r.data['response_realization']['reason']=='invalid_output'
+    def no_extra_composer(b):raise AssertionError('Repair reply must not start a third model request')
+    api.voice=no_extra_composer;before=len(api.model_bodies)
+    r,event=turn(api,'เพิ่มเป็นรายการใหม่',invalid_choice)
+    assert len(api.model_bodies)==before+2
+    assert r.data['response_realization']['reason']=='planner_reply_invalid'
     assert 'หมวด' in r.message and 'หอยทอด' in r.message and 'หมูย่าง' not in r.message
     assert 'ยังอยู่' not in r.message and 'ไม่ต้องส่ง' not in r.message
     assert 'สิทธิ์' not in r.message and not api.google.sheet_writes and not api.calendar.posts

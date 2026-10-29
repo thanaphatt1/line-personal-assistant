@@ -63,6 +63,21 @@ one literal numeric amount, a date quotation or offered date ref, and an
 optional literal note. Shared dates may lie outside groups. Source quotations
 remain immutable; proposed catalog spellings never replace the owner's words.
 
+An entry can supply `date_value` as an interpreted ISO date together with its
+original `date_source` quotation. The server uses the existing temporal
+components validator in that same preparation call and retains its proof,
+original timestamp and quoted wording. This avoids a separate temporal tool
+round trip for clear dates. An offered `date_ref` is an alternative, never a
+second date source. Invalid calendar dates, future expense dates and invented
+quotations remain rejected. The interpretation is still a model proposal for
+owner review; an exact quotation does not establish that its meaning is right.
+
+When a quoted date remains genuinely ambiguous after considering the dialogue,
+`date_ambiguous=true` with null `date_value`/`date_ref` retains the other facts
+and asks for the date directly. Missing owner meaning is not a malformed tool
+argument that needs another planning attempt. Internal compatible calls that
+omit these fields retain their previous date resolution path.
+
 The server checks quotation existence, numeric values, field overlap and
 numeric coverage across the whole current message and selected historical
 portions. A duplicated numeric span needs an explicit per-payment occurrence
@@ -112,6 +127,17 @@ provider faults are not automatically retried. Existing multi-source read
 analysis retains its own evidence/goal-preserving continuation. Failed patches
 retain verified focus and table drafts; free model text cannot report an
 unverified successful change.
+
+When response realization is enabled, recoverable preparation feedback can
+also offer `final_reply`: current checked facts and a request-local
+`response_ref`. The repair planner may call `finish_preparation_reply` with a
+document using the existing reply schema instead of starting another composer
+request. The same fact renderer checks it; draft version, result status,
+controls and confirmation requirements are preserved. A successful repair
+revokes the old reply context. Invalid free text or an unavailable repair
+response uses the checked core explanation without another model call. This
+exit cannot save, authorize, or turn a failed operation into success, and is
+not offered inside read-analysis or pending Calendar semantic selection.
 
 Omitted payment siblings and invalid field evidence also return to the planner.
 When a new proposal retains verified facts after rejecting a field, a corrected

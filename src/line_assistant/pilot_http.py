@@ -29,10 +29,19 @@ from .transport import ApiError, LiveDisabled, NotReady, OutcomeUnknown, log_lin
 
 
 _rpc_remaining = ContextVar("pilot_rpc_remaining", default=None)
+# Model work must leave time to durably finish its reservation, persist the
+# response receipt and release the owner lease. Reply delivery has its own
+# bounded scope after this one; this reserve does not authorize more effects.
+MODEL_FINALIZATION_SECONDS = 10.0
 
 def remaining_rpc_seconds():
     scope=_rpc_remaining.get()
     return max(0.0,scope['deadline']-monotonic()) if scope is not None else None
+
+
+def remaining_model_seconds():
+    remaining=remaining_rpc_seconds()
+    return None if remaining is None else max(0.0,remaining-MODEL_FINALIZATION_SECONDS)
 
 
 @contextmanager
@@ -56,12 +65,12 @@ def rpc_exhausted():
     return scope is not None and (scope["remaining"] <= 0 or monotonic() >= scope["deadline"])
 
 
-def take_rpc(*,max_seconds=12):
+def take_rpc(*,max_seconds=12,reserve_seconds=0):
     remaining = _rpc_remaining.get()
-    if remaining is None or remaining["remaining"] <= 0 or monotonic() >= remaining["deadline"]:
+    if remaining is None or remaining["remaining"] <= 0 or monotonic()+reserve_seconds >= remaining["deadline"]:
         raise LiveDisabled("No active bounded owner RPC scope")
     remaining["remaining"] -= 1
-    return max(0.001, min(max_seconds, remaining["deadline"]-monotonic()))
+    return max(0.001, min(max_seconds, remaining["deadline"]-monotonic()-reserve_seconds))
 
 
 class PilotHttp:
@@ -103,7 +112,10 @@ class PilotHttp:
         planner=(getattr(self,'raw_history_enabled',False) and method=='POST'
             and url=='https://api.openai.com/v1/responses' and isinstance(body,dict)
             and body.get('reasoning')=={'effort':PLANNER_REASONING_EFFORT})
-        timeout = take_rpc(max_seconds=PLANNER_RPC_SECONDS if planner else 12)
+        model=(getattr(self,'raw_history_enabled',False) and method=='POST'
+            and url=='https://api.openai.com/v1/responses')
+        timeout = take_rpc(max_seconds=PLANNER_RPC_SECONDS if planner else 12,
+            reserve_seconds=MODEL_FINALIZATION_SECONDS if model else 0)
         if self.reply_check and method == "POST" and url == "https://api.line.me/v2/bot/message/reply":
             self.reply_check.current()
             timeout = min(timeout, (self.reply_check.spec.expires_at - self.clock()).total_seconds())
