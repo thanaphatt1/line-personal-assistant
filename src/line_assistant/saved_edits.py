@@ -65,9 +65,9 @@ def visible_record(record,domain):
 
 def describe(value,domain):
     from .reply_display import day,calendar_parts
-    if domain=='expense':return f"{value['item']} — {value['amount']} บาท วันที่ {day(value['date'])}"
+    if domain=='expense':return f"{value['item']} {value['amount']} บาท วันที่ {day(value['date'])}"
     when,hours=calendar_parts(value)
-    return value['title']+' — '+when+' '+hours
+    return value['title']+' '+when+' '+hours
 
 class SavedEdits:
     def __init__(self,host,*,expense_editor=None,calendar_editor=None,expense_enabled=False,calendar_enabled=False):

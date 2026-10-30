@@ -51,6 +51,7 @@ REASONS={
 }
 
 PROPOSAL_ERRORS={
+ 'expense_conflicting_amount_basis':'ต้องเลือกใช้ยอดจากข้อความหรือยอดเดิมอย่างใดอย่างหนึ่งครับ',
  'expense_quote_not_found':'ข้อความต้นทางที่ผมอ้างไม่ตรงกับข้อความของคุณครับ',
  'expense_numeric_quote_required':'ผมยังอ้างตัวเลขต้นทางของรายการนี้ไม่ถูกต้องครับ',
  'expense_partial_numeric_quote':'ผมเลือกมาเพียงบางส่วนของตัวเลข จึงยังใช้ยอดนั้นไม่ได้ครับ',

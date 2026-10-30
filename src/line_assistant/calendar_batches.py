@@ -343,7 +343,7 @@ class CalendarBatches:
         for d in view['events']:
             name=d['facts']['title'] or d['source_unit']['text'].strip()
             status={'recorded':'สร้างแล้ว','cancelled':'ยกเลิกร่างแล้ว'}.get(d['status'])
-            if status:rows.append(f"{d['ordinal']}. {name} — {status}");continue
+            if status:rows.append(f"{d['ordinal']}. {name} {status}");continue
             fields=clarification_fields(d)
             if 'time_or_all_day' in fields:
                 rows.append(f"{d['ordinal']}. {name}"+('\nวันนัด: '+d['facts']['date_text'] if d['facts']['date_text'] else ''))

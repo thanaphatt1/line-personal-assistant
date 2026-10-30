@@ -203,7 +203,7 @@ def facts_for(host,result):
             facts['status']=(f'มีรายจ่าย {len(entries)} รายการ รอให้ตรวจสอบก่อนบันทึกครับ' if result.status=='preview' else
                              f'มีรายจ่าย {len(entries)} รายการที่ยังต้องเติมหรือตรวจข้อมูลครับ')
             for i,e in enumerate(entries,1):
-                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} — {money(e.get('amount'),'ยังไม่ระบุจำนวน')} บาท\nวันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
+                facts[f'row{i}']=f"{i}. {e.get('item') or 'ยังไม่ระบุชื่อ'} {money(e.get('amount'),'ยังไม่ระบุจำนวน')} บาท\nวันที่ {day_or(e.get('date'),'ยังไม่ระบุ')}"+('\nหมายเหตุ: '+e['note'] if e.get('note') else '')
             if result.status=='preview':
                 for i,e in enumerate(entries,1):
                     prior=e.get('previous_price')
@@ -356,7 +356,9 @@ def render_document(text,body):
     if payload.get('calendar_selection'):return selection.parse(document,payload)
     if payload.get('validation_reply'):return parse_validation(document,payload)
     if payload.get('answer_document') or payload.get('operation_document'):
-        try:return answer_composition.render(document,payload['operation_facts'] if payload.get('operation_document') else payload['answer_facts'])
+        try:
+            if payload.get('operation_document'):return operation_composition.render(document,payload['operation_facts'])
+            return answer_composition.render(document,payload['answer_facts'])
         except answer_composition.AnswerError as error:
             # Only a fully received, usage-checked final JSON document is
             # eligible for feedback. Transport/envelope failures never retry.
@@ -396,7 +398,7 @@ def render_document(text,body):
                 chunks.append(facts[word]+'\n')
         elif part['kind']=='text':
             literal+=len(word);speech(word)
-            chunks.append(word)
+            chunks.append(re.sub(r'[ \t]*—[ \t]*',' ',word))
         else:raise ValueError('part_kind')
     valid_facts=(len(seen)==len(facts) and set(seen)==set(facts)) if payload.get('query_reply') else seen==payload['fact_order']
     if not valid_facts or literal>240:raise ValueError('incomplete_facts')

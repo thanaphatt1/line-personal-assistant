@@ -167,9 +167,9 @@ class ProvisionalCategories:
         return {'expense':f"{sum((Decimal(r['expense']) for r in selected),Decimal(0)):.2f}",'count':sum(r['count'] for r in selected),'items':[r['item'] for r in selected]}
     def render(self,v):
         b=v['basis']['output'];partial=b['partial'];total=self.totals(v)
-        lines=[f"ยืนยันจาก Database: {partial['expense']} บาท / {partial['count']} รายการ (ยอดบางส่วน)",f"เสนอสำหรับหมวดที่ถาม: {total['expense']} บาท / {total['count']} รายการ — ยังไม่รวมในยอดยืนยัน"]
+        lines=[f"ยืนยันจาก Database: {partial['expense']} บาท / {partial['count']} รายการ (ยอดบางส่วน)",f"เสนอสำหรับหมวดที่ถาม: {total['expense']} บาท / {total['count']} รายการ ยังไม่รวมในยอดยืนยัน"]
         for r in v['proposals']:
-            label=(r['category']+('/'+r['subcategory'] if r['subcategory'] else '')) if r['status']=='proposed' else 'ยังไม่ชัดเจน'+(' — '+', '.join(c['category']+('/'+c['subcategory'] if c['subcategory'] else '') for c in r['candidates']) if r['candidates'] else '')
+            label=(r['category']+('/'+r['subcategory'] if r['subcategory'] else '')) if r['status']=='proposed' else 'ยังไม่ชัดเจน'+(' '+', '.join(c['category']+('/'+c['subcategory'] if c['subcategory'] else '') for c in r['candidates']) if r['candidates'] else '')
             lines.append(r['item']+' → '+label+f" ({r['expense']} บาท / {r['count']} รายการ)")
         remaining=b['mapping_diagnostics']['unresolved_item_count']-len(v['proposals'])
         if remaining:lines.append(f'อีก {remaining} ชื่อยังไม่มีข้อเสนอ')

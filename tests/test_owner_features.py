@@ -98,17 +98,33 @@ def test_alias_rejects_unconfirmed_unsupported_or_stale_binding(kind):
     assert not api.snapshot()['history24']['current']['owner_features_v1']['aliases'] and api.expense_writes==0
 
 
-def record(api,items=('Spotify',)):
+def record(api,items=('Spotify',),*,legacy_buttons=False):
     text=' และ '.join(item+' 88 บาท' for item in items)
     review,_=turn(api,text,prepare(items,amounts={item:88 for item in items}));assert review.status=='preview',review
-    result,_=turn(api,review.data['confirm_command']);assert result.status=='recorded',result
+    api.seed_legacy_buttons=legacy_buttons
+    try:result,_=turn(api,review.data['confirm_command'])
+    finally:api.seed_legacy_buttons=False
+    assert result.status=='recorded',result
     return result
+
+
+def legacy_record(api,items=('Spotify',)):
+    return record(api,items,legacy_buttons=True)
+
+
+@pytest.mark.parametrize('backend',['sheets','firestore'])
+def test_new_saved_summary_has_no_post_save_menu_even_with_owner_controls_enabled(backend):
+    from line_assistant.line_api import rendered_message
+    api=OwnerHosted(backend);result=record(api,('Spotify','YouTube'))
+    assert 'record_actions' not in result.data
+    assert rendered_message(result)=={'type':'text','text':result.message}
+    assert 'Spotify' in result.message and 'YouTube' in result.message
 
 
 @pytest.mark.parametrize('backend',['sheets','firestore'])
 @pytest.mark.parametrize('operation',['amount','date','source','delete'])
 def test_saved_buttons_use_stable_record_and_require_separate_write_confirmation(backend,operation):
-    api=OwnerHosted(backend);saved=record(api);calls=len(api.model_bodies);writes=api.expense_writes
+    api=OwnerHosted(backend);saved=legacy_record(api);calls=len(api.model_bodies);writes=api.expense_writes
     result,_=turn(api,button(saved,operation),postback=True)
     assert len(api.model_bodies)==calls and api.expense_writes==writes,result
     if operation=='source':
@@ -127,12 +143,12 @@ def test_saved_buttons_use_stable_record_and_require_separate_write_confirmation
         assert review.status=='preview',review
         assert api.expense_writes==writes
         result,_=turn(api,'ยืนยัน');assert result.status=='updated',result
-        assert api.expense_writes==writes+1 and result.data.get('record_actions')
+        assert api.expense_writes==writes+1 and not result.data.get('record_actions')
 
 
 @pytest.mark.parametrize('kind',['text','forged','undelivered','expired','off'])
 def test_invalid_record_button_never_calls_model_or_writes(kind):
-    api=OwnerHosted();saved=record(api);command=button(saved,'amount')
+    api=OwnerHosted();saved=legacy_record(api);command=button(saved,'amount')
     if kind=='forged':command=command[:-1]+('0' if command[-1]!='0' else '1')
     if kind=='undelivered':
         app=api.app()
@@ -147,7 +163,7 @@ def test_invalid_record_button_never_calls_model_or_writes(kind):
 
 
 def test_multi_record_buttons_show_delivered_selection_before_field_focus():
-    api=OwnerHosted();saved=record(api,('Spotify','YouTube'));command=button(saved,'amount')
+    api=OwnerHosted();saved=legacy_record(api,('Spotify','YouTube'));command=button(saved,'amount')
     guessed=command.replace('|*|','|1|');calls=len(api.model_bodies);writes=api.expense_writes
     result,_=turn(api,guessed,postback=True);assert result.status=='stale'
     selection,_=turn(api,command,postback=True);assert selection.data.get('record_action_selection'),selection
@@ -201,7 +217,7 @@ def test_removal_review_can_be_replaced_with_edit_then_only_updates():
 
 
 def test_source_button_resolves_row_again_after_external_reorder():
-    api=OwnerHosted();saved=record(api);identifier=saved.data['record_actions']['records'][0]['id']
+    api=OwnerHosted();saved=legacy_record(api);identifier=saved.data['record_actions']['records'][0]['id']
     row=next(key[1] for key,value in api.google.cells.items() if key[0]=='All Expenses' and key[2]==5 and value==identifier)
     values=[api.google.cells.get(('All Expenses',row,col),'') for col in range(1,7)]
     for col,value in enumerate(values,1):
@@ -227,7 +243,7 @@ def test_new_feature_flags_default_off_keep_old_snapshot_format_and_tools():
 @pytest.mark.parametrize('field',['owner','scope','seal'])
 def test_foreign_or_modified_record_buttons_are_rejected_before_record_read(field):
     from line_assistant.history_context import digest
-    api=OwnerHosted();saved=record(api);app=api.app();calls=len(api.model_bodies);writes=api.expense_writes
+    api=OwnerHosted();saved=legacy_record(api);app=api.app();calls=len(api.model_bodies);writes=api.expense_writes
     with rpc_budget(20),app.state.assistant.state.session():
         state=app.state.assistant.state;value=state.receipts[saved.data['record_actions']['event']].result.data['record_actions']
         value[field]='foreign'
@@ -239,14 +255,14 @@ def test_foreign_or_modified_record_buttons_are_rejected_before_record_read(fiel
 
 
 def test_wrong_line_owner_cannot_use_saved_record_button():
-    api=OwnerHosted();saved=record(api);writes=api.expense_writes;calls=len(api.model_bodies)
+    api=OwnerHosted();saved=legacy_record(api);writes=api.expense_writes;calls=len(api.model_bodies)
     event=api.event(button(saved,'delete'),postback=True);event['source']['userId']='U'+'b'*32
     with TestClient(api.app()) as client:assert api.send(client,event).status_code==200
     assert api.expense_writes==writes and len(api.model_bodies)==calls
 
 
 def test_replacing_owner_alias_requires_new_review_and_preserves_recent_expense():
-    api=OwnerHosted();saved=record(api);last=deepcopy(api.snapshot()['last'])
+    api=OwnerHosted();saved=legacy_record(api);last=deepcopy(api.snapshot()['last'])
     turn(api,'จำว่า เพลง หมายถึง Spotify',alias());turn(api,'ยืนยัน')
     review,_=turn(api,'เปลี่ยนชื่อเรียก เพลง ให้หมายถึง YouTube',alias(item='YouTube'))
     assert review.status=='preview' and 'เดิมหมายถึง Spotify' in review.message
@@ -259,7 +275,7 @@ def test_replacing_owner_alias_requires_new_review_and_preserves_recent_expense(
 def test_saved_reply_buttons_preserve_certified_recent_amount_date_and_identity():
     from line_assistant.semantic_tools import recorded_result_matches
     from line_assistant.persistence import result_from
-    api=OwnerHosted();saved=record(api)
+    api=OwnerHosted();saved=legacy_record(api)
     action=next(a for a in api.snapshot()['actions'].values() if a['kind']=='add_transactions')
     core=result_from(action['result']);assert recorded_result_matches(core,saved)
     corrupt=deepcopy(saved);corrupt.data['refs']=['different-record']

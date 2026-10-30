@@ -17,6 +17,14 @@ class OwnerHosted(StorageHosted):
         self.owner_features={key:True for key in FLAGS}
         super().__init__(backend)
         self.voice=False
+        self.seed_legacy_buttons=False
+
+    def app(self,enabled=True):
+        app=super().app(enabled)
+        if self.seed_legacy_buttons:
+            host=app.state.assistant
+            host.record_actions.attach=lambda event,result:legacy_offer(host,event,result)
+        return app
 
     def configuration(self,enabled=True):
         return {**super().configuration(enabled),**{key:str(value).lower() for key,value in self.owner_features.items()}}
@@ -76,3 +84,24 @@ def button(result,operation):
 def review_button(result):
     return next(row['action']['data'] for row in result.data['line_message']['contents']['footer']['contents']
         if row['action'].get('data','').startswith('e1|') and 'cancel' not in row['action']['data'])
+
+
+def legacy_offer(host,event,result):
+    """Frozen v45 receipt wire fixture; never used by the current application."""
+    from datetime import timedelta
+    from line_assistant.expense_storage import storage_scope
+    from line_assistant.history_context import digest
+    from line_assistant.sheet_metadata import transaction_id
+    from line_assistant.conversation_ui import render_actions
+    from line_assistant.state import Result
+    claim=host.state.claims.get(event);action=host.state.actions.get(claim.action_key) if claim else None
+    if not host.record_actions.enabled or not action or action.status!='completed' or result.status!='recorded':return result
+    if action.kind not in {'add_transactions','catalog_expense'}:return result
+    records=[{'id':transaction_id(claim.action_key,i),**{k:e[k] for k in ['item','amount','date']}} for i,e in enumerate(action.payload['entries'])]
+    value={'owner':host.settings.owner_id,'scope':storage_scope(host.sheets),'event':event,
+        'ref':'record_'+digest([event,claim.action_key])[:20],'nonce':'a'*16,'records':records,
+        'expires_at':(host.clock()+timedelta(seconds=host.settings.last_action_ttl_seconds)).isoformat()}
+    value['seal']=digest(value)
+    actions=[host.record_actions.button(op,value,'*' if len(records)>1 else '0') for op in ['amount','date','source','delete']]
+    host.state.owner_features_used=True
+    return Result(result.status,result.message,{**result.data,'record_actions':value,'line_message':render_actions(result.message,actions)})

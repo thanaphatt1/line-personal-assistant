@@ -107,7 +107,7 @@ def test_calendar_review_document_keeps_status_notice_values_and_instruction():
     cells={f['label']:f['display'] for f in view['records'][0]['fields'].values()}
     assert cells=={'ชื่อนัด':'ตรวจฟัน','วันที่':'17 ต.ค. 2026','เวลา':'14:00–14:45'}
     text=operation.fallback(view)
-    assert 'ยังไม่ได้สร้างนัดนี้' in text and 'ตรวจฟัน — 14:00–14:45' in text and text.rstrip().endswith('ได้เลยครับ')
+    assert 'ยังไม่ได้สร้างนัดนี้' in text and 'ตรวจฟัน 14:00–14:45' in text and text.rstrip().endswith('ได้เลยครับ')
     assert text.index('ไม่พบนัดทับ')>text.index('ตรวจฟัน')
     # A natural single paragraph is valid when every value, notice and instruction stays bound.
     ids={label:ref for ref,label in view['fact_labels'].items()}

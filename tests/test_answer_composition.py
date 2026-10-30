@@ -172,7 +172,7 @@ def test_arbitrary_people_columns_need_no_expense_fields_or_per_table_formatter(
     result=Result('answer','fallback',{'read_only':True,'tool_result':output})
     view=composition.for_result(host,result)
     assert view and 'private-row-id' not in json.dumps(view)
-    assert composition.render(document(paragraph('{{f1}}'),rows(['r1'],'{{c1}} — เบอร์: {{c2}} — ติดต่อแล้ว: {{c3}}')),view).endswith('คนจำลอง — เบอร์: ว่าง — ติดต่อแล้ว: ไม่ใช่')
+    assert composition.render(document(paragraph('{{f1}}'),rows(['r1'],'{{c1}} — เบอร์: {{c2}} — ติดต่อแล้ว: {{c3}}')),view).endswith('คนจำลอง เบอร์: ว่าง ติดต่อแล้ว: ไม่ใช่')
 
 
 @pytest.mark.parametrize('status,complete,write', [('preview',True,False),('recorded',True,True),('answer',False,False),('summary',True,True)])

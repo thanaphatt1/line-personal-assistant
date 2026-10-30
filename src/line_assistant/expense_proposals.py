@@ -38,10 +38,11 @@ class Record(Strict):
     group_ref: str
     amount: str | int | None = Field(description='Positive THB amount as digits, with at most two decimals; no currency text or arithmetic. Null only when genuinely missing.')
     amount_source: Quote | None = Field(description='Quote just the original numeric amount for this occurrence. Reuse a numeric span only with an explicit occurrences count claim.')
-    date_source: Quote | None = Field(description='Literal date expression, including shared dates, or null for Bangkok today. Resolve relative wording at the original source timestamp.')
+    reuse_previous_amount: bool = Field(default=False, description='True only when the current owner asks to repeat a saved payment using its earlier amount. Leave amount/amount_source null. The server looks up an unambiguous amount for this exact item on or before the proposed expense date, including that same day; unavailable or ambiguous history stays missing. This prepares another payment for review, never saves or edits the original.')
+    date_source: Quote | None = Field(description='Literal date expression, including shared dates. First resolve the intended day from the dialogue; use date_ref when the day is implicit in a referenced expense/query. Null source with null date_ref defaults to Bangkok today only when no other day is selected. Resolve relative wording at the original source timestamp.')
     date_value: str | None = Field(default=None, description='ISO YYYY-MM-DD interpreted from date_source and that original message timestamp. Supply together with date_source to resolve clear wording in this same call. Never guess a genuinely ambiguous date: use date_ambiguous=true instead. Null when omitted, ambiguous or an offered date_ref is selected. This is a reviewed proposal, never consent.')
     date_ambiguous: bool = Field(default=False, description='True only when a quoted date/reference remains genuinely ambiguous after using visible history. Leave date_value/date_ref null; the server retains the other facts and asks for the date without a repair round. False when omitted or resolvable.')
-    date_ref: str | None = Field(description='An offered date_references ref selected by the current conversational meaning, or null. Do not combine with date_source.')
+    date_ref: str | None = Field(description='Select an offered date_references ref when the current request refers to that day implicitly. This keeps its day for an additional payment; omitting a literal date does not itself select today. Null when no offered day applies. Do not combine with date_source.')
     note: str | None = Field(max_length=300)
     note_source: Quote | None = Field(description='Literal owner note value, separate from the complete item name. Null when no note was requested.')
 
@@ -71,7 +72,7 @@ def definition(date_references=()):
     parameters = schema(Proposal)
     parameters['properties']['entries']['items']['properties']['date_ref']['enum'] = [None, *[v['date_ref'] for v in date_references]]
     return {'type': 'function', 'name': 'prepare_expenses', 'strict': True,
-        'description': 'Prepare NEW payments for owner review, never save. You interpret grouping and field ownership. Supply each payment as an entry referring to its item group and exact original owner quotations. Keep repeated payments separate. Preserve full names; item may propose a catalog spelling but item_source always quotes the original name. Account for every number in the current message and chosen group portions as item, amount, date, note, count or explicit non-payment context. Do not invent evidence or infer missing facts. Null fields are genuinely missing. Existing pending records use patch_pending_records.',
+        'description': 'Prepare NEW payments for owner review, never save. You interpret grouping and field ownership. Supply each payment as an entry referring to its item group. Literal values require exact original owner quotations. If an additional payment refers to a saved amount instead of quoting it, select reuse_previous_amount=true and leave amount/amount_source null: the server retrieves an unambiguous saved amount for that exact item and proposed day. Other missing values remain null. Keep repeated payments separate. Preserve full names; item may propose a catalog spelling but item_source always quotes the original name. Account for every number in the current message and chosen group portions as item, amount, date, note, count or explicit non-payment context. Do not invent evidence. Existing pending records use patch_pending_records.',
         'parameters': parameters}
 
 
@@ -155,6 +156,8 @@ def compile_proposal(h, args):
         if record.group_ref not in groups: fail('expense_unknown_group', path + '.group_ref')
         group, portions, item = groups[record.group_ref]
         fields = {'item': item}; amount = None
+        if record.reuse_previous_amount and (record.amount is not None or record.amount_source is not None):
+            fail('expense_conflicting_amount_basis',path+'.amount')
         if record.amount is not None:
             if record.amount_source is None: fail('expense_amount_evidence_required', path + '.amount_source')
             proof, actual = numeric_quote(h, record.amount_source, path + '.amount_source')
@@ -193,6 +196,7 @@ def compile_proposal(h, args):
             'date_ref': record.date_ref, 'note': record.note, 'source_refs': refs,
             'field_sources': {k: [v['source_ref']] if v else [] for k, v in fields.items()}})
         contexts.append({'fields': fields, 'portions': portions, 'date_ambiguous':record.date_ambiguous,
+            'reuse_previous_amount':record.reuse_previous_amount,
             **({'date_resolution':resolution} if resolution else {})})
     if set(groups) != {e.group_ref for e in p.entries}: fail('expense_unused_group', 'groups')
     money_proofs = [c['fields']['amount'] for c in contexts if c['fields'].get('amount')]
@@ -273,7 +277,6 @@ def entry(h, value, old, index):
     elif value.amount is not None:
         try: amount = money_string(Decimal(str(value.amount)))
         except (ValueError, ArithmeticError): invalid.append('amount')
-    if amount is None: missing.append('amount')
     note = old['note'] if old and value.note is None else value.note or ''
     date_field = fields.get('date')
     units = [(date_field['text'], datetime.fromisoformat(date_field['at']), date_field['source_ref'])] if date_field else []
@@ -307,6 +310,16 @@ def entry(h, value, old, index):
     if calculated and date.fromisoformat(calculated) > h.clock().astimezone(BANGKOK).date(): issue = 'future_expense_date'
     if issue and issue not in {'missing_day', 'missing_month_for_future_day','date_clarification_required'}: invalid.append(issue)
     if not calculated: missing.append('date.month' if issue == 'missing_month_for_future_day' else 'date')
+    repeat=bool(context and context.get('reuse_previous_amount') or old and old.get('reuse_previous_amount') and amount is None and value.amount is None)
+    if repeat:
+        metadata['reuse_previous_amount']=True
+        if item and calculated and not issue:
+            from .transport import ApiError,NotReady,WriteBlocked,OutcomeUnknown
+            try:price=h.previous_prices.repeat(item,calculated)
+            except (ApiError,NotReady,WriteBlocked,OutcomeUnknown,ValueError,ArithmeticError):
+                metadata['previous_amount_issue']='unavailable';price=None
+            if price:amount=money_string(Decimal(price['amount']))
+    if amount is None:missing.append('amount')
     mapping = deepcopy(old['mapping']) if same_item else None
     enrollment = deepcopy(old.get('enrollment')) if same_item else None
     if item and tax.catalog.match(item).status != 'exact':

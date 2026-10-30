@@ -68,5 +68,5 @@ def test_actual_expense_sql_keeps_raw_notes_and_stable_cell_ids_but_omits_blank_
     assert list(view['records'][1]['fields']) == ['c1','c2','c3']
     answer = composition.render(document(paragraph(' '.join('{{'+k+'}}' for k in view['facts'])),
         rows(['r1'],'{{c1}} — {{c3}}'), rows(['r2'],'{{c1}} — {{c3}} (หมายเหตุ: {{c2}})')),view)
-    assert 'A — 15 บาท' in answer and 'B — 16 บาท (หมายเหตุ: ขากลับ)' in answer
+    assert 'A 15 บาท' in answer and 'B 16 บาท (หมายเหตุ: ขากลับ)' in answer
     assert '(หมายเหตุ: )' not in answer and not api.google.sheet_writes

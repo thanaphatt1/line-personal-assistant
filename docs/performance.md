@@ -97,6 +97,17 @@ not make every turn a single model call or establish a general speed target.
 
 ## Waiting and clarification
 
+Successful expense save/edit replies show a text summary without automatic
+post-save action menus. Reviews retain their confirmation controls. Operation
+documents separate status, date groups and instructions with paragraph spacing.
+Routine reviews show the proposed records without an unsolicited same-day
+history comparison. Stored amounts remain available for requested reuse and
+missing-amount choices; relevant evidence is retained internally for freshness.
+Adjacent row blocks may share an unchanged heading only when exact cell group
+keys match, with no intervening prose. A different date needs its own heading
+or visible cell. Model-generated em dash separators become spaces before fact
+substitution, so literal names and notes keep their original punctuation.
+
 After 0.8 seconds, the raw-history webhook can start one best-effort, 20-second
 LINE loading animation for the verified active owner's private chat. Fast
 answers cancel the timer. Groups, foreign owners, standby events, reported

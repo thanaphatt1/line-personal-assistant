@@ -90,7 +90,8 @@ def expense_lines(entries):
     for entry in entries:
         when=entry.get('date')
         if when!=previous:
+            if rows:rows.append('')
             rows.append(day(when) if when else 'ยังไม่ระบุวันที่');previous=when
-        rows.append(f"{entry.get('item') or 'ยังไม่ระบุชื่อ'} — {money(entry.get('amount'),'ยังไม่ระบุยอด')} บาท"+
+        rows.append(f"{entry.get('item') or 'ยังไม่ระบุชื่อ'} {money(entry.get('amount'),'ยังไม่ระบุยอด')} บาท"+
                     ('\nหมายเหตุ: '+entry['note'] if entry.get('note') else ''))
     return '\n'.join(rows)

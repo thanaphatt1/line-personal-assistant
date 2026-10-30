@@ -11,6 +11,7 @@ from .history_context import digest
 from .language import BANGKOK,intent_guard
 
 FORMAT='previous-expense-price-v1'
+REPEAT_FORMAT='repeated-expense-amount-v2'
 FOREIGN=re.compile(r'\b(?:USD|EUR|GBP|JPY|CNY|SGD|AUD|CAD)\b|ดอลลาร์|ยูโร|เงินเยน|หยวน',re.I)
 ACCEPT=re.compile(r'(?:ใช้|เอา|ตาม)(?:ราคา|ยอด|จำนวนเงิน)?\s*(?:เดิม|ก่อน|ครั้งก่อน)|เท่าเดิม',re.I)
 NO=re.compile(r'ไม่|อย่า|ยกเลิก|พักไว้|\bcancel\b',re.I)
@@ -24,14 +25,15 @@ def validate(entry):
     if value is None:return
     keys={'format','state','ref','item','amount','source_date','varied','source_hash','target_hash',
           'cutoff','offered_at','accepted_at','accepted_source_ref'}
-    if not isinstance(value,dict) or set(value)!=keys or value['format']!=FORMAT:raise ValueError('previous_price_format')
+    if not isinstance(value,dict) or set(value)!=keys or value['format'] not in {FORMAT,REPEAT_FORMAT}:raise ValueError('previous_price_format')
     if value['state'] not in {'offered','accepted'} or value['item']!=entry['item']:raise ValueError('previous_price_identity')
     if (not isinstance(value['amount'],str) or not re.fullmatch(r'\d+\.\d{2}',value['amount'])
         or not 0<Decimal(value['amount'])<10000000 or type(value['varied']) is not bool):raise ValueError('previous_price_amount')
     if not isinstance(value['ref'],str) or not re.fullmatch(r'price_[a-f0-9]{20}',value['ref']):raise ValueError('previous_price_ref')
     if any(not isinstance(value[k],str) or not re.fullmatch(r'[a-f0-9]{64}',value[k]) for k in ['source_hash','target_hash']):raise ValueError('previous_price_binding')
     if any(not isinstance(value[k],str) for k in ['source_date','cutoff','offered_at']):raise ValueError('previous_price_date')
-    if not date.fromisoformat(value['source_date'])<date.fromisoformat(value['cutoff']):raise ValueError('previous_price_date')
+    source=date.fromisoformat(value['source_date']);cutoff=date.fromisoformat(value['cutoff'])
+    if source>cutoff or source==cutoff and value['format']!=REPEAT_FORMAT:raise ValueError('previous_price_date')
     if datetime.fromisoformat(value['offered_at']).utcoffset() is None:raise ValueError('previous_price_time')
     if value['state']=='offered':
         if entry['amount'] is not None or value['accepted_at'] is not None or value['accepted_source_ref'] is not None:raise ValueError('previous_price_not_selected')
@@ -57,10 +59,11 @@ class PreviousPrices:
             self._cache=self.h.bound_sheets.classification_entries();self._cache_event=event
         return self._cache
 
-    def candidate(self,item,cutoff,*,fresh=False):
+    def candidate(self,item,cutoff,*,fresh=False,inclusive=False):
         tax=self.h._taxonomy()
         if tax.catalog.match(item).status!='exact':return None
-        rows=[r for r in self.rows(fresh=fresh) if normalized(r['item'])==normalized(item) and '1900-01-01'<=r['date']<cutoff]
+        rows=[r for r in self.rows(fresh=fresh) if normalized(r['item'])==normalized(item) and '1900-01-01'<=r['date']
+              and (r['date']<=cutoff if inclusive else r['date']<cutoff)]
         if not rows:return None
         latest=max(r['date'] for r in rows);recent=[r for r in rows if r['date']==latest]
         amounts={f"{Decimal(r['amount']):.2f}" for r in recent}
@@ -71,6 +74,18 @@ class PreviousPrices:
         if not 0<Decimal(amount)<10000000:return None
         return {'amount':amount,'source_date':latest,'varied':len({Decimal(r['amount']) for r in rows})>1,
                 'source_hash':digest(sorted(digest(r) for r in rows))}
+
+    def repeat(self,item,day):
+        """A model-selected repeat uses checked stored facts and still needs review."""
+        if not self.enabled or FOREIGN.search(self.h._current['text']):return None
+        cutoff=min(day,self.h.clock().astimezone(BANGKOK).date().isoformat())
+        value=self.candidate(item,cutoff,inclusive=True)
+        if value is None:return None
+        return {'format':REPEAT_FORMAT,'state':'accepted',
+            'ref':'price_'+digest([self.h._active_event_id,item,day,value])[:20],
+            'item':item,**value,'target_hash':digest(self.h.state.workbook_id or storage_scope(self.h.sheets)),
+            'cutoff':cutoff,'offered_at':self.h._current['at'],'accepted_at':self.h._current['at'],
+            'accepted_source_ref':self.h._current['source_ref']}
 
     def scoped_facts(self,entry):
         row=self.h._current;units=self.h._units([row],entry['item'],entry)
@@ -105,6 +120,9 @@ class PreviousPrices:
         today=self.h.clock().astimezone(BANGKOK).date().isoformat();unavailable=False
         for entry in missing:
             entry.pop('previous_price',None)
+            if entry.get('reuse_previous_amount'):
+                unavailable|=entry.get('previous_amount_issue')=='unavailable'
+                continue
             if sum(normalized(e['item'] or '')==normalized(entry['item']) for e in d['entries'])!=1 or not self.eligible_request(entry):continue
             cutoff=min(today,entry['date'])
             try:value=self.candidate(entry['item'],cutoff)
@@ -170,8 +188,9 @@ class PreviousPrices:
     def check(self,proof,entry,*,fresh=False):
         if not self.enabled:raise ValueError('previous_price_disabled')
         if proof['target_hash']!=digest(self.h.state.workbook_id or storage_scope(self.h.sheets)):raise ValueError('previous_price_target_changed')
-        if entry['item']!=proof['item'] or entry.get('date') and entry['date']<=proof['source_date']:raise ValueError('previous_price_date_or_item_changed')
-        current=self.candidate(entry['item'],proof['cutoff'],fresh=fresh)
+        repeat=proof['format']==REPEAT_FORMAT
+        if entry['item']!=proof['item'] or entry.get('date') and (entry['date']<proof['source_date'] or entry['date']==proof['source_date'] and not repeat):raise ValueError('previous_price_date_or_item_changed')
+        current=self.candidate(entry['item'],proof['cutoff'],fresh=fresh,inclusive=repeat)
         if not current or any(current[k]!=proof[k] for k in ['amount','source_date','source_hash','varied']):raise ValueError('previous_price_source_changed')
 
     def bases(self,d):

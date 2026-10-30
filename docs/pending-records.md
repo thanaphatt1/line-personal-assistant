@@ -72,6 +72,13 @@ second date source. Invalid calendar dates, future expense dates and invented
 quotations remain rejected. The interpretation is still a model proposal for
 owner review; an exact quotation does not establish that its meaning is right.
 
+For a requested additional payment, `reuse_previous_amount=true` selects the
+existing verified saved-amount lookup rather than supplying an unquoted
+number. It can use an unambiguous amount saved on the same proposed day. This
+is still a new reviewed payment, not a saved-record update or confirmation.
+See [previous expense amounts](previous-expense-prices.md) for source checks,
+ambiguous history and proof compatibility.
+
 When a quoted date remains genuinely ambiguous after considering the dialogue,
 `date_ambiguous=true` with null `date_value`/`date_ref` retains the other facts
 and asks for the date directly. Missing owner meaning is not a malformed tool

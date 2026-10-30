@@ -406,7 +406,7 @@ def calendar_rows(events,scope):
             heading='\nวัน'+WEEKDAYS[day.weekday()]+'ที่ '+day_label(day.isoformat())+':\n'
             ordinal=0;previous=day
         ordinal+=1
-        result.append(heading+f"{ordinal}. {event['when']} — "+event['title'])
+        result.append(heading+f"{ordinal}. {event['when']} "+event['title'])
     return result
 
 
@@ -485,7 +485,7 @@ def facts(output, at):
             'unassigned_category':'ยังไม่มีหมวดใน Database','unassigned_subcategory':'ยังไม่มีหมวดย่อยใน Database'}
         shown=diagnostics['items'][:10]
         for i,item in enumerate(shown,1):
-            values[f'row{i}']=f"{label_text(item['item'])} — {item['count']} รายการ รวม {money(item['expense'])} บาท ({reasons[item['reason']]})"
+            values[f'row{i}']=f"{label_text(item['item'])} {item['count']} รายการ รวม {money(item['expense'])} บาท ({reasons[item['reason']]})"
             if item['candidate_items']:values[f'row{i}']+=' ตัวเลือกที่ต้องตรวจ: '+', '.join(label_text(x) for x in item['candidate_items'][:2])
         if diagnostics['unresolved_item_count']>len(shown):values['truncation']='แสดงชื่อที่ยังจับคู่ไม่ได้ 10 ชื่อแรก จำนวนและยอดรายการที่ยังไม่รวมใช้ทั้งหมดที่อ่านครบแล้ว'
         return values
@@ -513,14 +513,14 @@ def facts(output, at):
             values['row_order']=('รวมยอดแยกตาม'+groups[grouping]+' ' if grouping!='none' else '')+'เรียงตาม'+sort+('จากมากไปน้อย' if scope.get('descending') else 'จากน้อยไปมาก')
         for i,g in enumerate(output.get('groups',[]),1):
             label=day_label(g['label']) if grouping=='date' else label_text(g['label'])
-            values[f'row{i}']=f"{i}. {label} — {money(g['amount'])} บาท ({g['count']} รายการ)"
+            values[f'row{i}']=f"{i}. {label} {money(g['amount'])} บาท ({g['count']} รายการ)"
         previous=None
         for i,e in enumerate(output['entries'],1):
             row=f"{label_text(e['item'])} {money(e['amount'])} บาท"
             if scope['start']!=scope['end']:
                 if order=='date':
                     if e['date']!=previous:row='\n'+day_label(e['date'])+':\n'+row
-                else:row=day_label(e['date'])+' — '+row
+                else:row=day_label(e['date'])+' '+row
             values[f'row{i}']=row;previous=e['date']
     else:
         if scope.get('filter_text'):values['filter']=label_text(scope['filter_text'])

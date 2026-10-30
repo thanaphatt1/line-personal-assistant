@@ -1,15 +1,13 @@
-"""Delivered-record buttons select stable IDs; only a separate review can write."""
+"""Legacy delivered-record buttons remain valid; new saved replies are text only."""
 from .reply_display import money
-from copy import deepcopy
-from datetime import datetime,timedelta
+from datetime import datetime
 from urllib.parse import quote
-import hmac,re,secrets
+import hmac,re
 
 from .conversation_ui import render_actions,utf16_limit
 from .expense_storage import storage_scope
 from .history_context import digest
 from .line_api import message_hash,rendered_message
-from .sheet_metadata import transaction_id
 from .state import Result
 from .adapters import Conflict,NotFound
 from .transport import ApiError,NotReady,WriteBlocked
@@ -21,40 +19,9 @@ class RecordActions:
     def __init__(self,host,*,enabled=False):self.h=host;self.enabled=enabled
     def is_control(self,text):return text.startswith('r1|')
     def attach(self,event,result):
-        if not self.enabled or result.data.get('record_actions') or result.data.get('domain')=='catalog_alias':return result
-        claim=self.h.state.claims.get(event);action=self.h.state.actions.get(claim.action_key) if claim else None
-        if not action or action.status!='completed':return result
-        records=[]
-        if result.status=='recorded' and action.kind in {'add_transactions','catalog_expense'}:
-            if not getattr(self.h.sheets.target,'transaction_id_metadata',None) and getattr(self.h.sheets,'backend',None)!='firestore':return result
-            records=[{'id':transaction_id(claim.action_key,i),**{k:e[k] for k in ('item','amount','date')}} for i,e in enumerate(action.payload['entries'])]
-        elif result.status=='updated' and action.kind=='edit_saved_expense':
-            records=[{'id':action.payload['id'],**action.payload['after']}]
-        if not records:return result
-        value={'owner':self.h.settings.owner_id,'scope':storage_scope(self.h.sheets),'event':event,
-            'ref':'record_'+digest([event,claim.action_key])[:20],'nonce':secrets.token_hex(8),'records':records,
-            'expires_at':(self.h.clock()+timedelta(seconds=self.h.settings.last_action_ttl_seconds)).isoformat()}
-        value['seal']=digest(value)
-        operations=['amount','date','source',*(['delete'] if self.h.saved_edits.delete_enabled else [])]
-        actions=[self.button(op,value,'*' if len(records)>1 else '0') for op in operations]
-        offer=self.alias_offer(action) if result.status=='recorded' else None
-        if offer:actions.append(offer)
-        self.h.state.owner_features_used=True
-        return Result(result.status,result.message,{**result.data,'record_actions':value,'line_message':render_actions(result.message,actions)})
-    def alias_offer(self,action):
-        """Suggest remembering a chosen spelling. The button only sends owner text; the alias review still decides."""
-        aliases=getattr(self.h,'catalog_aliases',None)
-        draft=self.h.state.drafts.get(action.metadata.get('draft_ref'))
-        if not aliases or not aliases.enabled or not draft:return None
-        try:catalog=self.h._taxonomy().catalog
-        except Exception:return None
-        from .catalog import normalized
-        for entry in draft['entries']:
-            chosen=entry.get('item_resolution')
-            if not chosen or normalized(chosen['from'])==normalized(chosen['to']) or catalog.identity(chosen['from']).canonical:continue
-            text=f"จำว่า {chosen['from']} คือ {chosen['to']}"
-            if len(text)<=300:return {'type':'message','label':utf16_limit('จำชื่อ '+chosen['from'],20),'text':text}
-        return None
+        # Do not rewrite historical receipts: their delivered controls and
+        # content hashes remain usable through control()/delivered().
+        return result
     def button(self,operation,value,index,*,label=None):
         return {'type':'postback','label':utf16_limit(label or LABELS[operation],20),
             'displayText':utf16_limit(label or LABELS[operation],100),
@@ -90,7 +57,7 @@ class RecordActions:
             selection={'ref':ref,'operation':operation,'nonce':nonce}
             if index=='*':
                 if len(records)<2:raise ValueError('invalid_record_selection')
-                message=LABELS[operation]+'รายการไหนครับ?\n'+'\n'.join(f"{i}. {r['item']} — {money(r['amount'])} บาท วันที่ {r['date']}" for i,r in enumerate(records,1))
+                message=LABELS[operation]+'รายการไหนครับ?\n'+'\n'.join(f"{i}. {r['item']} {money(r['amount'])} บาท วันที่ {r['date']}" for i,r in enumerate(records,1))
                 actions=[self.button(operation,value,str(i),label=f"{i+1}. {r['item']}") for i,r in enumerate(records)]
                 return Result('clarification',message,{'record_action_selection':selection,'line_message':render_actions(message,actions)})
             if not index.isascii() or not index.isdecimal() or str(int(index))!=index or not 0<=int(index)<len(records):raise ValueError('invalid_record_selection')
@@ -107,7 +74,7 @@ class RecordActions:
             result=self.h.saved_edits.result(output)
             question='ต้องการเปลี่ยนยอดเป็นเท่าไรครับ?' if operation=='amount' else 'ต้องการเปลี่ยนเป็นวันที่เท่าไรครับ?'
             from .reply_display import day
-            message=f"{record['item']} — {money(record['amount'])} บาท วันที่ {day(record['date'])}\n"+question
+            message=f"{record['item']} {money(record['amount'])} บาท วันที่ {day(record['date'])}\n"+question
             return Result('clarification',message,{**result.data,'record_action_focus':operation})
         except (ValueError,Conflict,NotFound,ApiError,NotReady,WriteBlocked):
             # Buttons never fall through to the LLM as fabricated owner facts.
@@ -115,7 +82,7 @@ class RecordActions:
     def source(self,record):
         sheets=self.h.sheets
         from .reply_display import day
-        message=f"ต้นทางของ {record['item']} — {money(record['amount'])} บาท วันที่ {day(record['date'])}"
+        message=f"ต้นทางของ {record['item']} {money(record['amount'])} บาท วันที่ {day(record['date'])}"
         if getattr(sheets,'backend',None)=='firestore':
             message+='\nฐานข้อมูลรายจ่าย '+sheets.target.dataset_id+'\nรหัสรายการ: '+record['id']
             url='https://console.cloud.google.com/firestore/databases?project='+quote(sheets.target.project_id,safe='')

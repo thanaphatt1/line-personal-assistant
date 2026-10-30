@@ -108,7 +108,7 @@ def test_monthly_unfiltered_query_preserves_dates_and_order_without_semantic_cal
     api=SemanticHosted();api.calendar.events={'a':appointment('a'), 'b':appointment('b',30)}
     result,_=november(api,None)
     assert result.data['tool_result']['count']==2 and '2 นัด' in result.message
-    assert '1 พ.ย. 2026 — ทั้งวัน — TA a' in result.message and '30 พ.ย. 2026 — ทั้งวัน — TA b' in result.message
+    assert '1 พ.ย. 2026 ทั้งวัน TA a' in result.message and '30 พ.ย. 2026 ทั้งวัน TA b' in result.message
     assert result.message.index('TA a')<result.message.index('TA b')
     assert not api.selection_bodies and len(api.model_bodies)==2
 

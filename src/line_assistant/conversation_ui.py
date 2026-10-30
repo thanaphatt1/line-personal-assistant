@@ -33,7 +33,8 @@ def render_actions(text, actions):
     buttons = [{'type': 'button', 'style': 'secondary', 'height': 'sm', 'action': action} for action in actions]
     result = {'type': 'flex', 'altText': utf16_limit(text, 400), 'contents': {
         'type': 'bubble', 'body': {'type': 'box', 'layout': 'vertical', 'contents': [
-            {'type': 'text', 'text': chunk, 'wrap': True, 'size': 'sm'} for chunk in text_chunks(text)]},
+            {'type': 'text', 'text': chunk, 'wrap': True, 'size': 'sm',**({'margin':'md'} if i else {})}
+            for i,paragraph in enumerate(text.split('\n\n')) for chunk in text_chunks(paragraph) if chunk]},
         'footer': {'type': 'box', 'layout': 'vertical', 'spacing': 'sm', 'contents': buttons}}}
     if len(json.dumps(result, ensure_ascii=False, separators=(',', ':')).encode()) > 30000:
         raise ValueError('Complete review exceeds one Flex bubble; split the batch')

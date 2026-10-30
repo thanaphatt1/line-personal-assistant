@@ -21,7 +21,8 @@ The item must resolve exactly in the current catalog; history uses the same
 normalized item name. Similar labels and separate plans do not share prices.
 Unknown, ambiguous or typo-like labels require resolution and an amount.
 
-The server reads the complete configured bounded grid, selects the most recent
+For an ordinary missing-amount offer, the server reads the complete configured
+bounded grid and selects the most recent
 calendar day strictly before both today and the new transaction date, and shows
 its amount and source date. If earlier saved amounts differ, the question says
 that history contains several amounts. Future and same-day records do not supply
@@ -43,11 +44,46 @@ interruption requires a fresh price question before using its reference.
 
 ## Evidence and confirmation
 
+### Repeating a payment
+
+Current expense proposals can set `reuse_previous_amount=true` on selected
+new entries when the owner asks to repeat saved payments. `amount` and
+`amount_source` remain null; the server supplies the amount from verified
+history rather than accepting an invented owner quotation. The current
+request supplies intent and the item quotation, and ordinary date references
+retain a conversationally selected day.
+
+This lookup includes the proposed expense day and selects the latest
+unambiguous, unannotated saved amount on or before it. Two different amounts
+on that latest day require clarification; the lookup does not choose an older
+convenient amount. A future payment cannot supply the value. The exact
+catalog identity, configured storage scope and existing price feature flag
+still apply. Each repeated payment remains a new occurrence for full review;
+the original record is not edited and a matching saved payment is not silently
+treated as already completed.
+
+Repeat proposals use `repeated-expense-amount-v2` proof metadata, including
+source date/hash, storage binding and the current request. The older
+`previous-expense-price-v1` offer/selection workflow above keeps its strictly
+earlier-day semantics. Both proofs are reread before confirmation and the first
+write attempt. Relevant source changes stop the write; final delivered-review
+confirmation and idempotency remain required. Older runtimes do not support
+the v2 proof: use a compatible new image for recovery, without restoring state.
+
+### Selecting an offered historical amount
+
 The model receives an owned opaque price reference, amount, source date and
 whether history varies. It can select that reference after a matching owner
 reply; it cannot fabricate money evidence or treat the reply as final save
 consent. Server checks bind the delivered offer to the owner, workbook, draft,
 version, item, source fingerprint and current choice. Raw owner text stays intact.
+
+History is shown when the owner needs to select an amount. Once selected, the
+ready review displays the proposed payment amount and transaction date, without
+repeating the old payment history. Source dates and fingerprints remain in
+internal proof metadata for freshness checks. An ordinary additional payment
+does not trigger a same-name/same-day warning or an unsolicited history read.
+Explicit requests to check whether a payment exists retain their checks.
 
 The server rereads source evidence before selecting the price, before final
 confirmation and before a prepared action's first attempt. Whole-row relocation

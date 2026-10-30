@@ -98,7 +98,8 @@ def test_offer_is_grounded_latest_past_payment_and_selection_still_needs_final_r
     result,_=accepted(api);assert result.status=='preview',result
     entry=result.data['tool_result']['entries'][0]
     assert entry['amount']=='169' and entry['date']=='2026-10-18'
-    assert entry['previous_price']['state']=='accepted' and '1 ต.ค. 2026' in result.message
+    assert entry['previous_price']['state']=='accepted' and entry['previous_price']['source_date']=='2026-10-01'
+    assert '1 ต.ค. 2026' not in result.message
     assert not api.google.sheet_writes and not api.calendar.posts
     calls=len(api.model_bodies);result,event=turn(api,'ยืนยัน')
     assert result.status=='recorded' and api.google.sheet_writes==1 and len(api.model_bodies)==calls

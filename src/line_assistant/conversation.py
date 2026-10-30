@@ -396,7 +396,7 @@ class ConversationAssistant(ExpenseAssistant):
             proposed_indices = {i for i, _ in proposed}
             text = 'ตรวจสอบรายการ:\n' + '\n'.join(f"{e['item']} {e['amount']} บาท วันที่ {e['date']}" +
                     (f"\nหมายเหตุ: {e['note']}" if e['note'] else '') +
-                    (f"\nชื่อใหม่ — เพิ่มใน Database: {taxonomy.categories[e['category_id']]}" +
+                    (f"\nชื่อใหม่ เพิ่มใน Database: {taxonomy.categories[e['category_id']]}" +
                      (f" / {taxonomy.pairs[e['category_id']][e['subcategory_id']]}" if taxonomy.pairs[e['category_id']][e['subcategory_id']] else '')
                      if e['new_item'] else '') +
                     ('\nหมวดแนะนำจากโมเดล (รอยืนยัน)' if index in proposed_indices else '')

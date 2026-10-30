@@ -484,7 +484,7 @@ class Assistant:
                 candidates = ", ".join(match.suggestions)
                 message = f"ไม่พบชื่อที่ตรงกับ {entry.item}"
                 if candidates:
-                    message += f" — อาจหมายถึง {candidates}"
+                    message += f" อาจหมายถึง {candidates}"
                 message += f". พิมพ์ เลือก {pending.token} ชื่อจาก Database, ใหม่ {pending.token} หรือ ยกเลิก"
                 return Result("clarification", message, {"token": pending.token, "stage": "item",
                                                          "match": match.status, "suggestions": list(match.suggestions)})

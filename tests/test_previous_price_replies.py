@@ -77,7 +77,7 @@ def test_descriptive_catalog_name_is_visible_then_explicit_choice_offers_price_t
     assert e['item']=='Spotify service' and e['amount'] is None and e['previous_price']['amount']=='169.00'
     assert '169 บาท' in r.message and '1 ต.ค. 2026' in r.message and 'ใช้ยอดเดิม' in r.message
     r,_=accepted(api,('Spotify service',));assert r.status=='preview'
-    assert '1 ต.ค. 2026' in r.message and '18 ต.ค. 2026' in r.message and not api.google.sheet_writes
+    assert '1 ต.ค. 2026' not in r.message and '18 ต.ค. 2026' in r.message and not api.google.sheet_writes
     r,_=turn(api,'ยืนยัน');assert r.status=='recorded' and api.google.sheet_writes==1
 
 
@@ -111,11 +111,12 @@ def test_explicit_amount_and_transaction_date_win_without_copying_saved_date(tex
     assert not api.google.sheet_writes
 
 
-def test_selected_price_review_keeps_historical_and_new_dates_in_optional_wording():
+def test_selected_price_review_shows_target_day_and_keeps_historical_source_in_metadata():
     api=ReplyHosted();turn(api,'ค่า Spotify วันที่ 15 ต.ค. 2026',proposed(date_text='15 ต.ค. 2026'))
     r,_=accepted(api)
     assert r.status=='preview' and r.data['tool_result']['entries'][0]['date']=='2026-10-15'
-    assert 'ใช้ยอดที่เคยบันทึกวันที่ 1 ต.ค. 2026' in r.message
+    assert r.data['tool_result']['entries'][0]['previous_price']['source_date']=='2026-10-01'
+    assert '1 ต.ค. 2026' not in r.message
     assert '15 ต.ค. 2026' in r.message and not api.google.sheet_writes
 
 

@@ -1324,17 +1324,11 @@ class HistoryFirstAssistant(Assistant):
         return result
 
     def _review_notices(self,output):
-        """Verified context shown before consent: duplicates, absence checks and date sources."""
+        """Requested absence checks and interpretation notes for this review."""
         from .reply_display import day
         notices=[]
         for row in output.get('absence_checked') or []:
             notices.append(f"ตรวจแล้ว ยังไม่มี {row['item']} {money(row['amount'])} บาท วันที่ {day(row['date'])}")
-        if not output.get('absence_checked'):
-            try:matches=self._saved_matches(output.get('entries',[]))
-            except Exception:matches=[]
-            for m in matches:
-                if m['same_amount']:notices.append(f"บันทึกไว้แล้ว: {m['item']} {money(m['amount'])} บาท วันที่ {day(m['date'])} ({m['same_amount']} รายการ)")
-                else:notices.append(f"วันเดียวกันบันทึก{named(m['item'])}ไว้แล้ว {m['same_item']} รายการ ({', '.join(money(v) for v in m['saved_amounts'])} บาท)")
         for e in output.get('entries',[]):
             for context in e.get('context_numbers',[]):
                 notices.append(f"ไม่ได้ลงเป็นยอดรายจ่าย: {context['text']} ({context['reason']})")
@@ -1646,8 +1640,6 @@ class HistoryFirstAssistant(Assistant):
             if self.raw_history_enabled:notices=self._review_notices(tool_output)
             else:notices=['ใช้วันที่เดียวกับรายจ่ายที่ยืนยันก่อนหน้า'] if any(e.get('date_basis',{}).get('confirmed_event') for e in d['entries']) else []
             message=f'ตรวจสอบรายการ:\n{rows}\n'+''.join(v+'\n' for v in notices)+instruction
-            prior=[e for e in d['entries'] if e.get('previous_price',{}).get('state')=='accepted']
-            if prior:message+='\n'+'\n'.join(f"{e['item']}: ใช้ยอดเดียวกับที่บันทึกวันที่ {day(e['previous_price']['source_date'])} สำหรับรายจ่ายวันที่ {day(e['date'])}" for e in prior)
             data={'tool_result':tool_output,'confirm_command':command,**({'review_notices':notices} if notices else {})}
             if self.semantic_enabled:data['line_message']=semantic.render_actions(message,semantic.actions(self,d))
             return Result('preview',message,data)

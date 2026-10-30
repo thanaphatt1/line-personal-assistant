@@ -102,7 +102,7 @@ def render(output):
     tables=output.get('tables',output['data_sources'].get('tables',{})).get('tables',[])
     if tables:
         lines.append('ตารางที่เชื่อมไว้:')
-        lines.extend(row['label']+' — '+row['description'] for row in tables)
+        lines.extend(row['label']+' '+row['description'] for row in tables)
     if expense:
         if expense['status']!='verified':lines.append('รายจ่าย: ยังตรวจช่วงข้อมูลและปีที่มีรายการไม่ได้ครับ จึงยังไม่ยืนยันว่ามีหรือไม่มีข้อมูลในปีใด')
         elif not expense['record_count']:lines.append('รายจ่าย: ไม่พบรายการในฐานข้อมูลที่เชื่อมต่อจากการอ่านที่ตรวจครบแล้วครับ')

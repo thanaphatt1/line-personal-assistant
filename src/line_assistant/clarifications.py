@@ -29,7 +29,7 @@ def compact(host,result):
         draft=output['table_draft'];table,_=host.table_flow.registry.get(draft['table_id'])
         field=output['missing'][0];column=table.column(field)
         name=draft['values'].get(table.display_field) if table.display_field else None
-        question=(str(name)+' — ' if name else '')+column.label+'เป็นอะไรครับ?'
+        question=(str(name)+' ' if name else '')+column.label+'เป็นอะไรครับ?'
         if column.choices:question+='\n'+ ' / '.join(column.choices)
         focus={'draft_ref':draft['ref'],'record_ref':draft['ref'],'field':field}
     view=result.data.get('calendar_batch_view')

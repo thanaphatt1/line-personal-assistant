@@ -328,7 +328,9 @@ def test_expense_receipt_buttons_and_aliases_survive_external_evidence_storage(b
     from test_calendar_text_confirmation_v13 import old_expense
     class OwnerRecords(RecordsProtocol,OwnerHosted):pass
     api=OwnerRecords(backend);old_expense(api)
+    api.seed_legacy_buttons=True
     saved,_=turn(api,'ยืนยัน')
+    api.seed_legacy_buttons=False
     assert saved.status=='recorded' and saved.data['record_actions']
     calls=len(api.model_bodies)
     source,_=turn(api,button(saved,'source'),postback=True)

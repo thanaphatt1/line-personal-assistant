@@ -1,4 +1,4 @@
-# Reviewed removal, remembered names and saved-record buttons
+# Reviewed removal, remembered names and saved summaries
 
 These optional owner features extend the existing expense/catalog workflow.
 All three flags default to `false`; publishing source does not activate them.
@@ -57,11 +57,17 @@ columns or Firestore collection is created. Up to 100 aliases are retained in
 the existing durable owner state; this is vocabulary memory, not arbitrary
 conversation memory.
 
-## Buttons on saved expenses
+## Saved summaries and legacy buttons
 
-Delivered save/edit confirmations offer `แก้ยอด`, `เปลี่ยนวันที่` and
-`ดูต้นทาง`. `นำรายการออก` is offered only when removal is enabled.
-A batch first asks which saved record to use. Amount/date buttons select a
+New save/edit confirmations contain only the result summary. They do not append
+record-action or remember-name menus. Owners can request a correction, removal,
+source lookup or remembered alias in conversation. Confirmation buttons remain
+on pending reviews, where a decision is needed.
+
+Previously delivered `แก้ยอด`, `เปลี่ยนวันที่`, `ดูต้นทาง` and
+`นำรายการออก` controls retain their existing expiry and validation. Their
+receipt content hashes are not rewritten. A batch first asks which saved
+record to use. Amount/date buttons select a
 fresh record and ask for the new value; ordinary tool validation and a separate
 review/confirmation still apply. Opening a source never changes data.
 

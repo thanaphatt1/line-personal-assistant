@@ -239,7 +239,7 @@ class HistoricalCategories(ProvisionalCategories):
 
     def render(self,v,*,continue_model=False):
         scope='ทุกช่วงวันที่ในชีต' if not v['scope']['start'] else v['scope']['start']+' ถึง '+v['scope']['end']
-        lines=[f"ตรวจชื่อที่ยังไม่มีหมวด: {scope}",f"อ่านครบ {v['scope_count']} รายการในช่วงนี้ พบ {v['total_names']} ชื่อ — หน้านี้ {len(v['groups'])} ชื่อ เหลือถัดไป {v['remaining_names']} ชื่อ"]
+        lines=[f"ตรวจชื่อที่ยังไม่มีหมวด: {scope}",f"อ่านครบ {v['scope_count']} รายการในช่วงนี้ พบ {v['total_names']} ชื่อ หน้านี้ {len(v['groups'])} ชื่อ เหลือถัดไป {v['remaining_names']} ชื่อ"]
         if v['skipped_names']:lines.append(f"อีก {v['skipped_names']} ชื่อจากชุดก่อนยังไม่มี mapping; เริ่มตรวจใหม่เพื่อกลับไปดูได้")
         if v.get('selection')=='only':
             excluded=sum(not g['included'] for g in v['groups'])

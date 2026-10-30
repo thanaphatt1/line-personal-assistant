@@ -1,5 +1,5 @@
 """Presentation of verified reviews/results; no tools, consent or state mutation."""
-from .answer_composition import View, valid_view, render
+from .answer_composition import View, valid_view, render as render_answer
 from .reply_display import calendar_parts
 
 INSTRUCTIONS=(
@@ -7,8 +7,11 @@ INSTRUCTIONS=(
     'Write concise natural Thai prose and choose the layout from operation_facts. No prescribed before/after template or allowed-word vocabulary. '
     'Insert business values and authoritative status/questions/instructions ONLY with {{fact_id}} or {{cell_id}} placeholders. '
     'Use text blocks for facts and rows blocks for record_refs in supplied order. Every required fact/cell and every record must be covered. '
+    'Column IDs mean the same thing across rows. Empty optional context cells may be omitted; required_fields identifies the actual coverage requirements. '
     'A shared heading can use a cell only when its group_key agrees across every row in that block. Use {{index}} for optional numbering. '
+    'An unchanged shared heading may continue across adjacent rows blocks with the same group_key, without intervening text blocks. '
     'For a shared date put it once in a heading; omit repeated row dates. For unchanged appointment time show the supplied shared time once. '
+    'Separate date groups with blank lines. Show the proposed records and requested changes, without an unsolicited comparison to saved payments. Use spaces, not em dash separators. '
     'Labels distinguish original/proposed values and verified final values. Explain that difference naturally; never reverse it. '
     'For appointments keep each title with its own date and time; หมายเหตุ/คำเตือน facts and cells (conflicts, past times, approximations) are required. '
     'Start with the status on its own line, then the records; put each note and the final instruction on separate lines rather than one run-on paragraph. '
@@ -75,15 +78,20 @@ def expenses(result):
                               (' / '+mapping['subcategory'] if mapping.get('subcategory') else ''),None,None))
             resolution=entry.get('item_resolution')
             if resolution:cells.append(('ชื่อเดิมที่เลือก',resolution['from']+' → '+resolution['to'],None,None))
-            prior=entry.get('previous_price')
-            if prior and prior['state']=='accepted':
-                from .reply_display import day
-                cells.append(('ที่มาของยอดเดิม','ใช้ยอดที่เคยบันทึกวันที่ '+day(prior['source_date']),None,None))
         view.row(cells)
         # Review notes must remain complete; read-answer display truncation is
         # unsuitable for fields an owner is about to approve.
         for field,(_,value,kind,unit) in zip(view.records[-1]['fields'].values(),cells):
             if kind!='date':field['display']=str(value)+(' '+unit if unit else '')
+    # A shared schema keeps absent optional notes/context from becoming
+    # unknown placeholders when the model groups otherwise compatible rows.
+    labels=list(dict.fromkeys(f['label'] for r in view.records for f in r['fields'].values()))
+    for row in view.records:
+        original={f['label']:f for f in row['fields'].values()}
+        from .history_context import digest
+        row['fields']={'c'+str(i):original.get(label,{'label':label,'display':'','group_key':digest(['absent',label])})
+                       for i,label in enumerate(labels,1)}
+        row['required_fields']=[k for k,f in row['fields'].items() if f['display']!='']
     if not recorded:
         for notice in data.get('review_notices',[]):view.fact(notice,'หมายเหตุ')
         if any(e.get('mapping') for e in entries):
@@ -142,6 +150,10 @@ def for_result(result):
     except (KeyError,TypeError,ValueError):return None
 
 
+def render(document,view):
+    return render_answer(document,view,paragraphs=True,inherit_headings=True)
+
+
 def fallback(view):
     """Complete, readable display when optional language generation is unavailable."""
     blocks=[]
@@ -152,10 +164,15 @@ def fallback(view):
     groups=[]
     for row in view['records']:
         fields=row['fields'];date_key=next((k for k,v in fields.items() if v['label']=='วันที่'),None)
-        key=(fields[date_key]['group_key'] if date_key else None,tuple((k,v['label']) for k,v in fields.items()))
+        key=(fields[date_key]['group_key'] if date_key else None,tuple((k,v['label']) for k,v in fields.items() if v['display']!=''))
         if groups and groups[-1][0]==key:groups[-1][2].append(row['id'])
         else:groups.append((key,date_key,[row['id']],fields))
+    previous=object()
     for _,date_key,refs,fields in groups:
-        blocks.append({'kind':'rows','record_refs':refs,'heading':'{{'+date_key+'}}' if date_key else '',
-            'template':' — '.join('{{'+key+'}}' for key in fields if key!=date_key)})
+        current=(date_key,fields[date_key]['group_key']) if date_key else None
+        main=[key for key in fields if key!=date_key and fields[key]['display']!=''][:2]
+        details=[key for key in fields if key!=date_key and key not in main and fields[key]['display']!='']
+        blocks.append({'kind':'rows','record_refs':refs,'heading':'{{'+date_key+'}}' if date_key and current!=previous else '',
+            'template':' '.join('{{'+key+'}}' for key in main)+''.join('\n  '+fields[key]['label']+': {{'+key+'}}' for key in details)})
+        previous=current
     return render({'blocks':blocks+notes+tail},view)

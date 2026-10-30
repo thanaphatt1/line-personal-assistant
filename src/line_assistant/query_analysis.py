@@ -226,8 +226,8 @@ def finish(host,args):
         differences=[value-values[0] for value in values[1:]]
         common['differences']=[f'{v:.2f}' if expenses else str(int(v)) for v in differences]
         message='เทียบกับผลค้นหาแรก:\n'+'\n'.join(
-            headers[i+1]+f" — ต่างจากชุดแรก {value:+.2f} {unit}" if expenses
-            else headers[i+1]+f" — ต่างจากชุดแรก {int(value):+d} {unit}" for i,value in enumerate(differences))
+            headers[i+1]+f" ต่างจากชุดแรก {value:+.2f} {unit}" if expenses
+            else headers[i+1]+f" ต่างจากชุดแรก {int(value):+d} {unit}" for i,value in enumerate(differences))
     # Aggregates keep each read's remembered-label disclosure, not only its header.
     notes=list(dict.fromkeys(v for report in reports for k,v in (report.data.get('query_facts') or {}).items() if k.startswith('remembered_')))
     message+='\n\nผลค้นหาที่ใช้:\n'+'\n'.join(headers)+''.join('\n'+note for note in notes)

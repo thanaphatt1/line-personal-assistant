@@ -1,4 +1,4 @@
-"""Expense reviews show verified duplicates/date sources; conditional adds and alias offers never write by themselves."""
+"""Routine reviews stay concise; requested existence checks and source guards remain."""
 import json,socket
 import pytest
 from test_history_first import response,data
@@ -26,14 +26,16 @@ def saved(h,text='ค่ากระดาษ 228 บาท',**entry):
     assert h.send(r.data['confirm_command']).status=='recorded';return r
 
 
-def test_review_shows_same_day_duplicate_and_same_name_with_other_amount_before_consent():
+def test_routine_review_does_not_read_or_display_unrequested_same_day_history(monkeypatch):
     h=Harness();saved(h)
+    def unrequested(*a,**k):raise AssertionError('No duplicate-history read for an ordinary additional payment')
+    monkeypatch.setattr(h.service,'_saved_matches',unrequested)
     again=add(h,'ค่ากระดาษ 228 บาท')
-    assert again.status=='preview' and 'บันทึกไว้แล้ว: ค่ากระดาษ 228 บาท วันที่ 13 ต.ค. 2026 (1 รายการ)' in again.message
-    assert again.data['review_notices'] and len(h.sheets.entries)==1
+    assert again.status=='preview' and 'บันทึกไว้แล้ว' not in again.message
+    assert len(h.sheets.entries)==1
     h.send('ยกเลิก '+again.data['tool_result']['draft_ref'])
     other=add(h,'ค่ากระดาษ 100 บาท',amount=100)
-    assert other.status=='preview' and 'วันเดียวกันบันทึกค่ากระดาษไว้แล้ว 1 รายการ' in other.message and len(h.sheets.entries)==1
+    assert other.status=='preview' and '100 บาท' in other.message and '228 บาท' not in other.message and len(h.sheets.entries)==1
 
 
 def test_review_states_when_the_date_was_defaulted_to_today():
@@ -87,7 +89,7 @@ def test_another_payment_after_an_already_recorded_check_uses_that_date():
         return response(name='prepare_expenses',args={'draft_ref':None,'entries':[data(amount=100,date_ref=ref,source_refs=[c['current_source_ref']])]})
     r=h.send('เพิ่มอีกอันนึงเป็นค่ากระดาษ 100 บาท',call,response(text='ขอข้อมูลเพิ่มครับ'))
     assert r.status=='preview' and r.data['tool_result']['entries'][0]['date']=='2026-10-12'
-    assert 'ตามที่ถามก่อนหน้า' in r.message and 'วันเดียวกันบันทึกค่ากระดาษไว้แล้ว 1 รายการ' in r.message
+    assert 'ตามที่ถามก่อนหน้า' in r.message and 'วันเดียวกันบันทึก' not in r.message
 
 
 def test_question_date_is_offered_only_right_after_that_read():
@@ -116,29 +118,28 @@ def existing(item):
     return answer
 
 
-def test_receipt_offers_to_remember_a_chosen_spelling_and_the_alias_review_still_decides():
+def test_receipt_is_summary_only_and_owner_can_request_remembering_a_chosen_spelling():
     api=OwnerHosted()
     asked,_=turn(api,'สปอติฟาย 88 บาท',resolved('Spotify','สปอติฟาย'))
     assert asked.status=='clarification' and 'สปอติฟาย หมายถึง Spotify' in asked.message
     review,_=turn(api,'ใช่',existing('Spotify'))
     assert review.status=='preview' and 'Spotify' in review.message and api.expense_writes==0
     receipt,_=turn(api,review.data['confirm_command'])
-    actions=[b['action'] for b in receipt.data['line_message']['contents']['footer']['contents']]
-    offer=[a for a in actions if a['type']=='message']
-    assert receipt.status=='recorded' and offer==[{'type':'message','label':'จำชื่อ สปอติฟาย','text':'จำว่า สปอติฟาย คือ Spotify'}]
+    from line_assistant.line_api import rendered_message
+    assert receipt.status=='recorded' and rendered_message(receipt)['type']=='text'
     assert not api.snapshot()['history24']['current'].get('owner_features_v1',{}).get('aliases')
-    proposal,_=turn(api,offer[0]['text'],alias('set',label='สปอติฟาย',item='Spotify'))
+    proposal,_=turn(api,'จำว่า สปอติฟาย คือ Spotify',alias('set',label='สปอติฟาย',item='Spotify'))
     assert proposal.status=='preview' and not api.snapshot()['history24']['current'].get('owner_features_v1',{}).get('aliases')
     turn(api,'ยืนยัน')
     assert api.snapshot()['history24']['current']['owner_features_v1']['aliases']['สปอติฟาย']['item']=='Spotify'
     # Once remembered, the same spelling resolves directly and no offer is repeated.
     again,_=turn(api,'สปอติฟาย 88 บาท',resolved('สปอติฟาย',None))
     saved_again,_=turn(api,again.data['confirm_command'])
-    assert saved_again.status=='recorded' and not [b for b in saved_again.data['line_message']['contents']['footer']['contents'] if b['action']['type']=='message']
+    assert saved_again.status=='recorded' and rendered_message(saved_again)['type']=='text'
 
 
 def test_record_date_button_question_uses_a_readable_date():
-    from test_owner_features import record
+    from test_owner_features import legacy_record as record
     from owner_features_hosted import button
     api=OwnerHosted();saved_record=record(api)
     result,_=turn(api,button(saved_record,'date'),postback=True)

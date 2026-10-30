@@ -38,6 +38,7 @@ def group(ref, name, portion, *, item=None, source='CURRENT'):
 def record(ref, amount, *, occurrence=0, date=None, source='CURRENT', **kw):
     return {'group_ref': ref, 'amount': amount,
         'amount_source': q(str(amount), occurrence, source) if amount is not None else None,
+        'reuse_previous_amount':False,
         'date_source': q(date, ref=source) if date else None,
         'date_value': None, 'date_ambiguous':False, 'date_ref': None, 'note': None, 'note_source': None, **kw}
 
