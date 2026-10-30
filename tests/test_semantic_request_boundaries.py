@@ -136,14 +136,25 @@ def test_history_reference_does_not_bypass_fact_provenance(damage):
 
 @pytest.mark.parametrize('text,value,literal',[
     ('ยอดคือ 175 บาท',75,'75'),
-    ('วันที่ 15 ตุลาคม 2026',15,'15'),
-    ('มี 3 รายการ',3,'3'),
+    ('ยอดคือ 75.25 บาท',75,'75'),
+    ('ยอดคือ 1750 บาท',175,'175'),
 ])
 def test_cropping_a_historical_span_cannot_create_a_different_money_fact(text,value,literal):
     h=pending();before=deepcopy(active(h))
     h.send(text,response(text='รับทราบ'));ref=h.service._current['source_ref']
     r=h.send('ใช้ยอดที่ผมบอกเมื่อกี้',historical({0:[('amount',value,literal)]},{'amount':ref}),response(text='ต้องการยอดเท่าไหร่ครับ'))
     assert not r.data['tool_result'].get('ok') and active(h)['entries']==before['entries']
+    assert not h.sheets.entries
+
+
+@pytest.mark.parametrize('text,value',[('วันที่ 15 ตุลาคม 2026',15),('มี 3 รายการ',3)])
+def test_numeric_roles_are_model_interpretations_and_do_not_authorize_a_write(text,value):
+    # The mechanical check proves a complete owner-written number, not its
+    # semantic role. A mistaken date/count classification must be caught by
+    # planner evaluation or owner review, not another language parser.
+    h=pending();h.send(text,response(text='รับทราบ'));ref=h.service._current['source_ref']
+    r=h.send('ใช้ยอดที่ผมบอกเมื่อกี้',historical({0:[('amount',value,str(value))]},{'amount':ref}))
+    assert r.data['tool_result']['ok'] and active(h)['entries'][0]['amount']==str(value)
     assert not h.sheets.entries
 
 

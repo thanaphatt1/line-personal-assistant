@@ -43,6 +43,7 @@ def restore_batches(state,value):
             or proofs[ref]!=batch_fingerprint(b) or not isinstance(b.get('members'),list) or not 1<=len(b['members'])<=8 or len(set(b['members']))!=len(b['members'])):raise PlanningError('Invalid Calendar batch binding')
         for field in ['created_at','updated_at','expires_at']:
             if datetime.fromisoformat(b[field]).utcoffset() is None:raise PlanningError('Invalid Calendar batch clock')
+        if 'model_interpreted' in b and b['model_interpreted'] is not True:raise PlanningError('Invalid Calendar batch plan')
         for index,child in enumerate(b['members']):
             d=state.calendar_drafts.get(child)
             if (child in claimed or not d or d.get('batch_ref')!=ref or d.get('ordinal')!=index+1 or d['calendar_id']!=b['calendar_id']):raise PlanningError('Invalid Calendar batch membership')
@@ -91,7 +92,7 @@ class CalendarBatches:
             # perform. This is a read-only projection; consent stays absent and
             # binding still checks the original persisted version/fingerprint.
             projected=deepcopy(b);children={r:deepcopy(self.child(r)) for r in b['members']}
-            if b['status']=='needs_information' and not b.get('action_key'):
+            if b['status']=='needs_information' and not b.get('action_key') and not b.get('model_interpreted'):
                 self.remove_empty_shadows(projected,children,self.h._current)
             values.append(self.view(projected,children));self.request_views[ref]=batch_fingerprint(b)
         return values
@@ -103,6 +104,7 @@ class CalendarBatches:
         _,shown=self.h._presented_result();view=shown.data.get('calendar_batch_view',{}) if shown else {}
         try:b=self.get(view.get('batch_ref'))
         except (ValueError,KeyError,TypeError):return None
+        if b.get('model_interpreted'):return None
         return b['batch_ref'] if view.get('version')==b['version'] and b['status'] in {'review','needs_information'} else None
     def definitions(self):
         item=deepcopy(self.f.single_definitions()[0]['parameters'])

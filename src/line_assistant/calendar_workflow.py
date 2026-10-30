@@ -4,7 +4,7 @@ Model tools prepare/read/cancel drafts only. Provider creation goes through the
 existing durable action/lease protocol after a delivered unchanged review.
 """
 from copy import deepcopy
-from datetime import date,datetime,timedelta
+from datetime import date,datetime,time,timedelta
 import hmac,re,secrets
 from pydantic import BaseModel,ConfigDict,Field
 from .calendar_dates import event_date,event_time,duration,bangkok_zone
@@ -47,7 +47,8 @@ NAMES={'title':'ชื่อเรื่อง','date':'วันนัด','tim
        'calendar_duration_unclear':'ระยะเวลาเป็นนาทีหรือชั่วโมง','calendar_end_conflict':'เวลาสิ้นสุดและระยะเวลาให้ตรงกัน',
        'calendar_end_order':'วันและเวลาสิ้นสุดที่อยู่หลังเวลาเริ่ม','calendar_access_unavailable':'การเชื่อมต่อปฏิทิน'}
 NAMES.update(calendar_event_type_conflict='เลือกนัดทั้งวันหรือนัดระบุเวลาอย่างใดอย่างหนึ่ง',
-    calendar_all_day_range_unsupported='เลือกวันเดียวต่อหนึ่งนัดทั้งวัน หรือแยกช่วงเป็นแต่ละนัด')
+    calendar_all_day_range_unsupported='เลือกวันเดียวต่อหนึ่งนัดทั้งวัน หรือแยกช่วงเป็นแต่ละนัด',
+    calendar_title_unclear='ชื่อนัดที่ชัดเจน',calendar_unsupported_request='คำขอมีรูปแบบนัดที่ยังรองรับไม่ได้')
 
 class Arguments(BaseModel):model_config=ConfigDict(extra='forbid',strict=True)
 class TemporalBinding(Arguments):
@@ -121,6 +122,9 @@ def literal_guard_text(text,title):
 
 def calculate(d):
     facts=d['facts'];missing=[];issues=[];start=None;end=None
+    issue_for={'title':'calendar_title_unclear','date_text':'calendar_date_unclear','end_date_text':'calendar_date_unclear',
+        'time_text':'calendar_time_unclear','end_time_text':'calendar_time_unclear','duration_text':'calendar_duration_unclear','all_day':'calendar_event_type_conflict'}
+    issues.extend(issue_for[f] for f in d.get('semantic_uncertain_fields',()))
     if not facts['title']:missing.append('title')
     def at(field):return datetime.fromisoformat(d['anchors'][field]['at'])
     def parse(field,fn,missing_name=None):
@@ -131,6 +135,12 @@ def calculate(d):
             from .temporal import validate_proof,projection
             proof=d['anchors'][field]['temporal'];validate_proof(proof)
             if proof['owner']!=d['owner_id'] or proof['values'].get(projection(field))!=facts[field]:raise PlanningError('calendar_temporal_proof_invalid')
+            part=projection(field)
+            # A validated temporal projection is already typed. Do not send
+            # it through the legacy natural-language date/clock parser again.
+            if part=='date':return date.fromisoformat(facts[field])
+            if part=='time':return time.fromisoformat(facts[field])
+            if part=='duration_text':return int(facts[field].split()[0])
         try:return fn(facts[field])
         except ValueError as error:issues.append(str(error));return None
     day=parse('date_text',lambda text:event_date(text,at('date_text')),'date')
@@ -177,6 +187,12 @@ def restore_calendar(state,value):
         for field in ['created_at','updated_at','expires_at']:
             if datetime.fromisoformat(d[field]).utcoffset() is None:raise PlanningError('Calendar clock must be aware')
         if type(d.get('all_day',False)) is not bool:raise PlanningError('Invalid Calendar date mode')
+        if 'model_interpreted' in d:
+            if d['model_interpreted'] is not True:raise PlanningError('Invalid Calendar semantic plan')
+            for key,allowed in [('semantic_uncertain_fields',{*FIELDS,'all_day'})]:
+                values=d.get(key,[])
+                if not isinstance(values,list) or any(not isinstance(v,str) or v not in allowed for v in values) or len(values)!=len(set(values)):
+                    raise PlanningError('Invalid Calendar semantic plan')
         if 'all_day' in d:
             anchor=d.get('all_day_anchor',{})
             if (anchor.get('value') is not d['all_day'] or anchor.get('source_ref') not in d['source_refs']
@@ -224,7 +240,9 @@ class CalendarWorkflow:
         if (not d or d['owner_id']!=self.h.settings.owner_id or d['calendar_id']!=self.calendar_id or getattr(self.adapter,'calendar_id',None)!=self.calendar_id or proof!={'owner_id':d['owner_id'],'version':d['version'],'fingerprint':fingerprint(d)}
             or datetime.fromisoformat(d['expires_at'])<=self.h.clock() or active and d['status'] in {'recorded','cancelled'}):raise PlanningError('calendar_draft_stale_or_unavailable')
         return d
-    def definitions(self):return self.single_definitions()+self.batches.definitions()
+    def definitions(self):
+        from .calendar_proposals import definitions
+        return [*definitions(),*self.single_definitions()[1:],*self.batches.definitions()[1:]]
     def views(self):
         result=[];self.request_views={};focused=self.batches.focused_edit_ref()
         for ref,d in self.h.state.calendar_drafts.items():
@@ -448,6 +466,10 @@ class CalendarWorkflow:
     def tool(self,name,args,*,interpreted_patch=False,field_evidence=None):
         try:
             if not self.enabled:raise PlanningError('calendar_disabled')
+            if (name=='prepare_calendar_event' and 'fields' in args
+                or name=='prepare_calendar_events' and any('fields' in e for e in args.get('events',[]) if isinstance(e,dict))):
+                from .calendar_proposals import prepare
+                return prepare(self,name,args)
             if name in self.batches.names:return self.batches.tool(name,args,interpreted_patch=interpreted_patch,field_evidence=field_evidence)
             if name=='prepare_calendar_event':
                 from .calendar_sources import units
@@ -532,7 +554,7 @@ class CalendarWorkflow:
             if 'time_or_all_day' in fields:message+='\n'+timing_question()
             data['calendar_reason']=message;return Result('clarification',message,data)
         r=d['review'];a,_=interval(d)
-        notices=[f"มีนัดทับในปฏิทินนี้ {len(r['conflicts'])} รายการ" if r['conflicts'] else 'ไม่พบนัดทับในปฏิทินนี้ (ไม่ได้ตรวจปฏิทินหลัก)']
+        notices=[f"มีนัดทับในปฏิทินนี้ {len(r['conflicts'])} รายการ"] if r['conflicts'] else []
         if a<self.h.clock():notices.append('เวลาเริ่มนี้อยู่ในอดีต กรุณาตรวจสอบก่อนยืนยัน')
         notices+=approximate_notices(d)
         if refreshed:notices.insert(0,'มีข้อความอื่นคั่นหลังรายการเดิม จึงแสดงนัดล่าสุดให้ยืนยันอีกครั้ง')

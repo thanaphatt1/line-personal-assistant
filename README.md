@@ -35,6 +35,8 @@ Google Sheets and Firestore can store generic business records. [Table metadata]
 
 Calendar creation targets one configured calendar. Optional [all-calendar reads](docs/configuration.md#reading-all-calendars) combine calendars readable by the runtime account, and owners can [connect shared calendars through LINE](docs/configuration.md#connect-a-calendar-through-line). Conflict checks cover the configured write calendar. Creation does not support guests, recurrence, reminders or multi-day all-day ranges. [Saved-record changes](docs/saved-record-edits.md) use separate feature flags and reviewed workflows.
 
+The model groups appointments and interprets dates/times from their original owner quotations, including multi-line copied descriptions. Reviews show the target calendar, appointment details and confirmation controls. They surface actual conflicts or uncertain times; routine no-conflict notices and disclaimers about other calendars are omitted. [Language interpretation and execution checks](docs/semantic-boundaries.md) describes what the model selects and what the application verifies.
+
 The built-in expense read supports a window of up to 10 years; one Calendar read supports up to 3 years. These are query capacity bounds, not evidence of how much data a source contains. Pagination, source size and the remaining turn budget can stop a read earlier. The assistant reports incomplete coverage or asks for a shorter period instead of claiming a complete total. Activity answers group repeated titles, ask about uncertain matches and retain the spending goal when joining expenses to activity dates. [Read queries](docs/read-queries.md) describes these contracts and activity memory.
 
 Additional guides cover:

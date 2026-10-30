@@ -53,7 +53,8 @@ def schema(model):
         if isinstance(value, list): return [expand(v) for v in value]
         if not isinstance(value, dict): return value
         if '$ref' in value: return expand(defs[value['$ref'].split('/')[-1]])
-        result = {k: expand(v) for k, v in value.items() if k not in {'title', 'default', '$defs'}}
+        result = {k: ({name:expand(child) for name,child in v.items()} if k=='properties' else expand(v))
+                  for k, v in value.items() if k not in {'title', 'default', '$defs'}}
         if result.get('type') == 'object':
             result['additionalProperties'] = False
             result['required'] = list(result.get('properties', {}))
@@ -308,17 +309,11 @@ class TableWorkflow:
             current=next((r for r in self.registry.scan(table.id) if r['id']==p.record_id),None)
             if not current or current['version']!=before['version']:raise TableError('record_changed')
             before=current
-            if not draft:
-                selection=self.selection_sets.get(table.id)
-                if selection is None:
-                    _,shown=self.h._presented_result()
-                    previous=shown.data.get('tool_result',{}) if shown else {}
-                    selection={'count':previous.get('count',0),'records':self.registry.scan(table.id)}
-                if selection['count']!=1:
-                    names=[table.display_field] if table.display_field else [c.name for c in table.columns if c.type=='text']
-                    text=self.h._current['text']
-                    selected={r['id'] for r in selection['records'] if r['id'] in text or any(isinstance(r['values'].get(name),str) and r['values'][name] in text for name in names)}
-                    if selected!={p.record_id}:raise TableError('record_selection_required')
+            # The model selects an actually offered identity from dialogue.
+            # A literal name/ID need not be repeated in the newest sentence.
+            selection=self.selection_sets.get(table.id)
+            offered={identifier for (table_id,identifier) in self.candidates if table_id==table.id}
+            if not draft and selection and selection['count']>len(offered):raise TableError('record_selection_required')
         if p.operation == 'delete' and p.values: raise TableError('delete_values')
         values = deepcopy(draft['values'] if draft else before['values'] if before else {})
         for chosen in p.values:
@@ -340,19 +335,21 @@ class TableWorkflow:
                 _,shown=self.h._presented_result()
                 previous=shown.data.get('tool_result',{}) if shown else {}
                 if previous.get('table_id')==referenced.id and previous.get('scope_binding')==self.registry.binding(referenced.id):offered+=shown.data.get('table_candidates',[])
-                names=[referenced.display_field] if referenced.display_field else [c.name for c in referenced.columns if c.type=='text']
+                offered_ids={r['id'] for r in offered}
                 selection=self.selection_sets.get(referenced.id)
-                selection_records=selection['records'] if selection else self.registry.scan(referenced.id)
-                selected={r['id'] for r in selection_records if any(isinstance(r['values'].get(name),str) and r['values'][name] in chosen.source_text for name in names)}
-                if selected!={value} or value not in {r['id'] for r in offered}:raise TableError('reference_selection_required:' + column.name)
+                if value not in offered_ids or selection and selection['count']>len(offered_ids):
+                    raise TableError('reference_selection_required:' + column.name)
+                observed=next(r for r in offered if r['id']==value)
+                current=next((r for r in self.registry.scan(referenced.id) if r['id']==value),None)
+                if not current or current['version']!=observed['version']:
+                    raise TableError('reference_selection_required:' + column.name)
             if value is not None and column.type in {'integer', 'decimal'}:
                 tokens = re.findall(r'(?<![\d.])-?\d[\d,]*(?:\.\d+)?(?![\d.])', chosen.source_text.translate(DIGITS))
                 if not any(Decimal(token.replace(',', '')) == Decimal(value) for token in tokens):
                     raise TableError('numeric_evidence_required:' + column.name)
             if value is not None and column.type == 'date' and not chosen.temporal_ref:
-                from .calendar_dates import event_date
-                if not any(event_date(chosen.source_text, datetime.fromisoformat(r['at'])).isoformat() == value for r in matches):
-                    raise TableError('date_evidence_required:' + column.name)
+                from .temporal import interpreted_evidence
+                interpreted_evidence(self.h,'date',value,{**matches[-1],'text':chosen.source_text})
             values[column.name] = value
         today = draft['today'] if draft else datetime.fromisoformat(self.h._current['at']).astimezone(BANGKOK).date().isoformat()
         missing = [c.name for c in table.columns if c.required and values.get(c.name) is None and not (p.operation == 'insert' and (c.default is not None or c.default_today))]

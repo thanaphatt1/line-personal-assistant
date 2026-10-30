@@ -1,6 +1,6 @@
 """Cold-restored LINE controls, reviewed removal, and durable owner vocabulary."""
 from copy import deepcopy
-from datetime import timedelta
+from datetime import datetime,timedelta
 import socket
 import pytest
 from fastapi.testclient import TestClient
@@ -309,7 +309,11 @@ def test_one_time_catalog_choice_does_not_create_durable_alias():
 
 
 def test_repeated_alias_redisplay_retains_only_relevant_owner_evidence():
-    api=OwnerHosted();turn(api,'จำว่า เพลง หมายถึง Spotify',alias())
+    api=OwnerHosted()
+    # Keep the 19-turn evidence-retention regression without coupling it to
+    # one month's maximum-token reservations. Real allocation is unchanged.
+    api.now=datetime.fromisoformat('2026-10-31T23:59:50+07:00')
+    turn(api,'จำว่า เพลง หมายถึง Spotify',alias())
     for _ in range(18):
         result,_=turn(api,'ตรวจชื่อเรียกใหม่',response('review_catalog_alias',{}))
         assert result.status=='preview',result

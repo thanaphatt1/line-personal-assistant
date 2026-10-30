@@ -84,7 +84,7 @@ CALENDAR = (
     'Calendar preparation: retain each requested appointment as a distinct member, using a set for multiple appointments. '
     'Prepare known facts even when incomplete, keeping event identities and shared versus per-event facts separate. '
     'Use all-day mode only when explicitly requested; otherwise require the actual start and end or duration. '
-    'Do not assume a default duration or timezone. Preserve complete literal titles and locations while separating request verbs, dates and clocks. '
+    'Do not assume a default duration or timezone. Keep complete literal event names and their qualifiers; scheduling fields describe when the event happens. '
     'Update only selected live members; an expired historical draft requires new preparation from the original owner facts.'
 )
 

@@ -187,3 +187,25 @@ def calendar_evidence(h,refs,source_refs):
         result[field]={'role':'user','source_ref':proof['source_ref'],'text':proof['source_text'],'at':proof['at'],
             'temporal':proof,'value':value}
     return result
+
+
+def interpreted_evidence(h,field,value,row):
+    """Validate an inline model interpretation without parsing owner language.
+
+    The original quotation remains evidence. ISO components/minutes are a
+    reviewed semantic proposal, not proof that their meaning was understood.
+    """
+    part=projection(field) or field
+    if part not in {'date','time','duration_text'}:
+        raise PlanningError('temporal_unknown_field',fields=[field])
+    args={'source_ref':row['source_ref'],'source_text':row['text'],
+          'kind':'duration' if part=='duration_text' else part,
+          'mode':'duration' if part=='duration_text' else 'components'}
+    if part=='duration_text':
+        if type(value) is not int:raise PlanningError('temporal_invalid_duration',fields=[field])
+        args['minutes']=value
+    else:args[part]=value
+    output=execute(h,args)
+    if not output.get('ok'):raise PlanningError(output['error'],fields=[field])
+    actual,proof=get(h,output['temporal_ref'],part,source_ref=row['source_ref'],source_text=row['text'])
+    return {**row,'value':actual,'temporal':proof}

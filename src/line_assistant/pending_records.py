@@ -6,6 +6,7 @@ Existing domain adapters retain their date, amount and mutation invariants.
 """
 from copy import copy,deepcopy
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 from .tables import Strict,normalize,Column,TableError
@@ -22,6 +23,7 @@ class Change(Strict):
     source_text:str=Field(min_length=1,max_length=2000,description='Exact contiguous span from the original owner message supporting this change. Keep original wording even for a semantic choice or computed temporal projection.')
     source_ref:str=Field(min_length=1,max_length=64,description='Visible original OWNER source_ref containing source_text, not an assistant reply or a guessed ID.')
     temporal_ref:str|None=Field(default=None,description='Retain the verified resolution ref for a computed date/time; value is its projection and source_text remains the original owner wording.')
+    certainty:Literal['exact','approximate','uncertain']|None=Field(default=None,description='Calendar temporal fields only: classify the changed owner wording. Null elsewhere. Uncertain proposals remain unconfirmable.')
 
 
 class Record(Strict):
@@ -48,7 +50,7 @@ def views(h):
         records=[]
         for ordinal,e in enumerate(d['entries'],1):
             fields=[field('item','ชื่อรายการ'),field('amount','จำนวนเงิน','decimal'),
-                    field('date_text','ข้อความวันที่'),field('note','หมายเหตุ')]
+                    field('date_text','ข้อความวันที่',description='Literal date wording, or a verified ISO date with temporal_ref for semantic interpretation.'),field('note','หมายเหตุ')]
             offer=e.get('previous_price',{})
             if h.previous_prices.enabled and offer.get('state')=='offered':
                 fields.append(field('previous_price_ref','ใช้ยอดที่เสนอ','enum',choices=[offer['ref']],interpretation='choice'))
@@ -76,6 +78,15 @@ def views(h):
     if h.calendar_flow.enabled:
         fields=[field(k,label) for k,label in [('title','ชื่อเรื่อง'),('date_text','วันนัด'),('time_text','เวลาเริ่ม'),
             ('end_date_text','วันสิ้นสุด'),('end_time_text','เวลาสิ้นสุด'),('duration_text','ระยะเวลา')]]+[field('all_day','ทั้งวัน','boolean')]
+        def calendar_fields(event):
+            if not h.state.calendar_drafts[event['draft_ref']].get('model_interpreted'):return fields
+            return [field('title','ชื่อเรื่อง'),
+                field('date_text','วันนัด (YYYY-MM-DD)','date',interpretation='date'),
+                field('time_text','เวลาเริ่ม (HH:MM)',interpretation='time'),
+                field('end_date_text','วันสิ้นสุด (YYYY-MM-DD)','date',interpretation='date'),
+                field('end_time_text','เวลาสิ้นสุด (HH:MM)',interpretation='time'),
+                field('duration_text','ระยะเวลาเป็นนาที','integer',interpretation='duration_text'),
+                field('all_day','ทั้งวัน','boolean')]
         batched=set()
         for batch in h.calendar_flow.batches.views():
             records=[]
@@ -83,12 +94,14 @@ def views(h):
                 if event['status'] in {'cancelled','recorded'}:continue
                 batched.add(event['draft_ref'])
                 records.append({'record_ref':event['draft_ref'],'ordinal':event['ordinal'],'version':event['version'],'values':event['facts'],
-                    'fields':fields,'question_focus':focus.get('draft_ref')==batch['batch_ref'] and focus.get('version')==batch['version'] and focus.get('record_ref')==event['draft_ref']})
+                    'uncertain_fields':deepcopy(h.state.calendar_drafts[event['draft_ref']].get('semantic_uncertain_fields',[])),
+                    'fields':calendar_fields(event),'question_focus':focus.get('draft_ref')==batch['batch_ref'] and focus.get('version')==batch['version'] and focus.get('record_ref')==event['draft_ref']})
             if records:result.append({'draft_ref':batch['batch_ref'],'version':batch['version'],'domain':'calendar_batch','records':records})
         for event in h.calendar_flow.views():
             if event['draft_ref'] not in batched:
                 result.append({'draft_ref':event['draft_ref'],'version':event['version'],'domain':'calendar','records':[
-                    {'record_ref':event['draft_ref'],'ordinal':1,'values':event['facts'],'fields':fields,
+                    {'record_ref':event['draft_ref'],'ordinal':1,'values':event['facts'],'fields':calendar_fields(event),
+                     'uncertain_fields':deepcopy(h.state.calendar_drafts[event['draft_ref']].get('semantic_uncertain_fields',[])),
                      'question_focus':focus.get('draft_ref')==event['draft_ref'] and focus.get('version')==event['version'] and focus.get('record_ref')==event['draft_ref']}]})
     return result
 
@@ -144,7 +157,9 @@ def planner_tools(base,available):
             tool['description']='Create a NEW draft/proposal. Correct or complete existing pending records with patch_pending_records. '+tool['description']
         if name=='prepare_calendar_events':
             for key in ['batch_ref','batch_version']:properties[key]['enum']=[None]
-            event=properties['events']['items']['properties']
+            event_schema=properties['events']['items']
+            if '$ref' in event_schema:event_schema=tool['parameters']['$defs'][event_schema['$ref'].rsplit('/',1)[-1]]
+            event=event_schema['properties']
             for key in ['draft_ref','draft_version']:event[key]['enum']=[None]
             tool['description']='Create a NEW set. Existing pending member changes use patch_pending_records and its record ordinals. '+tool['description']
     return result
@@ -175,6 +190,8 @@ def validate(h,p,view):
         fields={f['name']:f for f in records[record.record_ref]['fields']}
         for change in record.changes:
             f=fields[change.field]
+            if change.certainty is not None and (view['domain'] not in {'calendar','calendar_batch'} or change.field not in {'date_text','time_text','end_date_text','end_time_text','duration_text'}):
+                raise PatchError('patch_invalid_certainty',change.field)
             rows=h._owner_sources([change.source_ref])
             if not any(change.source_text in r['text'] for r in rows):raise PatchError('patch_owner_evidence',change.field)
             try:normalize(Column.model_validate({k:v for k,v in f.items() if k not in {'interpretation','implied_by'}}),change.value)
@@ -184,29 +201,34 @@ def validate(h,p,view):
                 part='date' if f['type']=='date' else projection(change.field)
                 if part is None:raise PatchError('temporal_unknown_field',change.field)
                 value,_=get(h,change.temporal_ref,part,source_ref=change.source_ref,source_text=change.source_text)
+                if f.get('interpretation')=='duration_text':value=int(value.split()[0])
                 if change.value!=value:raise PatchError('temporal_value_mismatch',change.field)
-            if not change.temporal_ref and f['type']=='text' and change.value is not None and change.value not in change.source_text:
+            semantic=f.get('interpretation') in {'date','time','duration_text'}
+            if semantic and not change.temporal_ref:
+                from .temporal import interpreted_evidence
+                interpreted_evidence(h,change.field,change.value,{**rows[0],'text':change.source_text})
+            if not semantic and not change.temporal_ref and f['type']=='text' and change.value is not None and change.value not in change.source_text:
                 # Existing catalog identity permits case/NFC/unique spacing,
                 # using immutable owner coordinates, just as creation does.
                 from .catalog_names import spans
                 catalog=h._taxonomy().catalog if view['domain']=='expense' and change.field=='item' else None
                 if catalog is None or catalog.match(change.value).status!='exact' or not spans(change.source_text,change.value,catalog):
                     raise PatchError('patch_literal_value',change.field)
-            # A literal substring cannot turn part of a date/count/number
-            # into a money fact by cropping its surrounding owner text.
+            # Check complete numeric tokens, not a guessed date/count/money
+            # role. The planner selected the field; its meaning is reviewed.
             if view['domain']=='expense' and change.field=='amount' and change.value is not None:
                 from decimal import Decimal
-                from .expense_sources import roles
+                from .language import amounts
                 labels=[*(r['values'].get('item') for r in view['records']),
                     *(v.value for r in p.records for v in r.changes if v.field=='item')]
                 def proved(row):
                     spans=[m.span() for label in labels if label for m in h._item_spans(row['text'],label)]
-                    values=roles(row['text'],datetime.fromisoformat(row['at']),spans)['money']
+                    values=amounts(row['text'],spans,list_separators=True)
                     return any(v.value is not None and Decimal(v.value)==Decimal(str(change.value))
                         and any(start<=v.start and v.end<=start+len(change.source_text)
                             for start in range(len(row['text'])) if row['text'].startswith(change.source_text,start)) for v in values)
                 if not any(proved(row) for row in rows):raise PatchError('patch_owner_evidence',change.field)
-            if not change.temporal_ref and view['domain'] in {'calendar','calendar_batch'} and change.value is not None and change.field not in {'all_day','title'}:
+            if not semantic and not change.temporal_ref and view['domain'] in {'calendar','calendar_batch'} and change.value is not None and change.field not in {'all_day','title'}:
                 from .calendar_workflow import literal_fact
                 if not any(literal_fact(change.value,row['text'],change.field) is not None for row in rows):
                     raise PatchError('patch_owner_evidence',change.field)
@@ -224,7 +246,8 @@ def canonical_patch(p,view):
         fields={f['name']:f for f in records.get(record.record_ref,{}).get('fields',[])}
         present={v.field for v in record.changes}
         retained=records.get(record.record_ref,{}).get('values',{})
-        values=[v for v in record.changes if not (v.field in retained and type(v.value) is type(retained[v.field]) and v.value==retained[v.field])
+        unresolved=records.get(record.record_ref,{}).get('uncertain_fields',[])
+        values=[v for v in record.changes if not (v.certainty is None and v.field not in unresolved and v.field in retained and type(v.value) is type(retained[v.field]) and v.value==retained[v.field])
             and not any(k in present and v.value==value
             for k,value in fields.get(v.field,{}).get('implied_by',{}).items())]
         if values:result.append(record.model_copy(update={'changes':values}))
@@ -318,6 +341,9 @@ def execute(h,args):
             'draft_ref':d['ref'],'source_refs':list(dict.fromkeys([h._current['source_ref'],*(v.source_ref for r in p.records for v in r.changes)])),
             'values':[{'field':v.field,'value':v.value,'source_text':v.source_text,'temporal_ref':v.temporal_ref} for r in p.records for v in r.changes]})
     if view['domain'] in {'calendar','calendar_batch'}:
+        if any(h.state.calendar_drafts[r.record_ref].get('model_interpreted') for r in p.records):
+            from .calendar_proposals import patch
+            return patch(h.calendar_flow,p,view,{r.record_ref:evidence(h,r) for r in p.records})
         records={r['record_ref']:r for r in view['records']};events=[]
         for r in p.records:
             values={v.field:v.value for v in r.changes}

@@ -257,14 +257,48 @@ def test_duplicate_names_cannot_be_selected_by_elimination_or_display_truncation
     assert not h.state.actions
 
 
-def test_explicit_date_matches_owner_timestamp_and_amount_cannot_be_invented():
+def test_date_interpretations_are_reviewed_and_invalid_dates_or_invented_amounts_are_rejected():
     h=harness()
     result=h.send('เมื่อวานรายได้ 1000',prepare('family_income',date=('2026-10-15','เมื่อวาน'),amount=('1000','1000')))
     assert result.status=='preview' and result.data['table_draft']['values']['date']=='2026-10-15'
-    result=h.send('เมื่อวานรายได้ 1000',prepare('family_income',date=('2026-10-16','เมื่อวาน'),amount=('1000','1000')))
+    # Language meaning belongs to the planner; civil date validity does not.
+    result=h.send('ปลายกุมภาพันธ์ รายได้ 1000',prepare('family_income',date=('2027-02-30','ปลายกุมภาพันธ์'),amount=('1000','1000')))
     assert result.status=='clarification'
     result=h.send('รายได้ 1000',prepare('family_income',amount=('10000','1000')))
     assert result.data['tool_result']['error_code'].startswith('numeric_evidence_required')
+
+
+def test_semantic_record_selection_uses_full_offered_ids_without_literal_name_repetition():
+    h=harness();reg=h.app.table_flow.registry
+    seed(reg,'people',[{'name':'A','phone':phone,'status':'pending'} for phone in ['0001','0002']])
+    result=h.send('เปลี่ยนเบอร์คนที่ลงท้ายสอง เป็น 0003',call('query_table',table_id='people',for_change=True),
+        prepare(operation='update',record_id='row1',phone=('0003','0003')))
+    assert result.status=='preview' and result.data['table_draft']['before']['values']['phone']=='0002'
+    assert reg.stores['people'].writes==0
+
+
+def test_table_date_interpretation_has_no_natural_language_format_gate(monkeypatch):
+    from line_assistant import calendar_dates
+    def obsolete(*a,**k):raise AssertionError('No date language parser for typed table dates')
+    monkeypatch.setattr(calendar_dates,'event_date',obsolete)
+    h=harness()
+    result=h.send('รายรับ on November twelfth 820',prepare('family_income',
+        date=('2026-11-12','on November twelfth'),amount=('820','820')))
+    assert result.status=='preview' and result.data['table_draft']['values']['date']=='2026-11-12'
+
+
+@pytest.mark.parametrize('damage',['changed','deleted'])
+def test_semantic_reference_selection_still_rechecks_the_observed_identity(damage):
+    h=harness();reg=h.app.table_flow.registry
+    seed(reg,'people',[{'name':'A','phone':'0001','status':'pending'}])
+    def stale(body):
+        if damage=='changed':reg.stores['people'].records['row0']['version']='changed'
+        else:reg.stores['people'].records.clear()
+        return prepare('family_income',amount=('820','820'),customer=('row0','คนที่เลือก'))(body)
+    result=h.send('คนที่เลือกมีรายรับ 820',call('query_table',table_id='people',for_change=True),stale)
+    assert result.status=='clarification'
+    assert result.data['tool_result']['error_code'].startswith('reference_selection_required')
+    assert reg.stores['family_income'].writes==0
 
 
 def test_partial_updates_do_not_extend_original_expiry():

@@ -94,21 +94,24 @@ def test_plain_confirmation_after_a_draft_read_shows_fresh_review_then_creates_o
 def test_calendar_review_and_receipt_text_use_readable_bangkok_dates():
     h=Harness();r=complete(h)
     assert '17 ต.ค. 2026 เวลา 14:00–14:45' in r.message and 'Asia/Bangkok' not in r.message
-    assert not re.search(r'\d{4}-\d{2}-\d{2}',r.message) and 'ไม่พบนัดทับในปฏิทินนี้' in r.message
+    assert not re.search(r'\d{4}-\d{2}-\d{2}',r.message) and r.data['calendar_notices']==[]
+    assert 'ไม่ได้ตรวจ' not in r.message and 'ไม่พบนัดทับ' not in r.message
     created=h.send(r.data['confirm_command'])
     assert created.status=='created' and '17 ต.ค. 2026 เวลา 14:00–14:45' in created.message
     assert not re.search(r'\d{4}-\d{2}-\d{2}',created.message) and created.data['title']=='ตรวจฟัน'
 
 
-def test_calendar_review_document_keeps_status_notice_values_and_instruction():
-    h=Harness();r=complete(h);view=operation.for_result(r)
+def test_calendar_review_document_keeps_status_notice_values_and_instruction(monkeypatch):
+    h=Harness()
+    monkeypatch.setattr(h.app.calendar_flow.adapter,'conflicts',lambda *args:[{'id':'synthetic-conflict'}])
+    r=complete(h);view=operation.for_result(r)
     labels=set(view['fact_labels'].values())
     assert {'status','ปฏิทิน','หมายเหตุ','instruction'}<=labels and len(view['records'])==1
     cells={f['label']:f['display'] for f in view['records'][0]['fields'].values()}
     assert cells=={'ชื่อนัด':'ตรวจฟัน','วันที่':'17 ต.ค. 2026','เวลา':'14:00–14:45'}
     text=operation.fallback(view)
     assert 'ยังไม่ได้สร้างนัดนี้' in text and 'ตรวจฟัน 14:00–14:45' in text and text.rstrip().endswith('ได้เลยครับ')
-    assert text.index('ไม่พบนัดทับ')>text.index('ตรวจฟัน')
+    assert text.index('มีนัดทับ')>text.index('ตรวจฟัน')
     # A natural single paragraph is valid when every value, notice and instruction stays bound.
     ids={label:ref for ref,label in view['fact_labels'].items()}
     natural={'blocks':[{'kind':'text','template':'{{'+ids['status']+'}}'},
@@ -118,8 +121,10 @@ def test_calendar_review_document_keeps_status_notice_values_and_instruction():
 
 
 @pytest.mark.parametrize('mutation',['drop_notice','success_claim','copied_time'])
-def test_calendar_review_document_cannot_hide_notices_or_claim_creation(mutation):
-    h=Harness();r=complete(h);view=operation.for_result(r);ids={label:ref for ref,label in view['fact_labels'].items()}
+def test_calendar_review_document_cannot_hide_notices_or_claim_creation(mutation,monkeypatch):
+    h=Harness()
+    monkeypatch.setattr(h.app.calendar_flow.adapter,'conflicts',lambda *args:[{'id':'synthetic-conflict'}])
+    r=complete(h);view=operation.for_result(r);ids={label:ref for ref,label in view['fact_labels'].items()}
     blocks=[{'kind':'text','template':'{{'+ids['status']+'}} {{'+ids['ปฏิทิน']+'}}'},
             {'kind':'rows','record_refs':['r1'],'heading':'','template':'{{c1}} {{c2}} {{c3}}'},
             {'kind':'text','template':'{{'+ids['หมายเหตุ']+'}}'},{'kind':'text','template':'{{'+ids['instruction']+'}}'}]
