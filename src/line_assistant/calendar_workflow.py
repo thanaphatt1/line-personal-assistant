@@ -124,7 +124,10 @@ def calculate(d):
     facts=d['facts'];missing=[];issues=[];start=None;end=None
     issue_for={'title':'calendar_title_unclear','date_text':'calendar_date_unclear','end_date_text':'calendar_date_unclear',
         'time_text':'calendar_time_unclear','end_time_text':'calendar_time_unclear','duration_text':'calendar_duration_unclear','all_day':'calendar_event_type_conflict'}
-    issues.extend(issue_for[f] for f in d.get('semantic_uncertain_fields',()))
+    # All-day events have no clock fields. Uncertainty from an earlier timed
+    # proposal cannot require a clock after the owner selects all-day mode.
+    inactive={'time_text','end_time_text','duration_text'} if d.get('all_day') else set()
+    issues.extend(issue_for[f] for f in d.get('semantic_uncertain_fields',()) if f not in inactive)
     if not facts['title']:missing.append('title')
     def at(field):return datetime.fromisoformat(d['anchors'][field]['at'])
     def parse(field,fn,missing_name=None):

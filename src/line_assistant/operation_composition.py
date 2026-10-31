@@ -76,8 +76,6 @@ def expenses(result):
             if mapping:
                 cells.append(('หมวดสำหรับชื่อใหม่',mapping['category']+
                               (' / '+mapping['subcategory'] if mapping.get('subcategory') else ''),None,None))
-            resolution=entry.get('item_resolution')
-            if resolution:cells.append(('ชื่อเดิมที่เลือก',resolution['from']+' → '+resolution['to'],None,None))
         view.row(cells)
         # Review notes must remain complete; read-answer display truncation is
         # unsuitable for fields an owner is about to approve.

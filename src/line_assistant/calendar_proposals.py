@@ -162,7 +162,8 @@ def apply(flow,d,evidence,refs,uncertain=(),approximate=()):
     if mode and (type(mode['value']) is not bool or len(mode['text'])>100):
         raise PlanningError('calendar_mode_quote_too_long',fields=['all_day'])
     if mode and mode['value']!=d.get('all_day',False):
-        for field in ['time_text','end_time_text','duration_text','end_date_text']:
+        clear=list(dict.fromkeys([*clear,'time_text','end_time_text','duration_text','end_date_text']))
+        for field in clear:
             d['facts'][field]=None;d['fact_sources'].pop(field,None);d['anchors'].pop(field,None)
     if mode:
         d['all_day']=mode['value'];d['all_day_anchor']={'value':mode['value'],'source_ref':mode['source_ref'],
@@ -175,9 +176,10 @@ def apply(flow,d,evidence,refs,uncertain=(),approximate=()):
         d['facts'][field]=row['value'];d['fact_sources'][field]=[row['source_ref']]
         d['anchors'][field]={'source_ref':row['source_ref'],'at':row['at'],'bare':False,
             **({'temporal':deepcopy(row['temporal'])} if row.get('temporal') else {})}
-    previous=set(d.get('semantic_uncertain_fields',()))-set(evidence)
-    d['semantic_uncertain_fields']=sorted(previous|set(uncertain))
-    prior_approx=set(d.get('approximate_fields',()))-set(evidence)
+    inactive={'time_text','end_time_text','duration_text'} if d.get('all_day') else set()
+    previous=set(d.get('semantic_uncertain_fields',()))-set(evidence)-set(clear)
+    d['semantic_uncertain_fields']=sorted((previous|set(uncertain))-inactive)
+    prior_approx=set(d.get('approximate_fields',()))-set(evidence)-set(clear)
     qualified=sorted((prior_approx|set(approximate))&set(TEMPORAL)&{f for f in FIELDS if d['facts'][f]})
     if qualified:d['approximate_fields']=qualified
     else:d.pop('approximate_fields',None)

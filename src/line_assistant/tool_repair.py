@@ -57,7 +57,11 @@ class RepairLoop:
         registry=getattr(getattr(self.h,'table_flow',None),'registry',None)
         if registry:targets.update(registry.tables)
         target=target if target is None or target in targets else '<unoffered_target>'
-        plan=digest([name,args]);failure=digest([name,prefix,target,fields,metadata.get('required_inputs',[]),schemas])
+        # A final selection can become repairable again after a new verified
+        # result appears. Repeating it against unchanged evidence still stops.
+        progress=sorted(ref for ref,row in getattr(self.h,'_query_reads',{}).items()
+            if row.get('ok') and not row.get('read_failure')) if result.get('analysis_selection_required') else []
+        plan=digest([name,args,progress]);failure=digest([name,prefix,target,fields,metadata.get('required_inputs',[]),schemas,progress])
         self.failures[failure]=self.failures.get(failure,0)+1
         if plan in self.plans or self.failures[failure]>1:
             result['repair_stopped']='repeated_failure'

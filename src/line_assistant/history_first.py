@@ -1552,13 +1552,13 @@ class HistoryFirstAssistant(Assistant):
             return summary_result(tool_output)
         if self.raw_history_enabled and not tool_output:
             from .query_analysis import unverified_claim
-            if unverified_claim(model_text):return Result('clarification','รอบนี้ยังไม่ได้ค้นหรือจัดเรียงข้อมูลใหม่ครับ')
+            if unverified_claim(model_text):return Result('clarification','รอบนี้ยังไม่ได้ค้นหรือจัดเรียงข้อมูลใหม่ครับ',{'error_code':'unverified_completion_claim'})
         if self.calendar_connections_enabled:
             from .calendar_connections import claims_connected
-            if claims_connected(model_text):return Result('clarification','ยังไม่มีผลยืนยันการเชื่อมปฏิทินจากระบบครับ จึงยังไม่รายงานว่าเชื่อมสำเร็จ')
+            if claims_connected(model_text):return Result('clarification','ยังไม่มีผลยืนยันการเชื่อมปฏิทินจากระบบครับ จึงยังไม่รายงานว่าเชื่อมสำเร็จ',{'error_code':'unverified_completion_claim'})
         if tool_output and tool_output.get('domain')=='calendar':return self.calendar_flow.render(tool_output)
         if self.calendar_flow.enabled and re.search(r'(?:สร้าง|เพิ่ม|บันทึก).*?(?:นัด|ปฏิทิน).*?(?:แล้ว|เรียบร้อย)',model_text):
-            return Result('clarification','ยังไม่มีผลยืนยันการสร้างนัดจากระบบ จึงยังไม่รายงานว่าสร้างแล้ว')
+            return Result('clarification','ยังไม่มีผลยืนยันการสร้างนัดจากระบบ จึงยังไม่รายงานว่าสร้างแล้ว',{'error_code':'unverified_completion_claim'})
         if self.raw_history_enabled and tool_output:
             from .validation_explanations import message
             explanation=message(tool_output)
@@ -1643,7 +1643,7 @@ class HistoryFirstAssistant(Assistant):
             data={'tool_result':tool_output,'confirm_command':command,**({'review_notices':notices} if notices else {})}
             if self.semantic_enabled:data['line_message']=semantic.render_actions(message,semantic.actions(self,d))
             return Result('preview',message,data)
-        if success_claim(model_text):return Result('clarification','ยังไม่ได้บันทึกครับ ถ้ามีรายการรอยืนยันอยู่ ตอบ “ยืนยัน” หรือกดปุ่มบันทึกได้เลยครับ',{'tool_result':tool_output} if tool_output else {})
+        if success_claim(model_text):return Result('clarification','ยังไม่ได้บันทึกครับ ถ้ามีรายการรอยืนยันอยู่ ตอบ “ยืนยัน” หรือกดปุ่มบันทึกได้เลยครับ',{'tool_result':tool_output} if tool_output else {'error_code':'unverified_completion_claim'})
         if tool_output and not tool_output.get('ok'):return Result('clarification',model_text or 'ข้อมูลยังไม่ผ่านการตรวจสอบ กรุณาระบุให้ชัดเจน',{'tool_result':tool_output})
         if tool_output and tool_output.get('status')=='needs_information':
             price_question=self.previous_prices.prompt(tool_output)
@@ -1890,7 +1890,7 @@ class HistoryFirstAssistant(Assistant):
                 and at>datetime.fromisoformat(targets[0]['updated_at'])):targets[0]['review']=None
         previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
         from .tool_repair import RepairLoop
-        repairs=RepairLoop(self);repair_allowed=None
+        repairs=RepairLoop(self);repair_allowed=None;response_feedback=None;blocked_response=None
         self._query_reads={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
         for step in count():
             if not self.raw_history_enabled and step>=2:break
@@ -1963,7 +1963,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),**({'repair_feedback':response_feedback} if response_feedback else {}),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -2008,6 +2008,7 @@ class HistoryFirstAssistant(Assistant):
                     from .response_realization import finish_repair_text
                     finished=finish_repair_text(self,'')
                     if finished:return self._finish(event,at,finished)
+                    if blocked_response is not None:return self._finish(event,at,blocked_response)
                     if previous and previous[1].get('repair_feedback'):return self._finish(event,at,self._result(last))
                     detail=saved.get('diagnostic',{'kind':'unavailable'})
                     return self._finish(event,at,Result('model_unavailable',planner_failure_message(detail),{'model_failure':deepcopy(detail)}))
@@ -2034,7 +2035,17 @@ class HistoryFirstAssistant(Assistant):
                                 'error_code':'analysis_disposition_required','query_refs':list(self._query_reads)}}))
                     if previous and previous[1].get('review_refresh'):
                         return self._finish(event,at,self.calendar_flow.batches.refresh_unavailable())
-                    return self._finish(event,at,self._result(last,saved['text']))
+                    result=self._result(last,saved['text'])
+                    if (self.raw_history_enabled and not last and response_feedback is None
+                            and result.data.get('error_code')=='unverified_completion_claim'):
+                        # A received invalid reply is repairable; no failed
+                        # provider call or external mutation is repeated.
+                        blocked_response=result
+                        response_feedback={'kind':'assistant_response','error_code':'unverified_completion_claim',
+                            'verified_action':False,'instruction':'The response claimed an operation without a verified server result. Use an offered tool to prepare/read the current request from visible OWNER facts, or ask only about a genuinely missing fact. Do not claim completion, invent evidence or authorize a write.'}
+                        emit('planning_repair',tool='assistant_response',error='unverified_completion_claim',attempt=1)
+                        continue
+                    return self._finish(event,at,result)
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
                 if self.raw_history_enabled and call['name'] in {'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
@@ -2057,7 +2068,7 @@ class HistoryFirstAssistant(Assistant):
                 self.state.append('tool',event,at,tool=call['name'],result=last)
                 if last.get('prepared_reply_result'):
                     return self._finish(event,at,Result(**last['prepared_reply_result']))
-                if last.get('ok'):repair_allowed=None;self._repair_reply=None
+                if last.get('ok'):repair_allowed=None;self._repair_reply=None;response_feedback=None;blocked_response=None
                 if last.get('read_batch'):
                     self._query_analysis_active=True;previous=(call,last);continue
                 if self.raw_history_enabled:

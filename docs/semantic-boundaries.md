@@ -16,6 +16,11 @@ temporal evidence path as creation. They can declare exact, approximate or
 uncertain wording, and resolving an earlier uncertainty to the same value
 still records the new evidence. Unsupported Calendar requests fail before
 publishing a draft, so a supported restatement can reuse the original facts.
+Changing the event mode retires uncertainty about fields that mode does not
+use: an all-day event needs no clock. Replacing an endpoint with a duration
+also retires uncertainty about the removed endpoint. Date and event-mode
+uncertainty still block confirmation, and simultaneous conflicting facts are
+still shown as unresolved.
 
 Generic tables use their declared columns and choices. Date values are model
 interpretations paired with original owner wording, not restricted to a
@@ -30,6 +35,14 @@ integrity, civil date/clock validity, interval/provider constraints, sealed
 state, review delivery and fresh explicit confirmation. Tools prepare data;
 they cannot commit a write or confirm themselves. Unknown write outcomes are
 reconciled without blindly repeating the request.
+
+Received assistant replies that claim an operation without a verified result
+receive structured feedback in the same turn, using the original owner facts
+and offered tools. An unchanged invalid reply stops; provider failures and
+unknown operations are not retried. Read-analysis feedback lists actual input
+and reportable result references without selecting one for the model. A new
+successful query result permits another selection repair; repeating the same
+failure against unchanged evidence still stops.
 
 Quoted evidence and a valid schema do not prove that the model understood the
 language correctly. Semantic omissions, a wrong date interpretation or the

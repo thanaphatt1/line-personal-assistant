@@ -23,7 +23,7 @@ class Change(Strict):
     source_text:str=Field(min_length=1,max_length=2000,description='Exact contiguous span from the original owner message supporting this change. Keep original wording even for a semantic choice or computed temporal projection.')
     source_ref:str=Field(min_length=1,max_length=64,description='Visible original OWNER source_ref containing source_text, not an assistant reply or a guessed ID.')
     temporal_ref:str|None=Field(default=None,description='Retain the verified resolution ref for a computed date/time; value is its projection and source_text remains the original owner wording.')
-    certainty:Literal['exact','approximate','uncertain']|None=Field(default=None,description='Calendar temporal fields only: classify the changed owner wording. Null elsewhere. Uncertain proposals remain unconfirmable.')
+    certainty:Literal['exact','approximate','uncertain']|None=Field(default=None,description='Calendar temporal fields: classify the changed owner wording. all_day permits exact or uncertain. Null elsewhere. Uncertain proposals remain unconfirmable.')
 
 
 class Record(Strict):
@@ -190,7 +190,9 @@ def validate(h,p,view):
         fields={f['name']:f for f in records[record.record_ref]['fields']}
         for change in record.changes:
             f=fields[change.field]
-            if change.certainty is not None and (view['domain'] not in {'calendar','calendar_batch'} or change.field not in {'date_text','time_text','end_date_text','end_time_text','duration_text'}):
+            if change.certainty is not None and (view['domain'] not in {'calendar','calendar_batch'}
+                    or change.field not in {'date_text','time_text','end_date_text','end_time_text','duration_text','all_day'}
+                    or change.field=='all_day' and change.certainty=='approximate'):
                 raise PatchError('patch_invalid_certainty',change.field)
             rows=h._owner_sources([change.source_ref])
             if not any(change.source_text in r['text'] for r in rows):raise PatchError('patch_owner_evidence',change.field)
@@ -247,7 +249,11 @@ def canonical_patch(p,view):
         present={v.field for v in record.changes}
         retained=records.get(record.record_ref,{}).get('values',{})
         unresolved=records.get(record.record_ref,{}).get('uncertain_fields',[])
-        values=[v for v in record.changes if not (v.certainty is None and v.field not in unresolved and v.field in retained and type(v.value) is type(retained[v.field]) and v.value==retained[v.field])
+        def resolves_mode(v):
+            return (view['domain'] in {'calendar','calendar_batch'} and v.field=='all_day'
+                    and bool(set(unresolved)&{'time_text','end_time_text','duration_text'}))
+        values=[v for v in record.changes if not (v.certainty is None and v.field not in unresolved and not resolves_mode(v)
+            and v.field in retained and type(v.value) is type(retained[v.field]) and v.value==retained[v.field])
             and not any(k in present and v.value==value
             for k,value in fields.get(v.field,{}).get('implied_by',{}).items())]
         if values:result.append(record.model_copy(update={'changes':values}))

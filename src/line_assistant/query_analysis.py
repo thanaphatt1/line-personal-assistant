@@ -87,6 +87,19 @@ def fail(code,message):
             'read_only':True,'financial_write_authorized':False,'calendar_write_authorized':False,
             'error_code':code,'message':message}
 
+
+def selection_failure(host,p,code,message):
+    """Expose actual current result choices without choosing for the model."""
+    from .tool_errors import recovery
+    return {**fail(code,message),'analysis_selection_required':True,
+        'query_selection':{'requested_refs':p.query_refs,'available_results':[
+            {'query_ref':ref,'domain':row['domain'],'reportable':not bool(row.get('analysis_input_only')),
+             'complete':bool(row.get('complete')),'columns':[c['name'] for c in row.get('columns',[])]}
+            for ref,row in host._query_reads.items()]},
+        'recovery':recovery(kind='assistant_arguments',
+            required=['Select current reportable result refs whose actual projections and conditions answer the owner; project input-only sources with query_relations when needed. Clarify genuinely unresolved conditions.'],
+            tools=['query_relations','finish_query_analysis'])}
+
 def calendar_dates(host,refs,start,end):
     """Union Bangkok dates of complete source events, never model-supplied dates."""
     from .language import BANGKOK
@@ -159,17 +172,9 @@ def finish(host,args):
     if p.question is not None:return fail('invalid_query_question','คำถามเพิ่มเติมต้องแยกจากผลสรุปที่ตรวจสอบแล้วครับ')
     if p.operation=='report' and p.intent_review is not None and (
             not p.intent_review.selection_matches or not p.intent_review.output_matches or p.intent_review.unresolved_conditions):
-        from .tool_errors import recovery
-        return {**fail('analysis_intent_mismatch','ผลค้นหายังไม่ตรงกับเงื่อนไขหรือรูปแบบที่ถามครับ'),
-                'analysis_selection_required':True,'recovery':recovery(kind='assistant_arguments',
-                    required=['Correct the selected SQL to match owner intent; clarify genuinely unresolved conditions instead of reporting a substitute'],
-                    tools=['query_relations','finish_query_analysis'])}
+        return selection_failure(host,p,'analysis_intent_mismatch','ผลค้นหายังไม่ตรงกับเงื่อนไขหรือรูปแบบที่ถามครับ')
     if p.operation=='report' and any(row.get('analysis_input_only') for row in selected):
-        from .tool_errors import recovery
-        return {**fail('analysis_projection_required','ยังไม่ได้เลือกหรือคำนวณข้อมูลให้ตรงกับคำถามครับ'),
-                'analysis_selection_required':True,'recovery':recovery(kind='assistant_arguments',
-                    required=['query_relations SELECT the requested output from the source; clarify unresolved conditions'],
-                    tools=['query_relations','finish_query_analysis'])}
+        return selection_failure(host,p,'analysis_projection_required','ยังไม่ได้เลือกหรือคำนวณข้อมูลให้ตรงกับคำถามครับ')
     at=datetime.fromisoformat(host._current['at'])
     from .table_workflow import render as render_table
     reports=[render(row) if row.get('relational_query') or row.get('read_failure') else render_table(row) if row.get('table_query') else render_query(row,at) for row in selected]
