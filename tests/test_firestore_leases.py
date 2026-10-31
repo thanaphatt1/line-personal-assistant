@@ -78,6 +78,98 @@ def test_clock_expiry_without_takeover_still_prevents_new_effect():
     assert providers.sheet_writes == 0
 
 
+def test_checkpoints_use_acknowledged_versions_without_another_lease_read():
+    providers = MockApiServices()
+    holder = state(providers)
+    with holder.session():
+        providers.calls.clear()
+        versions = [holder.document['updateTime']]
+        for _ in range(3):
+            holder.checkpoint()
+            versions.append(holder.document['updateTime'])
+        assert len(set(versions)) == 4
+        assert all(method == 'POST' for method, _, _ in providers.calls)
+    # Release uses the same version condition; the next session still reads fresh.
+    assert len(providers.calls) == 4
+    with state(providers).session():
+        pass
+    assert sum(method == 'GET' for method, _, _ in providers.calls) == 1
+
+
+@pytest.mark.parametrize('change', ['version', 'holder', 'deleted'])
+def test_remote_changes_fence_cached_checkpoints_even_before_local_lease_expiry(change):
+    providers = MockApiServices()
+    holder = state(providers)
+    with holder.session():
+        remote = providers.documents[holder.name]
+        if change == 'deleted':
+            del providers.documents[holder.name]
+        else:
+            remote['updateTime'] = '2026-10-11T00:00:01Z'
+            if change == 'holder':
+                remote['fields']['lease_owner']['stringValue'] = 'another-worker'
+                remote['fields']['fence']['integerValue'] = str(holder.fence + 1)
+        before = deepcopy(providers.documents)
+        with pytest.raises(LeaseLost):
+            holder.before_effect()
+        assert providers.documents == before
+    assert providers.documents == before  # Release cannot overwrite the newer state.
+
+
+def test_checkpoint_lost_ack_reads_back_once_then_uses_the_acknowledged_version():
+    providers = MockApiServices()
+    holder = state(providers)
+    with holder.session():
+        providers.calls.clear()
+        providers.fail_after_firestore_commit = True
+        holder.checkpoint()
+        assert [method for method, _, _ in providers.calls] == ['POST', 'GET']
+        version = holder.document['updateTime']
+        holder.before_effect()
+        assert holder.document['updateTime'] != version
+        assert [method for method, _, _ in providers.calls] == ['POST', 'GET', 'POST']
+
+
+def test_unverified_checkpoint_cannot_authorize_effect_or_overwrite_a_committed_version():
+    providers = MockApiServices()
+    broken = [False]
+    def transport(request):
+        if broken[0] and request.method == 'GET':
+            raise httpx.ReadTimeout('Readback unavailable', request=request)
+        result = providers.handle(request)
+        if broken[0] and request.method == 'POST' and result.status_code == 200:
+            raise httpx.ReadTimeout('Committed without acknowledgement', request=request)
+        return result
+    holder = FirestoreState(RestClient('firestore', httpx.MockTransport(transport)),
+                            'mock-owner', clock=lambda: NOW)
+    with holder.session():
+        broken[0] = True
+        with pytest.raises(OutcomeUnknown):
+            holder.checkpoint()
+        committed = deepcopy(providers.documents)
+        with pytest.raises(LeaseLost):
+            holder.before_effect()
+    assert providers.documents == committed
+    assert providers.sheet_writes == 0
+
+
+def test_lease_expiring_during_checkpoint_does_not_authorize_a_new_effect():
+    providers = MockApiServices()
+    current, delayed = [NOW], [False]
+    def transport(request):
+        result = providers.handle(request)
+        if delayed[0] and request.method == 'POST':
+            current[0] += timedelta(seconds=121)
+        return result
+    holder = FirestoreState(RestClient('firestore', httpx.MockTransport(transport)),
+                            'mock-owner', clock=lambda: current[0])
+    with holder.session():
+        delayed[0] = True
+        with pytest.raises(LeaseLost):
+            holder.before_effect()
+    assert providers.sheet_writes == 0
+
+
 def test_commit_nonce_readback_resolves_lost_ack_and_cas_race_refuses_stale_write():
     providers = MockApiServices()
     holder = state(providers)

@@ -118,7 +118,6 @@ class ReplyDispatcher:
                 reply = Reply(content_hash, received_at + timedelta(seconds=settings.webhook_ttl_seconds),
                               token_deadline=received_at + timedelta(seconds=55))
                 state.replies[event_id] = reply
-                state.checkpoint()
             age = now.timestamp() - event["timestamp"] / 1000
             redelivery = event.get("deliveryContext", {}).get("isRedelivery", False)
             if now >= (reply.token_deadline or reply.expires_at) or (redelivery and age >= 20 * 60):
@@ -129,7 +128,8 @@ class ReplyDispatcher:
                 return "expired"
             reply.status = "executing"
             reply.receipt_elapsed_ms = min(86400000, max(0, round((now - received_at).total_seconds() * 1000)))
-            state.checkpoint()
+            # Persist creation and dispatch intent together before sending. A
+            # crash after this marker remains uncertain and cannot resend.
             state.before_effect()
             started = monotonic()
             try:

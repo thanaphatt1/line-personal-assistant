@@ -95,6 +95,39 @@ A successful repair clears the earlier reply context and follows the normal
 review/composition path. These changes reduce specific round trips; they do
 not make every turn a single model call or establish a general speed target.
 
+## Reduce workflow-state round trips
+
+Each Firestore session reads the owner document afresh and acquires its lease
+with a conditional commit. Subsequent checkpoints and lease release use the
+last acknowledged document's `updateTime` as the write precondition, rather
+than reading that same lease before every write. Any intervening document
+change rejects the entire checkpoint. The cached version lives only inside
+the current session; it cannot authorize another turn. Explicit migration
+checks still read fresh. A lost commit acknowledgement still requires exact
+nonce/field readback; an unresolved outcome cannot authorize an external effect.
+An intervening owner-document write can interrupt the turn with HTTP 503:
+the worker cannot adopt that version to save a reply. A redelivery reacquires
+fresh state after lease expiry and reconciles effects; missing proof remains
+uncertain and does not cause an automatic business-write retry.
+The lease is checked again after the pre-effect commit returns, so a slow
+acknowledgement cannot authorize work after that renewed lease has expired.
+
+LINE delivery persists a new reply and its executing marker together in the
+pre-effect checkpoint. There is no provider I/O between these assignments.
+Expiry, delivery outcome and lease release remain durable. Existing prepared
+replies remain readable; an executing/uncertain reply is never sent again.
+This changes neither the state schema nor confirmation requirements.
+
+Paired offline replays across four tasks, two previously recorded model-output
+sets and two rounds per task use identical model inputs before and after the
+change. All 16 cases per version pass; average Firestore RPC count falls from
+49.125 to 32.5 (33.8%). These are synthetic, already-initialized signed webhooks
+with fake Google/LINE services and recorded model outputs, not live model or
+production latency measurements. RPC counts are not billed document-operation
+counts. Lease takeover, lost acknowledgements, reply crash/replay and atomic
+evidence conflicts have separate regression coverage; the official emulator
+checks provider preconditions and stale-worker release.
+
 ## Waiting and clarification
 
 Successful expense save/edit replies show a text summary without automatic

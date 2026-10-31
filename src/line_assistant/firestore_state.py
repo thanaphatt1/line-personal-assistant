@@ -1,4 +1,4 @@
-"""Firestore REST snapshot/lease adapter, exercised only through mock transports.
+"""Firestore REST snapshot/lease adapter.
 
 Conditional document commits fence state checkpoints. They cannot fence a Google
 Sheets HTTP write already in flight; real-adapter reconciliation never infers
@@ -132,9 +132,9 @@ class FirestoreState(MemoryState):
                 yield
             finally:
                 try:
-                    fresh = self._assert_holder()
+                    previous = self._owned_document(self.document)
                     fields = self._fields(self._snapshot_state(), None, self.fence, self.clock())
-                    self.document = self._commit(fresh, fields)
+                    self.document = self._commit(previous, fields)
                 except (LeaseLost, OutcomeUnknown, ApiError):
                     # Never overwrite a newer worker or mask the original failure.
                     pass
@@ -142,23 +142,39 @@ class FirestoreState(MemoryState):
                     self.holder = None
 
     def _assert_holder(self):
+        # Migration needs an authoritative read; ordinary checkpoints instead
+        # condition their write on the last acknowledged version in this session.
         if not self.holder:
             raise LeaseLost("No active lease")
-        fresh = self._read()
-        fields = fresh["fields"] if fresh else {}
-        until = datetime.fromisoformat(fields["lease_until"]["timestampValue"].replace("Z", "+00:00")) if fresh else self.clock()
-        if (fields.get("lease_owner", {}).get("stringValue") != self.holder
-                or int(fields.get("fence", {}).get("integerValue", "0")) != self.fence or until <= self.clock()):
+        return self._owned_document(self._read())
+
+    def _owned_document(self, document):
+        if not self.holder:
+            raise LeaseLost("No active lease")
+        if (not document or document.get('name') != self.name or not document.get('updateTime')
+                or document.get('fields', {}).get('owner_hash', {}).get('stringValue') != self.owner_hash):
+            raise LeaseLost("Acknowledged lease owner/resource/version missing")
+        fields = document['fields']
+        try:
+            until = datetime.fromisoformat(fields["lease_until"]["timestampValue"].replace("Z", "+00:00"))
+            valid = (fields["lease_owner"]["stringValue"] == self.holder
+                     and int(fields["fence"]["integerValue"]) == self.fence and until > self.clock())
+        except (KeyError, ValueError, TypeError):
+            valid = False
+        if not valid:
             raise LeaseLost("Lease expired or was replaced; this worker is fenced from state")
-        return fresh
+        return document
 
     def checkpoint(self):
-        fresh = self._assert_holder()
+        # CAS rejects any intervening write, including a lease takeover. An extra
+        # GET would add latency without strengthening that atomic condition.
+        previous = self._owned_document(self.document)
         fields = self._fields(self._snapshot_state(), self.holder, self.fence,
                               self.clock() + timedelta(seconds=self.lease_seconds))
-        self.document = self._commit(fresh, fields)
+        self.document = self._commit(previous, fields)
 
     def before_effect(self):
         from .read_cache import invalidate
         invalidate()
         self.checkpoint()  # Verify holder/fence and renew immediately before HTTP.
+        self._owned_document(self.document)  # A slow acknowledgement may outlast the renewed lease.

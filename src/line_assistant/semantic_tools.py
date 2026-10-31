@@ -133,7 +133,6 @@ def previous_question_date(h):
     """The single day of the immediately preceding delivered read, offered for interpretation only."""
     if not getattr(h,'raw_history_enabled',False) or not getattr(h,'_current',None):return None
     from .read_queries import previous_scope
-    from .language import BANGKOK
     scope=previous_scope(h)
     rows=[r for r in h.state.history if r['role']=='assistant' and r['event']!=h._active_event_id]
     latest=max(rows,key=lambda r:datetime.fromisoformat(r['at']),default=None)
@@ -146,7 +145,9 @@ def previous_question_date(h):
         days={m['date'] for m in checked.get('existing',[])}
         day=days.pop() if len(days)==1 else None
     else:day=scope['start'] if scope and scope.get('start')==scope.get('end') and receipt.result.data.get('read_query')==scope else None
-    if not day or date.fromisoformat(day)>h.clock().astimezone(BANGKOK).date():return None
+    # This is conversation context, not an expense-date policy or an inherited
+    # default. The planner selects relevance; each destination validates writes.
+    if not day:return None
     return {'date_ref':'date_'+digest([h.settings.owner_id,'previous_question',latest['event'],day])[:20],
             'date':day,'previous_question':True}
 

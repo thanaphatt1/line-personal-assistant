@@ -13,12 +13,27 @@ Read-only analysis therefore omits creation and pending-edit guidance when
 those tools are absent. An unrelated unfinished draft still remains context;
 it does not select the user's task.
 
+The planner selects scope, references and omitted facts from the whole visible
+dialogue. Changing tools or operations does not itself reset that scope.
+Conversation summaries and date hints aid interpretation; an original owner
+message outside those hints remains usable evidence. The model decides which
+facts still apply and asks when a required fact remains ambiguous. Calendar
+preparation can cite an earlier owner date expression with its original
+timestamp, while keeping the current message as the source of write intent.
+
+The preceding single-day read can offer past, present or future dates as context.
+The server does not automatically assign that day to a new record. Destination
+rules still apply to writes: exposing a future Calendar date as context does not
+bypass the expense ledger's future-date restriction. IDs, source ownership,
+versions, delivery, fresh confirmation and unknown-effect handling remain
+server checks. No phrase-specific carry-over rule or new memory store is added.
+
 Tool and parameter descriptions own field formats and local constraints:
 source citations, null semantics, date modes, temporal projections, SQL
 decimal operations and literal versus choice fields. These descriptions do
 not change validators, provider permissions, confirmation or mutation rules.
-The planner receives the same owner history, current source ref, previous
-query scope, pending views and configured table metadata as before.
+The planner receives owner history, current source ref, previous query scope,
+pending views, date hints and configured table metadata.
 
 Expense creation now uses model-selected groups and exact per-field owner
 quotations. Python validates positions, typed values, numeric coverage and

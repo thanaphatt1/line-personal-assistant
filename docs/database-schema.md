@@ -189,6 +189,9 @@ business fields. The adapter uses `updateTime` (or `exists=false` for creation)
 as a conditional commit precondition. It renews/checks the lease immediately
 before provider effects. That fences state commits; it cannot stop a Sheets
 request already in flight or protect against external writers.
+Sessions read fresh on entry. Within a session, checkpoints and release use
+the last acknowledged version with a conditional write; an intervening change
+is rejected instead of adopted. See [workflow round trips](performance.md#reduce-workflow-state-round-trips).
 
 The [snapshot codec](../src/line_assistant/snapshot_codec.py) accepts versioned
 JSON/compression formats within explicit encoded/expanded size limits. Oversize

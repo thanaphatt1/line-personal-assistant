@@ -1,5 +1,11 @@
 # Test guide
 
+[Dialogue scope](test_dialogue_scope.py) checks that past and future read dates
+remain context, the planner can cite earlier owner facts across interruptions
+and midnight, and hints never assign dates or override destination write rules.
+Scripted selections verify these contracts; they do not establish live-model
+reference resolution. Separate synthetic inference evaluation covers that.
+
 [SQL result units](test_relational_result_units.py) check counts with misleading
 aliases, source units through projections/CTEs/windows/aggregates, ratios,
 conflicting units, repeated analysis and exact decimal display. These contracts

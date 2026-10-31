@@ -66,8 +66,8 @@ class Batch(Strict):
 
 
 DESCRIPTION=('Prepare ALL requested appointment occurrences for owner review, including incomplete ones; never writes. '
-    'You select members and shared/per-event facts. New refs/versions are null. Keep complete literal titles. '
-    'Interpret explicit date/clock components directly in fields with original owner quotations. Anchor relative wording at its source timestamp. '
+    'Select members, relevant owner messages and shared/per-event facts from the dialogue. New refs/versions are null. Keep complete literal titles. '
+    'Interpret date/clock components directly in fields with their original owner quotations, including earlier messages selected as context. Anchor relative wording at its source timestamp. '
     'Use resolve_temporal when arithmetic or a verified basis is needed. Apply shared facts to each intended member. Null retains facts or remains missing; no defaults. '
     'Mark unresolved meanings and unsupported recurrence/guests/reminders. Updates use offered refs/versions; omitted members remain.')
 

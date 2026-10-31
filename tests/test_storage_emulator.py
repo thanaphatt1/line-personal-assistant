@@ -3,7 +3,7 @@
 Explicit loopback/demo project only. No SDK, credentials, discovery or live URL.
 """
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 import json
 import os
 import re
@@ -20,6 +20,7 @@ from line_assistant.firestore_expenses import FirestoreExpenseStore, FirestoreEx
 from line_assistant.snapshot_codec import decode
 from line_assistant.adapters import Conflict
 from line_assistant.transport import ApiError, OutcomeUnknown
+from line_assistant.firestore_state import FirestoreState, LeaseLost
 from expense_storage_hosted import StorageHosted
 from test_expense_storage import CATALOG, transaction
 from test_previous_expense_prices import offer, accepted, turn
@@ -64,8 +65,34 @@ class EmulatorPort:
         except httpx.TransportError:
             raise OutcomeUnknown('Emulator acknowledgement unavailable') from None
         if not response.is_success:
-            raise ApiError(response.status_code)
+            raise ApiError(response.status_code, response.json().get('error', {}).get('status'))
         return response.json()
+
+
+def test_emulator_acknowledged_lease_cas_fences_stale_checkpoints_and_release():
+    port = EmulatorPort(ENDPOINT)
+    current = [datetime(2026, 10, 11, tzinfo=timezone.utc)]
+    def new_state():
+        return FirestoreState(port, 'synthetic-owner', project_id=PROJECT,
+                              collection_id=collection, clock=lambda: current[0])
+    collection = 'lease_' + uuid.uuid4().hex
+    try:
+        first, second = new_state(), new_state()
+        with first.session():
+            first.checkpoint()
+            first.before_effect()
+            current[0] += timedelta(seconds=121)
+            with second.session():
+                version = second.document['updateTime']
+                # Even with the stale worker's clock behind, provider CAS rejects it.
+                first.clock = lambda: current[0] - timedelta(seconds=121)
+                with pytest.raises(LeaseLost):first.before_effect()
+                assert port.request('GET', '/v1/' + first.name)['updateTime'] == version
+            released = port.request('GET', '/v1/' + first.name)
+        assert port.request('GET', '/v1/' + first.name) == released
+        with new_state().session():
+            pass
+    finally:port.client.close()
 
 
 def test_emulator_generic_table_indexed_date_range_exact_decimal_and_pagination():

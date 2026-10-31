@@ -152,16 +152,25 @@ def test_invalid_firestore_configuration_is_rejected_before_providers(changes):
     with pytest.raises(ConfigError):HistoryConfig.from_mapping({**api.configuration(), **changes})
 
 
-def test_state_document_change_during_business_transaction_aborts_expense_commit():
+def test_state_document_change_during_business_transaction_fences_the_turn_without_retry():
     api=StorageHosted();result,_=turn(api,'Spotify 35 บาท',prepare(amounts={'Spotify':'35'}))
     assert result.status=='preview'
     def changed(server):
         state=next(v for k,v in server.documents.items() if '/assistant_pilot_states/' in k)
         state['updateTime']=server.stamp()
     api.business.before_commit=changed
-    result,_=turn(api,'ยืนยัน')
-    assert result.status=='conflict' and api.business.commits==0,result
+    confirmation=api.event('ยืนยัน')
+    # A newer owner version cannot be adopted to persist a conflict receipt.
+    # Leave the durable executing marker for fresh-session reconciliation.
+    with TestClient(api.app()) as web:assert api.send(web,confirmation).status_code==503
+    assert api.business.commits==0
     assert not any('/operations/' in k for k in api.google.documents)
+    assert any(a['status']=='executing' for a in api.snapshot()['actions'].values())
+    api.business.before_commit=None
+    api.now+=timedelta(seconds=121)
+    with TestClient(api.app()) as web:assert api.send(web,deepcopy(confirmation)).status_code==200
+    assert any(a['status']=='uncertain' for a in api.snapshot()['actions'].values())
+    assert api.business.commits==0 and not any('/operations/' in k for k in api.google.documents)
 
 
 @pytest.mark.parametrize('feature',['expense_edit','mapping','price'])

@@ -56,6 +56,16 @@ def test_calendar_flag_cannot_load_unoffered_calendar_write_workflow():
     assert 'Calendar preparation:' not in request_instructions(tools,calendar=True)
 
 
+def test_dialogue_scope_guidance_is_shared_across_capabilities():
+    for name in ['query_expenses', 'prepare_calendar_event', 'prepare_table_change']:
+        prompt = build(offered(name))
+        assert 'whole visible dialogue' in prompt
+        assert 'change of tool or operation alone does not reset conversational context' in prompt
+        assert 'use original visible owner messages for facts beyond those hints' in prompt
+        assert 'original source timestamp for relative dates' in prompt
+        assert 'fresh owner confirmation' in prompt
+
+
 def test_known_field_formats_live_in_tool_parameters():
     from line_assistant.relational import definitions as relational
     from line_assistant.temporal import definitions as temporal

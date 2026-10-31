@@ -47,6 +47,46 @@ def test_sent_marker_survives_token_deadline_and_redelivery_with_a_new_token():
     assert len(providers.line_replies) == 1
 
 
+def test_reply_persists_executing_before_http_without_adjacent_checkpoints():
+    assistant, _, providers = api_sandbox(clock=lambda: NOW)
+    message = event()
+    result = assistant.handle(message)
+    providers.calls.clear()
+    observed = []
+    def send(request):
+        snapshot = json.loads(providers.documents[assistant.state.name]['fields']['snapshot']['stringValue'])
+        assert snapshot['replies']['purchase']['status'] == 'executing'
+        assert message['replyToken'] not in json.dumps(providers.documents)
+        observed.append(sum(method == 'POST' and host == 'firestore.googleapis.com'
+                            for method, host, _ in providers.calls))
+        return providers.handle(request)
+    replies = ReplyDispatcher(LineReplyApi(RestClient('line', httpx.MockTransport(send))), assistant)
+    assert replies.deliver(message, result, NOW) == 'sent'
+    assert observed == [2]  # Acquisition, then durable executing state immediately before HTTP.
+    assert sum(method == 'POST' and host == 'firestore.googleapis.com'
+               for method, host, _ in providers.calls) == 4  # Outcome and release remain durable.
+    assert replies.deliver(message, result, NOW) == 'sent'
+    assert len(providers.line_replies) == 1
+
+
+def test_crash_after_durable_reply_dispatch_marker_never_resends_on_restart():
+    assistant, _, providers = api_sandbox(clock=lambda: NOW)
+    message = event()
+    result = assistant.handle(message)
+    class SimulatedCrash(BaseException):
+        pass
+    def crash(request):
+        snapshot = json.loads(providers.documents[assistant.state.name]['fields']['snapshot']['stringValue'])
+        assert snapshot['replies']['purchase']['status'] == 'executing'
+        raise SimulatedCrash()
+    replies = ReplyDispatcher(LineReplyApi(RestClient('line', httpx.MockTransport(crash))), assistant)
+    with pytest.raises(SimulatedCrash):
+        replies.deliver(message, result, NOW)
+    restarted, replies, _ = api_sandbox(services=providers, clock=lambda: NOW)
+    assert replies.deliver(message, restarted.handle(message), NOW) == 'uncertain'
+    assert not providers.line_replies
+
+
 @pytest.mark.parametrize("case", ["delayed_processing", "old_redelivery", "missing_token"])
 def test_unavailable_reply_tokens_do_not_create_a_push_or_retry(case):
     current = [NOW]
