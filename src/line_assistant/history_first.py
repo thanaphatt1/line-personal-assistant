@@ -1,4 +1,6 @@
 """Default-off history-first prototype. Direct tools, local effects only."""
+
+from .action_trace import observed
 from .reply_display import money, named
 from .expense_storage import storage_scope
 from copy import deepcopy
@@ -280,6 +282,7 @@ class HistoryFirstAssistant(Assistant):
         self.catalog_aliases=CatalogAliases(self)
         self.record_actions=RecordActions(self)
 
+    @observed('catalog_load')
     def _taxonomy(self):
         if not self.raw_history_enabled:return self.sheets.taxonomy()
         event=(self._active_event_id,storage_scope(self.sheets))
@@ -311,10 +314,12 @@ class HistoryFirstAssistant(Assistant):
                     self.state.mark_history_delivered(event.get('webhookEventId'),result,at=self.clock())
                 if operational_trace:
                     operational_trace.emit('turn_finished',final=True,status=code(result.status),
+                                           stop_reason=code(result.data.get('query_loop_stopped') or result.data.get('planning_stopped') or 'completed'),
                                            dropped_records=operational_trace.dropped,sink_failures=operational_trace.sink_failures)
                 return result
         finally:RAW_SOURCE.reset(token)
 
+    @observed('history_bind')
     def _bind_context(self,event):
         super()._bind_context(event)
         if not self.raw_history_enabled:return
@@ -1350,6 +1355,7 @@ class HistoryFirstAssistant(Assistant):
         mappings=catalog_mappings(d['entries'])
         return {'entries':entries,**({'catalog':mappings} if mappings else {})}
 
+    @observed('tool_execution')
     def tool(self,call):
         output=self._tool(call)
         if self.raw_history_enabled and call.get('name')=='patch_pending_records':
@@ -1364,6 +1370,12 @@ class HistoryFirstAssistant(Assistant):
     def _tool(self,call):
         try:
             args=json.loads(call['arguments']);name=call['name']
+            if self.raw_history_enabled and name=='act':
+                from .intent_actions import execute
+                return execute(self,args)
+            if self.raw_history_enabled and name=='query':
+                from .unified_query import execute
+                return execute(self,args)
             if self.raw_history_enabled and name=='finish_preparation_reply':
                 from .response_realization import finish_repair_reply
                 return finish_repair_reply(self,args)
@@ -1757,6 +1769,7 @@ class HistoryFirstAssistant(Assistant):
                              {'raw_items':[e['item'] for e in d['entries']],'draft_ref':ref,'draft_expires_at':d['expires_at'],
                               **({'previous_price_bases':price_bases} if price_bases else {})})
 
+    @observed('turn_finalize')
     def _finish(self,event,at,result):
         result=self._finalize_result(event,result)
         result=self.record_actions.attach(event,result)
@@ -1780,6 +1793,7 @@ class HistoryFirstAssistant(Assistant):
         self.phase_hook('history_turn_completed',event)
         return result
 
+    @observed('reply_finalize')
     def _finalize_result(self,event,result):
         if result.data.get('domain') in {'catalog_alias','record_source','activity_label'} or result.data.get('record_action_focus') or result.data.get('record_action_selection'):return result
         from .clarifications import compact
@@ -1891,7 +1905,7 @@ class HistoryFirstAssistant(Assistant):
         previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
         from .tool_repair import RepairLoop
         repairs=RepairLoop(self);repair_allowed=None;response_feedback=None;blocked_response=None
-        self._query_reads={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
+        self._query_reads={};self._query_source_results={};self._intent_responses={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
         for step in count():
             if not self.raw_history_enabled and step>=2:break
             if self.raw_history_enabled:
@@ -1909,6 +1923,7 @@ class HistoryFirstAssistant(Assistant):
             try:
                 if previous and (not exchanges or exchanges[-1] is not previous):
                     if any(old[0]['call_id']==previous[0]['call_id'] for old in exchanges):
+                        emit('planning_stopped',reason='duplicate_call_id',step=step)
                         return self._finish(event,at,Result('clarification','โมเดลส่งรหัสคำขอซ้ำ จึงหยุดก่อนค้นต่อครับ',
                             {'domain':'query_analysis','query_analysis':True,'read_only':True,'query_loop_stopped':'duplicate_call_id'}))
                     exchanges.append(previous)
@@ -1924,18 +1939,18 @@ class HistoryFirstAssistant(Assistant):
                     date_targets=semantic.date_targets(self)
                     self._request_date_views={v['date_ref']:deepcopy(v) for v in date_targets}
                     definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets,previous_prices=self.previous_prices.enabled)
-                    from .read_queries import definitions as query_definitions,context as query_context
-                    definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions()
+                    from .read_queries import context as query_context
+                    from .unified_query import context as unified_context
+                    from .intent_actions import definitions as query_definitions,context as intent_context
+                    definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions(self)
                     from .query_analysis import definitions as analysis_definitions,READ_TOOLS
                     definitions_for_request+=analysis_definitions()
-                    from .relational import definitions as relation_definitions,context as relation_context
-                    definitions_for_request+=relation_definitions()
+                    from .relational import context as relation_context
                     from .query_followups import definitions as followup_definitions,context as followup_context
                     definitions_for_request+=followup_definitions(self)
                     from .activity_labels import definitions as label_definitions,context as label_context
                     definitions_for_request+=label_definitions(self)
-                    from .data_inventory import definitions as inventory_definitions,context as inventory_context
-                    definitions_for_request+=inventory_definitions()
+                    from .data_inventory import context as inventory_context
                     if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
                     from .calendar_connections import definitions as connection_definitions,context as connection_context
                     if self.calendar_connections_enabled:definitions_for_request+=connection_definitions()
@@ -1944,8 +1959,6 @@ class HistoryFirstAssistant(Assistant):
                     definitions_for_request+=self.historical_categories.definitions()
                     definitions_for_request+=self.table_flow.definitions()
                     definitions_for_request+=self.catalog_aliases.definitions()
-                    from .read_batch import definition as batch_definition
-                    definitions_for_request.append(batch_definition(definitions_for_request))
                     from .temporal import definitions as temporal_definitions,context as temporal_context
                     definitions_for_request+=temporal_definitions()
                     from .pending_records import views as pending_views,definitions as pending_definitions,planner_tools
@@ -1963,7 +1976,7 @@ class HistoryFirstAssistant(Assistant):
                             definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
                             calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
                             calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),**({'repair_feedback':response_feedback} if response_feedback else {}),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**unified_context(self),**intent_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),**({'repair_feedback':response_feedback} if response_feedback else {}),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -1995,6 +2008,10 @@ class HistoryFirstAssistant(Assistant):
                 saved=self.guard.reserve(key,request)
                 from .action_trace import emit,ref,code
                 emit('model_request',role='planner',run_ref=ref(key),cached=saved is not None)
+                emit('planner_context',step=step,analysis_active=self._query_analysis_active,
+                     history_records=stats.get('raw_speaker_records'),token_upper_bound=stats.get('token_upper_bound'),
+                     tools=[code(t['name']) for t in request['tools']],exchange_count=len(exchanges),
+                     query_results=len(self._query_reads))
                 if saved is None:
                     try:saved=parse_response(self.port.request('POST','/v1/responses',body=request),max_input_tokens=stats['token_upper_bound'] if self.raw_history_enabled else MAX_INPUT_TOKENS_BOUND,allowed_tools={t['name'] for t in request['tools']} if self.raw_history_enabled else None,max_output_tokens=request['max_output_tokens'])
                     except OverflowError:self.guard.halt();saved={'failure':'usage_bound','diagnostic':{'kind':'usage_bound'}}
@@ -2013,6 +2030,10 @@ class HistoryFirstAssistant(Assistant):
                     detail=saved.get('diagnostic',{'kind':'unavailable'})
                     return self._finish(event,at,Result('model_unavailable',planner_failure_message(detail),{'model_failure':deepcopy(detail)}))
                 call=saved['call']
+                if call:
+                    from .action_trace import arguments as trace_arguments
+                    emit('tool_proposed',step=step,tool=code(call['name']),call_ref=ref(call.get('call_id')),
+                         arguments=trace_arguments(call))
                 if call is None:
                     from .response_realization import finish_repair_text
                     finished=finish_repair_text(self,saved['text'])
@@ -2048,9 +2069,11 @@ class HistoryFirstAssistant(Assistant):
                     return self._finish(event,at,result)
                 # One proposed expense snapshot per owner turn; read tools may
                 # precede it. No endless repair or multi-agent framework.
-                if self.raw_history_enabled and call['name'] in {'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
+                if self.raw_history_enabled and call['name'] in {'act','query','query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change','prepare_table_change'}:
                     signature=digest([call['name'],json.loads(call['arguments'])])
                     if signature in seen_reads:
+                        emit('planning_stopped',reason='repeated_read',step=step,tool=code(call['name']),
+                             arguments_ref=ref(signature),query_results=len(self._query_reads))
                         prior=next((row['result'] for row in reversed(self.trace)
                             if digest([row['call']['name'],json.loads(row['call']['arguments'])])==signature),None)
                         if prior and prior.get('ok') is False and (prior.get('status')=='stored_query' or prior.get('query_analysis')):
@@ -2070,6 +2093,7 @@ class HistoryFirstAssistant(Assistant):
                     return self._finish(event,at,Result(**last['prepared_reply_result']))
                 if last.get('ok'):repair_allowed=None;self._repair_reply=None;response_feedback=None;blocked_response=None
                 if last.get('read_batch'):
+                    emit('planning_transition',reason='source_results',step=step)
                     self._query_analysis_active=True;previous=(call,last);continue
                 if self.raw_history_enabled:
                     from .query_followups import repair
@@ -2078,6 +2102,7 @@ class HistoryFirstAssistant(Assistant):
                         last=corrected;self._query_analysis_active=True;previous=(call,last);continue
                     feedback=repairs.feedback(call,last)
                     if feedback is not None:
+                        emit('planning_transition',reason='argument_repair',step=step)
                         from .response_realization import offer_repair_exit
                         finish=offer_repair_exit(self,last) if call['name']!='finish_preparation_reply' else None
                         if finish:
@@ -2103,9 +2128,11 @@ class HistoryFirstAssistant(Assistant):
                         self._query_analysis_active=True;previous=(call,last);continue
                     return self._finish(event,at,self._result(last))
                 if last.get('relational_query') and last.get('ok') and last.get('continue_analysis'):
+                    emit('planning_transition',reason='query_result',step=step)
                     self._query_analysis_active=True;previous=(call,last);continue
                 if last.get('query_analysis'):return self._finish(event,at,self._result(last))
                 if self.raw_history_enabled and last.get('status')=='stored_query' and last.get('scope',{}).get('continue_analysis'):
+                    emit('planning_transition',reason='source_result',step=step)
                     from .query_analysis import remember
                     last=remember(self,last,at,step);self._query_analysis_active=True
                     previous=(call,last);continue

@@ -1,16 +1,38 @@
-# Query data with SQL and source read tools
+# Query data with declared sources and SQL
 
-The primary composable analysis layer is [read-only SQL](relational-queries.md)
-over observed table, expense and Calendar records. The planner selects sources
-from metadata, reads complete matched rows, then uses `query_relations` for
-joins, conditional/nested calculations and window functions. Google Sheets and
-Firestore remain the business stores; SQLite is a temporary analysis engine.
-Typed Calendar/table reads and legacy combination tools remain available.
-The planner's expense tool is a source read: its schema requires
-`filter=null`, `view=list`, `continue_analysis=true`, even for unfiltered totals.
-Legacy direct-call behavior remains available internally. This adds a planning
-step before an expense answer so a supporting read cannot prematurely become
-the final response.
+The planner submits `act` with `intent=read` for source reads and [read-only SQL](relational-queries.md).
+Its `sources` array declares expense, Calendar or configured table sources with
+unique SQL aliases and source-specific parameters. An optional `result` source
+selects an actual current-request result. When `sql` is supplied, the server
+fetches the snapshots, materializes their aliases and executes the query in the
+same call. The model need not obtain a reference between fetching and computing.
+Source schemas and catalog choices are available before the initial query.
+
+For example, an expense source aliased `e` can supply
+`SELECT SUM(amount) AS total FROM e WHERE canonical_item='Rail'`. The source
+parameters select the owner-cited date scope; selection/grouping/ranking belong
+to SQL. The server retains complete rows independently of display limits.
+Multiple sources can be joined in the same call, including unrelated configured
+table schemas. Google Sheets and Firestore remain the business stores; SQLite
+is a temporary analysis engine.
+
+Use `sql=null` to inspect source values before planning when necessary, then
+query the returned result or redeclare the same source. Source snapshots are
+retained only within this read-only owner turn; SQL repair reuses them without
+repeating provider reads. Failed reads remain failures, never empty snapshots.
+Every source descriptor is validated before any read. Incomplete sources block
+SQL and preserve unresolved Calendar choices. No query can prepare or execute a
+business write. An offered `intent=respond` checks the actual result and composes
+the answer in the next planner call, using server fact/cell placeholders.
+`finish_query_analysis` remains available for other result combinations and
+unresolved conditions. See the [intent contract](intents.md).
+
+The legacy `query_expenses`, `query_calendar`, `query_relations` and
+`query_sources` handlers remain internal compatibility paths; the current
+planner is offered `act`; `query` remains an internal compatibility entry point.
+Typed table selection for saved-change workflows
+retains its existing identity/version contract. The reader details below also
+describe those compatibility handlers, not additional planner actions.
 
 For filtering, including one named item, category or subcategory, use a complete
 source read with expense `filter=null`, `view=list`, `continue_analysis=true`,
@@ -36,7 +58,7 @@ The planner also receives its actual available tool names and configured source 
 
 The signed, owner-only history application can answer stored-data questions using the existing configured workbook and readable calendars selected by the server. These queries use the current read permissions; no new scopes or credentials are needed. They do not append expenses, create events, change a draft or create a confirmation nonce. Conversation receipts and the existing usage ledger continue normally.
 
-The model selects `query_expenses`, `query_calendar` or `query_table` as needed, without a semantic keyword pre-router. It sees recent dialogue, the authoritative Bangkok timestamp, actual schemas and the latest verified delivered query scope. Code validates arguments and performs configured-source reads. With `continue_analysis=true`, complete raw results become SQL relations; expense SQL inputs use `view=list`. A source push does not deploy this change.
+The model selects sources inside `query` without a semantic keyword pre-router. It sees recent dialogue, the authoritative Bangkok timestamp, actual schemas and the latest verified delivered query scope. Code validates arguments and performs configured-source reads. Internally, complete raw results become SQL relations; expense inputs use `filter=null`, `view=list` and `continue_analysis=true`. A source push does not deploy this change.
 
 Examples:
 

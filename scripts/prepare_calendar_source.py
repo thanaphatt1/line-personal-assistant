@@ -7,7 +7,7 @@ EXTRA=tuple('src/line_assistant/'+name+'.py' for name in (
     'firestore_expenses','expense_initialization',
     'conversation_mocks','domain_notes','domain_tools','domain_runtime','tool_loop','draft_patch',
     'history_context','history_dates','history_first','semantic_tools','raw_history','planner_instructions','catalog_aliases','record_actions',
-    'performance','read_batch','clarifications',
+    'performance','read_batch','unified_query','intent_actions','clarifications',
     'history_persistence','history_integration','production_history_state','state_records','state_record_codec','state_record_migration','state_record_cleanup','relational','relational_sql','relational_metadata',
     'production_history','history_cloud_run','expense_evidence','expense_proposals','draft_workflow','catalog_names',
     'expense_sources','validation_explanations','pending_records','pending_catalog','tool_errors','tool_repair','temporal','calendar_dates','calendar_provider','calendar_workflow',

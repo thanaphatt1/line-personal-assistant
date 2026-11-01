@@ -26,6 +26,8 @@ class Port:
         self.turn_calls+=1
         value=self.generate(body) if self.generate else self.values.pop(0)
         value=value(deepcopy(body)) if callable(value) else deepcopy(value)
+        from legacy_query_fixtures import adapt_response
+        if not isinstance(value,Exception):value=adapt_response(body,value)
         self.requests.append(deepcopy(body));self.records.append({'request':deepcopy(body),'response':deepcopy(value)})
         if isinstance(value,Exception):raise value
         return value

@@ -17,6 +17,20 @@ but a new attempt ref. It must not repeat a completed business effect.
 
 Each attempt can show:
 
+- Verified owner webhook entry, redelivery status, history/context construction,
+  catalog loading, model reservations, tool execution, receipt persistence and
+  reply dispatch. `process_started`/`process_finished` pairs share `process_ref`
+  and link to `parent_process_ref`; failures contain fixed categories and known
+  HTTP status, never exception prose. Phase durations overlap when nested.
+- `tool_proposed` appears before loop guards, including a normalized argument
+  fingerprint. A repeated proposal remains observable even when no second tool
+  is executed. `planning_stopped`, `planning_transition` and the terminal
+  `stop_reason` distinguish repeated reads, repair, continuation and deadlines.
+- Query source reads/cache reuse, materialization and SQL execution are separate
+  internal processes under the single `query` action. Result diagnostics include
+  row/column counts, completeness, input-only status and hashed scope/result refs.
+  SQL diagnostics contain a fingerprint, byte count and fixed keyword features;
+  literal SQL, identifiers, predicate values and result cells are excluded.
 - Planner, rolling-history-summary and reply-realization model requests and
   outcomes, with cached attempts distinguished. Provider request and response
   bodies are excluded.
@@ -47,7 +61,9 @@ The route marker distinguishes the raw-history workflow from a retained legacy
 fallback. Legacy fallback traces include the route and action checkpoints;
 their old planner's internal proposal steps are outside this instrumentation.
 
-At most 96 ordinary records plus terminal records are emitted per attempt. A
+At most 512 ordinary records, 64 reserved proposal/decision/failure records and
+terminal records are emitted per attempt. Reserved space keeps important
+decisions visible when detailed process/provider spans fill the ordinary bound. A
 hosted webhook has an assistant terminal record and a webhook terminal record
 after delivery; direct assistant calls have only the assistant boundary.
 The terminal record reports dropped records and observed sink failures. A

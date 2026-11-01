@@ -3,6 +3,8 @@
 Working results live only in the current request. Legacy operations and the
 relational executor share observed references, never provider SQL or writes.
 """
+
+from .action_trace import observed
 from copy import deepcopy
 from datetime import date,datetime,timedelta
 from decimal import Decimal
@@ -13,7 +15,7 @@ from .history_context import digest
 from .model_api import object_schema
 from .state import Claim,Result
 
-READ_TOOLS={'query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change'}
+READ_TOOLS={'act','query','query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change'}
 
 def unverified_claim(text):
     # Output-claim check only, never an owner intent/date/keyword router.
@@ -40,7 +42,7 @@ class Finish(BaseModel):
 
 def definitions():
     return [{'type':'function','name':'finish_query_analysis','strict':True,
-        'description':'Finish read-only analysis using current-request query_refs. report selects final results, never an analysis_input_only source: use query_relations to project/filter/aggregate that input first. clarify asks one unresolved scope/condition question. For spending on Calendar-selected dates select the resulting expense query_ref, not only the supporting Calendar ref. expense_sum requires disjoint complete date ranges; calendar_count deduplicates event refs; compare computes same-domain differences. No model totals or writes.',
+        'description':'Finish read-only analysis using current-request query_refs. report selects final results, never an analysis_input_only source: use query with a result source to project/filter/aggregate that input first. clarify asks one unresolved scope/condition question. For spending on Calendar-selected dates select the resulting expense query_ref, not only the supporting Calendar ref. expense_sum requires disjoint complete date ranges; calendar_count deduplicates event refs; compare computes same-domain differences. No model totals or writes.',
         'parameters':object_schema({'query_refs':{'type':'array','items':{'type':'string'},'description':'Actual current-request result refs. May be empty only for clarify when no source rows could be read.'},
             'operation':{'type':'string','enum':['report','expense_sum','calendar_count','compare','clarify']},
             'question':{'anyOf':[{'type':'null'},{'type':'string','minLength':1,'maxLength':500}],
@@ -52,7 +54,11 @@ def definitions():
                     'description':'Requested conditions still not resolved against actual source metadata/choices. Empty only if all conditions are accounted for. Unknown closed-choice labels must remain unresolved, never be replaced with all choices.'}}),
             'source_refs':{'type':'array','items':{'type':'string'},'minItems':1}})}]
 
+@observed('query_remember')
 def remember(host,output,at,step):
+    existing=output.get('query_ref')
+    if existing in host._query_reads:
+        output=deepcopy(host._query_reads[existing])
     from .read_queries import result as render_query
     from . import calendar_inference,response_realization
     if output.get('read_failure'):result=render(output)
@@ -60,7 +66,7 @@ def remember(host,output,at,step):
         from .table_workflow import render as render_table
         result=render_table(output)
     else:result=render_query(output,at)
-    if calendar_inference.pending(result):
+    if existing not in host._query_reads and calendar_inference.pending(result):
         key='analysis01_'+digest([host._active_event_id,step])[:40]
         parent=host.state.claims[host._active_event_id]
         host.state.claims.setdefault(key,Claim(parent.fingerprint,parent.expires_at))
@@ -70,7 +76,7 @@ def remember(host,output,at,step):
     if (output.get('domain')=='expense' and scope.get('listing') and not scope.get('filter')
             and scope.get('group_by','none')=='none'):
         output={**output,'analysis_input_only':True}
-    ref='read_'+digest([host._active_event_id,len(host._query_reads),output['scope']])[:20]
+    ref=existing if existing in host._query_reads else 'read_'+digest([host._active_event_id,len(host._query_reads),output['scope']])[:20]
     host._query_reads[ref]=deepcopy(output)
     value={k:deepcopy(v) for k,v in output.items() if k not in {'scope','analysis_records','calendar_candidates'}}
     value.update(query_ref=ref,scope={k:deepcopy(v) for k,v in output['scope'].items() if k not in {'calendar','workbook','calendar_read_ids_hash'}})
@@ -97,8 +103,8 @@ def selection_failure(host,p,code,message):
              'complete':bool(row.get('complete')),'columns':[c['name'] for c in row.get('columns',[])]}
             for ref,row in host._query_reads.items()]},
         'recovery':recovery(kind='assistant_arguments',
-            required=['Select current reportable result refs whose actual projections and conditions answer the owner; project input-only sources with query_relations when needed. Clarify genuinely unresolved conditions.'],
-            tools=['query_relations','finish_query_analysis'])}
+            required=['Select current reportable result refs whose actual projections and conditions answer the owner; project input-only sources with query when needed. Clarify genuinely unresolved conditions.'],
+            tools=['act','query','query_relations','finish_query_analysis'])}
 
 def calendar_dates(host,refs,start,end):
     """Union Bangkok dates of complete source events, never model-supplied dates."""
@@ -140,6 +146,7 @@ def calendar_dates(host,refs,start,end):
             'meaning':'all_expenses_on_matching_Bangkok_dates_not_proven_event_costs',
             **({'remembered':list(remembered.values())} if remembered else {})}
 
+@observed('query_finish')
 def finish(host,args):
     from .read_queries import result as render_query
     try:
@@ -194,7 +201,7 @@ def finish(host,args):
         return {**common,'status':'answer' if common['complete'] else 'clarification','message':message}
     if not common['complete']:return fail('incomplete_basis','ผลค้นหาบางส่วนยังไม่ครบหรือมีนัดที่จัดประเภทไม่ชัดเจนครับ จึงยังรวมเป็นยอดทั้งหมดไม่ได้')
     if any(row['domain']=='relation' for row in selected):
-        return fail('relational_operation_required','ผลลัพธ์นี้วิเคราะห์ต่อได้ผ่าน query_relations ครับ')
+        return fail('relational_operation_required','ผลลัพธ์นี้วิเคราะห์ต่อได้ผ่าน query ครับ')
     headers=[report.message.split('\n',1)[0] for report in reports]
     if p.operation=='expense_sum':
         if not expenses:return fail('domain','การรวมรายจ่ายต้องเลือกผลค้นหารายจ่ายครับ')

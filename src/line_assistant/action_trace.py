@@ -5,13 +5,18 @@ snapshot. Logging is observational: it cannot authorize, retry or block effects.
 """
 from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import wraps
 import hashlib,json,re,sys
 from time import monotonic
 from threading import RLock
 from uuid import uuid4
 
 ACTIVE=ContextVar('assistant_action_trace',default=None)
-MAX_RECORDS=96
+PROCESS=ContextVar('assistant_trace_process',default=None)
+MAX_RECORDS=512
+MAX_PRIORITY_RECORDS=64
+PRIORITY_PHASES={'tool_proposed','planning_stopped','model_request','model_result','tool_request','tool_result',
+                 'query_source_result','planning_transition','reply_delivery','reply_fallback','reply_validation'}
 STEPS={'show_choices','begin_new_item','use_existing_item','choose_category','choose_subcategory'}
 FIELDS={'item','item_text','amount','date','date_text','date_ref','date_context','note','category','subcategory',
         'existing_item','source_refs','field_sources','previous_price_ref','entry_ref'}
@@ -23,6 +28,11 @@ def ref(value):
 
 def code(value):
     return value if isinstance(value,str) and re.fullmatch(r'[a-z][a-z0-9_]{0,79}',value) else 'unclassified'
+
+
+def fingerprint(value):
+    try:return ref(json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':')))
+    except (ValueError,TypeError,OverflowError):return None
 
 
 def arguments(call):
@@ -38,6 +48,21 @@ def arguments(call):
         return {'entry_ref':ref(row.get('entry_ref')),'supplied_fields':selected,
                 'source_refs':[ref(v) for v in row.get('source_refs',[])[:16]] if isinstance(row.get('source_refs',[]),list) else []}
     result.update(fields(value))
+    result['arguments_ref']=fingerprint(value)
+    request=value.get('request')
+    if isinstance(request,dict):
+        result['intent']=request.get('intent') if request.get('intent') in {'read','inspect','respond'} else 'unclassified'
+        result['request']=arguments({'arguments':json.dumps({k:v for k,v in request.items() if k!='request'},ensure_ascii=False)})
+    if value.get('response_ref') is not None:result['response_ref']=ref(value['response_ref'])
+    for key in ['query_refs','calendar_query_refs']:
+        if isinstance(value.get(key),list):result[key]=[ref(v) for v in value[key][:32]]
+    if isinstance(value.get('sql'),str):result['sql']=sql_shape(value['sql'])
+    if isinstance(value.get('sources'),list):
+        result['sources']=[{'source':v.get('source') if v.get('source') in {'expense','calendar','table','result'} else 'unclassified',
+            'alias_ref':ref(v.get('alias')),'query_ref':ref(v.get('query_ref')),
+            'parameters_ref':fingerprint(v.get('parameters'))}
+            for v in value['sources'][:8] if isinstance(v,dict)]
+    if isinstance(value.get('continue_analysis'),bool):result['continue_analysis']=value['continue_analysis']
     if isinstance(value.get('entries'),list):
         result['entry_count']=len(value['entries'])
         result['entries']=[fields(v) for v in value['entries'][:5] if isinstance(v,dict)]
@@ -47,6 +72,17 @@ def arguments(call):
             'source_refs':[ref(c.get('source_ref')) for c in v.get('changes',[])[:40] if isinstance(c,dict)]}
             for v in value['records'][:8] if isinstance(v,dict) and isinstance(v.get('changes',[]),list)]
     return result
+
+
+def sql_shape(sql):
+    # Diagnostic features only, never SQL or identifiers. Strip quoted values,
+    # names and comments before looking for fixed keywords. This is not a parser
+    # or a validator and cannot influence execution.
+    masked=re.sub(r"--[^\n]*|/\*.*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`[^`]*`|\[[^\]]*\]",' ',sql,flags=re.S)
+    tokens=set(re.findall(r'[a-z_]+',masked.casefold()))
+    return {'sql_ref':ref(sql),'bytes':len(sql.encode()),
+            'features':sorted(tokens&{'select','with','where','join','exists','group','having','order','limit',
+                'distinct','union','sum','decimal_sum','count','min','max','over','case','not','and','or'})}
 
 
 def snapshot(host):
@@ -79,6 +115,20 @@ def outcome(value):
     enrollment=value.get('item_enrollment',{})
     if isinstance(enrollment,dict) and enrollment.get('field') in {'category','subcategory'}:
         result['next_field']=enrollment['field'];result['entry_ref']=ref(enrollment.get('entry_ref'))
+    for key in ['complete','source_complete','analysis_input_only','continue_analysis','read_only','read_failure']:
+        if type(value.get(key)) is bool:result[key]=value[key]
+    for key in ['count','shown','group_count']:
+        if type(value.get(key)) is int and value[key]>=0:result[key]=value[key]
+    for key in ['query_ref','temporal_ref','clarification_ref']:
+        if value.get(key) is not None:result[key]=ref(value[key])
+    if isinstance(value.get('query_refs'),list):result['query_refs']=[ref(v) for v in value['query_refs'][:32]]
+    for key in ['entries','rows','columns','results']:
+        if isinstance(value.get(key),list):result[key+'_count']=len(value[key])
+    scope=value.get('scope')
+    if isinstance(scope,dict):
+        result['scope_ref']=fingerprint(scope)
+        result['domain']=scope.get('domain') if scope.get('domain') in {'expense','calendar','table','relation'} else 'unclassified'
+    if isinstance(value.get('recovery'),dict):result['recovery_kind']=code(value['recovery'].get('kind'))
     return result
 
 
@@ -86,6 +136,7 @@ class Trace:
     def __init__(self,event,sink):
         self.turn_ref=ref(event);self.attempt_ref=uuid4().hex;self.sink=sink
         self.started=monotonic();self.count=0;self.dropped=0;self.sink_failures=0
+        self.priority_count=0
         self.lock=RLock();self.pending={};self.durations={};self.calls={};self.fallbacks=0
         self.closed=False
         self.status='unknown'
@@ -117,9 +168,13 @@ class Trace:
         if phase in {'turn_finished','turn_interrupted','webhook_finished'}:
             fields['performance']={'total_ms':max(0,round((now-self.started)*1000)),
                 'phase_ms':dict(self.durations),'calls':dict(self.calls),'reply_fallbacks':self.fallbacks,'replayed':self.replayed}
-        if self.count>=MAX_RECORDS and not final:self.dropped+=1;return
+        if self.count>=MAX_RECORDS and not final:
+            priority=phase in PRIORITY_PHASES or phase=='process_finished' and fields.get('status')=='failed'
+            if not priority or self.priority_count>=MAX_PRIORITY_RECORDS:self.dropped+=1;return
+            self.priority_count+=1
         row={'event':'assistant_action_trace','version':1,'turn_ref':self.turn_ref,'attempt_ref':self.attempt_ref,
              'sequence':self.count,'elapsed_ms':round((monotonic()-self.started)*1000),'phase':phase,**fields}
+        if PROCESS.get() and 'process_ref' not in row:row['process_ref']=PROCESS.get()
         self.count+=1
         try:self.sink(row)
         except Exception:self.sink_failures+=1
@@ -133,19 +188,38 @@ def emit(phase,**fields):
 @contextmanager
 def span(label):
     """Fixed labels only; no paths, payloads or exception messages in metrics."""
-    current=ACTIVE.get();started=monotonic();status='completed'
-    try:yield
-    except BaseException:
-        status='failed';raise
+    current=ACTIVE.get();started=monotonic();status='completed';details={}
+    process_ref=uuid4().hex;parent=PROCESS.get();token=PROCESS.set(process_ref)
+    if current is not None:current.emit('process_started',process=code(label),process_ref=process_ref,parent_process_ref=parent)
+    try:yield details
+    except BaseException as error:
+        status='failed'
+        details['error_kind']={'ApiError':'http_error','OutcomeUnknown':'outcome_unknown','LeaseLost':'lease_lost',
+            'LeaseBusy':'lease_busy','ValidationError':'validation','ValueError':'validation',
+            'LiveDisabled':'disabled','NotReady':'not_ready','BudgetBlocked':'budget_blocked'}.get(type(error).__name__,'internal')
+        http_status=getattr(error,'status',None)
+        if type(http_status) is int and 100<=http_status<=599:details['http_status']=http_status
+        raise
     finally:
         if current is not None:
             with current.lock:
                 label=code(label);duration=max(0,round((monotonic()-started)*1000))
                 current.durations[label]=current.durations.get(label,0)+duration
                 current.calls[label]=current.calls.get(label,0)+1
-                # Successful provider timings aggregate without consuming the
-                # bounded action-log budget on lease/journal RPCs.
-                if status=='failed':current.emit('span_finished',span=label,duration_ms=duration,status=status)
+                current.emit('process_finished',process=label,process_ref=process_ref,parent_process_ref=parent,
+                             duration_ms=duration,status=status,**details)
+        PROCESS.reset(token)
+
+
+def observed(label):
+    """Observe synchronous work without reading its arguments or return value."""
+    def decorate(function):
+        @wraps(function)
+        def call(*args,**kwargs):
+            if ACTIVE.get() is None:return function(*args,**kwargs)
+            with span(label):return function(*args,**kwargs)
+        return call
+    return decorate
 
 
 def log_record(row):

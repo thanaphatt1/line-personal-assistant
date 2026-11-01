@@ -4,6 +4,8 @@ The second model request labels references and chooses a phrase. Code counts
 the referenced events and renders their original dates/titles. No model tools,
 provider query text, invented entries or free-form factual answer is admitted.
 """
+
+from .action_trace import observed
 from copy import deepcopy
 from datetime import date
 import json
@@ -117,6 +119,7 @@ def parse(document,payload):
         raise ValueError('Calendar selection must label every fetched reference exactly once')
     return document
 
+@observed('calendar_classify_result')
 def apply(result,document,metadata):
     from .read_queries import result as render
     from .state import Result

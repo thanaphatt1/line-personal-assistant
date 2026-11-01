@@ -1,4 +1,6 @@
 """Single-owner LINE replies with persisted attempt markers; no push fallback."""
+
+from .action_trace import observed
 from .expense_storage import storage_scope
 
 from datetime import timedelta
@@ -82,6 +84,7 @@ class ReplyDispatcher:
     def __init__(self, api: LineReplyApi, assistant):
         self.api, self.assistant = api, assistant
 
+    @observed('reply_dispatch')
     def deliver(self, event, result, received_at):
         settings, state = self.assistant.settings, self.assistant.state
         source = event.get("source", {})

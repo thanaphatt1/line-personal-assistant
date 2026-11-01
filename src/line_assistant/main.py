@@ -79,6 +79,9 @@ def create_app(assistant: Assistant | None = None, reply_dispatcher=None, *,
             try:
                 from .action_trace import turn,span,emit,code
                 with turn(assistant,event,boundary='webhook'):
+                    emit('webhook_verified',event_kind='postback' if event.get('type')=='postback' else 'message',
+                         redelivery=event.get('deliveryContext',{}).get('isRedelivery') is True
+                         if isinstance(event.get('deliveryContext',{}),dict) else False)
                     from .loading import indicator
                     with indicator(assistant,event,reply_dispatcher):
                         result = await run_in_threadpool(assistant.handle, event)

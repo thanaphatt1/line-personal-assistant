@@ -20,8 +20,8 @@ Optional name matching suggests existing catalog names for unfamiliar expense sp
 ## How it works
 
 1. **Understand the request and schema.** The planner sees dialogue, original timestamps, pending work, available tools and configured source metadata: purpose, columns, types, units, relationships and allowed operations.
-2. **Read the necessary records.** Source tools retrieve complete matched records from configured Sheets/Firestore tables and readable calendars. The planner receives current-request references and the actual schemas in `relations_catalog`.
-3. **Analyze with SQL.** `query_relations` is the main composable analysis layer. Read-only SELECT/CTEs support joins, CASE, HAVING, subqueries and window functions. Python computes results over all selected records before display limits. Simple reads can still use the existing typed tools directly.
+2. **Submit the read intent.** The planner calls `act` with `intent=read`, configured sources, bounded scopes, logical aliases and SQL. The server retrieves complete snapshots from Sheets/Firestore and readable calendars, then executes read-only analysis. Sources can also reference results from the current request.
+3. **Check and answer together.** When verified response facts are available, `act` with `intent=respond` checks selection/output and composes the final answer from those facts in the same model call. No separate wording call is needed. Exploration, further SQL and multi-result/clarification finishing remain available when necessary. See [read intents](docs/intents.md).
 4. **Prepare changes separately.** Typed table, expense and Calendar tools create reviewed proposals. Shared field patches update pending records; temporal plans compute date/time changes from verified sources. SQL cannot write or confirm a change.
 5. **Confirm and execute.** A new owner confirmation must match the delivered review and version. Durable action IDs, provider versions and receipts govern execution, replay and uncertain outcomes.
 

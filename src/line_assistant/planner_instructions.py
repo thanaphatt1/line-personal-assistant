@@ -55,22 +55,22 @@ READS = (
     'Distinguish totals by entity from individual transactions when grouping or ranking; execute supported analysis now. '
     'Read all data needed for the requested coverage and respect completeness and uncertainty in the results. '
     'One requested period is one read, even when it spans months or years; batch only genuinely different periods or sources. '
-    'Batch independent reads when their inputs are known; dependent reads wait for their source result. '
-    'A request about spending on activity dates requires reading the relevant calendar events before selecting expenses on those dates. '
+    'Declare independent sources in one query; the server reads them before running the SQL plan. '
+    'For spending on activity dates declare both Calendar and expense sources, then select payments with EXISTS over the matching dates. '
     'This measures spending on those dates, not proven costs caused by an event. '
     'Select the result that answers the current question, not merely its supporting read. '
     'Finish when final verified results are available; multi-result analysis can use finish_query_analysis.'
 )
 
 RELATIONS = (
-    'Relational analysis: use query_relations as the primary path for filtering and composing saved-data analysis. '
-    'First read the complete required source snapshots with continue_analysis=true; expense inputs use filter=null and view=list. '
-    'Express the intended predicates, including negation and combined conditions, in SQL over the offered relations. '
-    'Use catalog/choice metadata to resolve labels; clarify unknown closed-choice values instead of guessing a predicate. '
-    'Only current-request refs and schemas are executable; prior SQL describes intent, so re-read and map it to fresh refs. '
-    'Preserve distinct transactions, exact numeric semantics, units and source coverage. '
-    'Avoid multiplying expense rows when multiple events cover the same date. '
-    'Read actual related records before using their IDs in joins; schema metadata alone supplies no rows.'
+    'Relational analysis: use query with unique source aliases and SQL for selection, projection, grouping and ranking. '
+    'The server fetches snapshots and runs SQL in that call. Plan from query_source_schemas and catalog metadata. '
+    'Use sql=null when source values must be inspected first; result sources reuse current results. '
+    'Resolve labels from catalog choices; clarify unknown closed-choice values instead of guessing predicates. '
+    'Preserve payment occurrences, exact arithmetic, units and complete coverage. Use EXISTS for event-date spending '
+    'to avoid multiplying payments. Prior SQL describes intent; declare fresh sources on a new turn. '
+    'Inspect actual results against owner conditions and presentation before finish_query_analysis. '
+    'Incomplete sources never prove zero or absence.'
 )
 
 PENDING = (
@@ -151,10 +151,21 @@ def build(definitions):
     names={tool['name'] for tool in definitions}
     sections=[CORE]
     groups=(
+        ({'act'},(
+            'Read intents: call act with intent=read to declare sources and SQL; the server executes the plan. '
+            'intent=inspect discovers configured source capabilities. When read_responses offers a result answering the owner, '
+            'prefer intent=respond to inspect its actual selection/output AND compose the final answer in this same call. '
+            'Select the current response_ref, review every retained condition and use its facts/evidence. '
+            'Use {{fact_id}} and {{cell_id}} placeholders for business values in document templates. '
+            'Cover every required fact and record cell once, preserve record order and units; omit cells only as covered_by allows. '
+            'Text blocks use global facts; rows blocks select record IDs and use their local cells. '
+            'Never copy values into prose, calculate totals or claim a write. If results do not match, correct the read plan '
+            'or clarify a genuinely unresolved condition. finish_query_analysis remains available for other result combinations '
+            'and clarification; a complete offered response does not need a separate finish or reply-model call.')),
         ({'finish_preparation_reply'},REPAIR_REPLY),
         ({'prepare_expenses','read_expense_drafts','prepare_expense_review'},EXPENSE),
-        ({'query_expenses','query_calendar','query_table','finish_query_analysis','query_sources'},READS),
-        ({'query_relations'},RELATIONS),
+        ({'act','query','query_expenses','query_calendar','query_table','finish_query_analysis','query_sources'},READS),
+        ({'act','query','query_relations'},RELATIONS.replace('use query with','use the read intent with') if 'act' in names else RELATIONS),
         ({'patch_pending_records'},PENDING),
         ({'prepare_calendar_event','prepare_calendar_events','control_calendar_events'},CALENDAR),
         ({'list_tables','describe_table','query_table','prepare_table_change'},TABLES),

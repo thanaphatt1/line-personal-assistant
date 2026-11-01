@@ -1,9 +1,10 @@
 # Relational analysis from observed data
 
-`query_relations` is the raw-history planner's main composable analysis layer,
-using read-only SQLite over observed records. Typed source tools and legacy
-operations remain available; expense planner tools always retrieve a complete
-source before selecting the final answer. Broader questions
+`act` with `intent=read` is the raw-history planner's read/analysis entry, using
+read-only SQLite over observed records. Declare source parameters and unique
+SQL aliases together with the SQL; the server fetches complete snapshots before
+execution. The underlying `query_relations` executor and source readers remain
+internal compatibility handlers. Broader questions
 can compose SELECT, CTEs, joins, EXISTS, CASE, HAVING, UNION, subqueries and
 window functions without adding a handler for each question or table.
 
@@ -22,16 +23,17 @@ must use the same filtered relation; a displayed list can use window totals
 over that relation before display truncation. Empty `SUM` is NULL in SQLite;
 `COALESCE(SUM(amount),'0')` can express a verified empty total.
 
-1. The planner reads necessary configured sources with
-   `continue_analysis=true`. Expense reads use `view=list` for raw rows.
-2. `relations_catalog` exposes current-request query references, SQL table
-   names, observed columns/types/units, row counts, scope and unavailable fields.
-   Additional tables derive their schema from registry metadata.
-3. The planner proposes SQL over selected references. The server loads their
-   complete matched raw records into an isolated in-memory database and runs
-   the query. Display limits do not restrict calculations.
-4. The computed result can answer directly, or become another current-request
-   relation for further analysis. Model prose cannot replace computed results.
+1. The planner sees `query_source_schemas`, catalog choices and configured table
+   metadata, then declares sources, aliases and SQL in one read intent.
+2. The server validates all descriptors, fetches source snapshots and supplies
+   complete raw records to the existing executor. Display limits do not restrict
+   calculations. Incomplete or uncertain sources block SQL totals.
+3. `sql=null` permits source exploration first. `relations_catalog` exposes
+   current-request references, schemas, row counts and unavailable fields.
+   A `result` source can reuse those rows under a chosen alias for further SQL.
+4. The model can check actual results and compose a grounded answer together
+   with `intent=respond`. `finish_query_analysis` retains other combinations and
+   clarification. Model prose cannot replace computed results.
 
 For example, grouping payments in a CTE and applying
 `SUM(total) OVER (ORDER BY date)` gives daily running totals. Joining people

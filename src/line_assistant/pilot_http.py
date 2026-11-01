@@ -103,7 +103,11 @@ class PilotHttp:
         service={'sheets.googleapis.com':'sheets','firestore.googleapis.com':'firestore',
                  'api.openai.com':'model','api.line.me':'line','www.googleapis.com':'calendar',
                  'metadata.google.internal':'identity'}.get(host,'other')
-        with span('provider_'+service):return self._send_http(method,url,**kwargs)
+        with span('provider_'+service) as diagnostic:
+            diagnostic['method']=method if method in {'GET','POST','PATCH','DELETE','PUT'} else 'other'
+            response=self._send_http(method,url,**kwargs)
+            diagnostic['http_status']=response.status_code
+            return response
 
     def _send_http(self, method, url, **kwargs):
         # Body authorization precedes HTTP. Only the bound raw planner gets

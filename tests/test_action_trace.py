@@ -115,3 +115,28 @@ def test_argument_redaction_covers_generic_table_values_and_physical_coordinates
           'draft_ref':'private-draft','entry_ref':'private-row'}
     result=trace.arguments({'arguments':json.dumps(args)})
     assert not any(value in json.dumps(result) for value in ['private-person','private-workbook','private-amount','private-source','private-draft','private-row','secret_person'])
+
+
+def test_busy_trace_reserves_bounded_space_for_proposals_stops_and_final_status():
+    rows=[];collector=trace.Trace('synthetic',rows.append)
+    for _ in range(trace.MAX_RECORDS+8):collector.emit('process_started',process='state_read')
+    collector.emit('tool_proposed',tool='query')
+    collector.emit('planning_stopped',reason='repeated_read')
+    for _ in range(trace.MAX_PRIORITY_RECORDS):collector.emit('model_result',status='completed')
+    collector.emit('turn_finished',final=True,dropped_records=collector.dropped)
+    assert any(r['phase']=='planning_stopped' for r in rows)
+    assert len(rows)==trace.MAX_RECORDS+trace.MAX_PRIORITY_RECORDS+1
+    assert rows[-1]['dropped_records']==10
+
+
+def test_nested_processes_link_and_close_on_failure_without_exception_prose():
+    h=pending();rows=[];h.service.action_trace_sink=rows.append
+    with trace.turn(h.service,h.event('synthetic')):
+        with trace.span('outer'):
+            with pytest.raises(ValueError):
+                with trace.span('inner'):raise ValueError('synthetic-private-secret')
+    starts={r['process']:r for r in rows if r['phase']=='process_started'}
+    assert starts['inner']['parent_process_ref']==starts['outer']['process_ref']
+    inner=next(r for r in rows if r['phase']=='process_finished' and r['process']=='inner')
+    assert inner['status']=='failed' and inner['error_kind']=='validation'
+    assert trace.PROCESS.get() is None and 'synthetic-private-secret' not in json.dumps(rows)

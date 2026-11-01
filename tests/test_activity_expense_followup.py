@@ -100,7 +100,7 @@ def assert_history(body, first, confirmation):
         ('user', CASE['question']), ('assistant', first.message)]
     assert context['previous_query']['start'] == CASE['expect']['month_start']
     assert context['previous_query']['end'] == CASE['expect']['month_end']
-    assert {'query_calendar', 'query_expenses'} <= set(context['available_tools'])
+    assert 'act' in context['available_tools']
     pending = context['pending_query']
     assert pending['original_question'] == CASE['question']
     assert pending['start'] == CASE['expect']['month_start']
@@ -156,7 +156,7 @@ def test_missing_tool_dates_are_repaired_with_pending_selection_and_replay_is_id
         assert feedback['pending_query']['activity'] == 'คุมสอบ'
         assert not {'workbook', 'calendar', 'calendar_read_ids_hash'} & feedback['scope'].keys()
         assert {t['name'] for t in body['tools']} <= {
-            'query_sources','query_expenses', 'query_calendar', 'inspect_data_sources', 'finish_query_analysis', 'resolve_activity_dates','resolve_temporal','query_relations'}
+            'act', 'finish_query_analysis', 'resolve_activity_dates','resolve_temporal'}
         return resolve(body)
     result, original = turn(api, 'มีวันที่ 14', choose, repair)
     assert_selected_day(result)

@@ -38,7 +38,7 @@ def test_original_language_reaches_model_without_semantic_preemption(text):
     h=Harness();r=h.send(text,response(text='ขอรายละเอียดเพิ่มเติมครับ'))
     assert len(h.model.requests)==1 and json.loads(h.model.requests[0]['input'][0]['content'])['message']==text
     names={t['name'] for t in h.model.requests[0]['tools']}
-    assert {'query_expenses','query_calendar'}<=names and 'spending_summary' not in names
+    assert 'act' in names and 'spending_summary' not in names
     assert not h.sheets.entries and not h.state.actions
 
 
@@ -118,7 +118,7 @@ def test_calendar_bounds_disabled_and_upcoming():
     h=Harness();assert h.send('เกินสามปี',plan('calendar','2026-10-01','2029-10-02')).data['tool_result']['error_code']=='date_bounds'
     h.provider.events={'past':event('past','2026-10-16T09:00:00+07:00','2026-10-16T10:00:00+07:00'),'current':event('current','2026-10-16T14:00:00+07:00','2026-10-16T16:00:00+07:00')}
     assert h.send('ถัดไป',plan('calendar','2026-10-16','2026-10-22',upcoming=True)).data['tool_result']['count']==1
-    assert Harness(enabled=False).send('นัด',plan('calendar')).data['tool_result']['error_code']=='calendar_disabled'
+    assert Harness(enabled=False).send('นัด',plan('calendar')).data['tool_result']['error_code']=='query_source_unavailable'
 
 
 def test_signed_cold_restore_realization_and_replay_are_factual():

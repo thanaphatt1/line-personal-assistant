@@ -36,7 +36,7 @@ def test_model_sees_actual_tool_names_scope_and_unknown_extent_before_any_metada
     def choose(body):
         p=json.loads(body['input'][0]['content'])
         assert p['available_tools']==[t['name'] for t in body['tools']]
-        assert NAME in p['available_tools'] and 'execute_sql' not in p['available_tools']
+        assert 'act' in p['available_tools'] and 'execute_sql' not in p['available_tools']
         assert p['data_sources']['expense']['record_date_extent']=='unknown_until_inspected'
         assert p['data_sources']['calendar']['global_date_extent']=='unknown'
         from line_assistant.read_queries import MAX_QUERY_DAYS

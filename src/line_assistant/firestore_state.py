@@ -5,6 +5,8 @@ Sheets HTTP write already in flight; real-adapter reconciliation never infers
 not_committed from absence. No transaction remains open around provider I/O.
 """
 
+from .action_trace import observed,emit
+
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -62,6 +64,7 @@ class FirestoreState(MemoryState):
         self.fence = 0
         self.document = None
 
+    @observed('state_read')
     def _read(self):
         try:
             document = self.client.request("GET", "/v1/" + self.name)
@@ -89,6 +92,7 @@ class FirestoreState(MemoryState):
                 "lease_until": {"timestampValue": until.isoformat()},
                 "commit_nonce": {"stringValue": uuid.uuid4().hex}}
 
+    @observed('state_commit')
     def _commit(self, previous, fields):
         condition = {"updateTime": previous["updateTime"]} if previous else {"exists": False}
         body = {"writes": [{"update": {"name": self.name, "fields": fields}, "currentDocument": condition}]}
@@ -100,10 +104,13 @@ class FirestoreState(MemoryState):
                 raise LeaseLost("Conditional state commit rejected") from None
             raise
         except (OutcomeUnknown, KeyError, IndexError):
+            emit('state_recovery',reason='commit_ack_unknown')
             # Resolve a lost commit acknowledgement by exact nonce AND fields.
             fresh = self._read()
             if not fresh or not same_commit_fields(fresh["fields"], fields):
+                emit('state_recovery',reason='commit_unverified')
                 raise OutcomeUnknown("State commit outcome remains unverified") from None
+            emit('state_recovery',reason='commit_verified')
             return fresh
         return {"name": self.name, "fields": fields, "updateTime": update_time}
 
@@ -118,6 +125,7 @@ class FirestoreState(MemoryState):
                 fields = previous["fields"]
                 until = datetime.fromisoformat(fields["lease_until"]["timestampValue"].replace("Z", "+00:00"))
                 if fields["lease_owner"]["stringValue"] and until > now:
+                    emit('lease_status',status='busy')
                     raise LeaseBusy("Owner state is leased by another worker")
                 snapshot = decode_snapshot(fields["snapshot"]["stringValue"], self.max_snapshot_bytes)
                 self._restore_state(snapshot)
@@ -128,6 +136,7 @@ class FirestoreState(MemoryState):
             fields = self._fields(snapshot, holder, fence, now + timedelta(seconds=self.lease_seconds))
             document = self._commit(previous, fields)
             self.holder, self.fence, self.document = holder, fence, document
+            emit('lease_status',status='acquired')
             try:
                 yield
             finally:
@@ -135,9 +144,10 @@ class FirestoreState(MemoryState):
                     previous = self._owned_document(self.document)
                     fields = self._fields(self._snapshot_state(), None, self.fence, self.clock())
                     self.document = self._commit(previous, fields)
+                    emit('lease_status',status='released')
                 except (LeaseLost, OutcomeUnknown, ApiError):
                     # Never overwrite a newer worker or mask the original failure.
-                    pass
+                    emit('lease_status',status='release_unverified')
                 finally:
                     self.holder = None
 
@@ -165,6 +175,7 @@ class FirestoreState(MemoryState):
             raise LeaseLost("Lease expired or was replaced; this worker is fenced from state")
         return document
 
+    @observed('state_checkpoint')
     def checkpoint(self):
         # CAS rejects any intervening write, including a lease takeover. An extra
         # GET would add latency without strengthening that atomic condition.
@@ -173,8 +184,10 @@ class FirestoreState(MemoryState):
                               self.clock() + timedelta(seconds=self.lease_seconds))
         self.document = self._commit(previous, fields)
 
+    @observed('effect_fence')
     def before_effect(self):
         from .read_cache import invalidate
         invalidate()
         self.checkpoint()  # Verify holder/fence and renew immediately before HTTP.
         self._owned_document(self.document)  # A slow acknowledgement may outlast the renewed lease.
+        emit('effect_fence',status='verified')

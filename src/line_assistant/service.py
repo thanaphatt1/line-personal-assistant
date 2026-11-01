@@ -1,3 +1,5 @@
+
+from .action_trace import observed
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 import hashlib
@@ -45,6 +47,7 @@ class Assistant:
         self.phase_hook = phase_hook or (lambda phase, key: None)
         self.expense_label = expense_label  # Trusted destination label, never a model argument.
 
+    @observed('owner_request')
     def handle(self, event: dict) -> Result:
         """Only call after transport signature verification. Auth is checked again here."""
         source = event.get("source")
@@ -125,6 +128,7 @@ class Assistant:
     def _bind_context(self, event_id):
         pass
 
+    @observed('receipt_store')
     def _receipt(self, event_id: str, fingerprint: str, result: Result):
         self.state.receipts[event_id] = Receipt(fingerprint, deepcopy(result),
                                                self.clock() + timedelta(seconds=self.settings.webhook_ttl_seconds))

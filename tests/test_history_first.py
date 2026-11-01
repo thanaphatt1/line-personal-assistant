@@ -34,7 +34,8 @@ class Port:
   assert (method,path)==('POST','/v1/responses');self.requests.append(deepcopy(body))
   value=self.values.pop(0)
   if isinstance(value,Exception):raise value
-  return value(deepcopy(body)) if callable(value) else deepcopy(value)
+  from legacy_query_fixtures import adapt_response
+  return adapt_response(body,value(deepcopy(body)) if callable(value) else deepcopy(value))
 
 class Harness:
  def __init__(self,**kw):

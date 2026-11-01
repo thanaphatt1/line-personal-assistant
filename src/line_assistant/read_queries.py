@@ -117,11 +117,11 @@ def context(host):
     except Exception:catalog = {'complete':False,'items':[],'categories':[],'subcategories':[]}
     return {'previous_query':{k:deepcopy(v) for k,v in scope.items() if k not in {'workbook','calendar','calendar_read_ids_hash'}} if scope else None,
             'query_capabilities':{'expense_group_by':['item','date','category','subcategory'],
-                'filtering':{'primary':'query_relations SQL WHERE over full source reads; arbitrary supported boolean predicates',
+                'filtering':{'primary':'query SQL WHERE over declared source aliases; arbitrary supported boolean predicates',
                     'legacy_expense_filter':'positive equality ONLY, never exclusion; use null when reading SQL inputs'},
                 'expense_order_by':['date','amount','count','label'],'top_rows':20,'sort_before_limit':True,
                 'calendar_date_join':'complete current-request Calendar query refs; unions Bangkok dates; all spending on those dates, not causal event costs',
-                'relational_analysis':'query_relations executes read-only SQL over complete observed snapshots; no provider SQL or writes',
+                'relational_analysis':'query fetches complete declared sources and executes read-only SQL; no provider SQL or writes',
                 'unavailable':['unconfigured_income','unconfigured_balance','provider_SQL','causal_expense_attribution']},
             'query_catalog':catalog}
 

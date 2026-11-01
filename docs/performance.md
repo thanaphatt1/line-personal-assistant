@@ -52,21 +52,30 @@ time. The [deployment procedure](deployment.md) checks both boundaries.
 
 ## Fewer planning round trips
 
-`query_sources` batches up to eight independent typed expense, Calendar or table
-reads in one planner tool call. More reads can follow in later calls. Every
-member keeps its own scope, completeness and request-local reference. The entire
-argument list is checked before reading; mutation tools and dependent query refs
-are unavailable inside a batch. A failed member never becomes an empty result
-or evidence of a complete total. The planner inspects the results, then computes
-with `finish_query_analysis` or SQL.
+The read intent declares up to eight expense, Calendar, table or current-result sources
+and can execute SQL over their aliases in the same planner call. The entire
+descriptor list is checked before reading. A failed member never becomes an
+empty result or evidence of a complete total; incomplete sources block SQL.
+When `read_responses` offers verified result facts, the planner can inspect the
+actual selection/output and compose a grounded answer in the same next call
+with `act` / `intent=respond`. That path avoids a separate finish plus wording
+call. Other combinations and clarification retain `finish_query_analysis`.
+`sql=null` supports source exploration when values are needed for the next plan.
 
 For example, comparing two months can use one batched read and one finish call,
-instead of two read calls and one finish call. Optional answer composition is
-unchanged. Batch schemas increase the prompt size; fewer planner calls do not
+instead of two read calls and one finish call. A declared-source SQL query also
+avoids a separate model call between fetching and computation when schemas are
+already sufficient. Intent responses use the existing answer renderer. Fewer calls do not
 guarantee a particular wall-clock improvement. Provider reads remain ordered
 under the existing owner lease; this does not introduce concurrent writes or
-speculative classification. Activity-based spending remains sequential when
-expenses depend on Calendar classification or an owner selection.
+speculative classification. Calendar classification remains a server step;
+uncertain membership still requires an owner selection before a complete total.
+
+The unified executor also retains source results in the current read-only turn,
+so a changed SQL plan can reuse the same verified snapshots. This includes a
+failed source outcome, which is not retried. No source result cache survives a
+new owner turn or authorizes a mutation. The lower-level read cache below is
+separate from these retained analysis snapshots.
 
 Successful read snapshots can be reused within a turn. The cache has at most
 eight entries, copies returned records, is discarded at the next turn and is

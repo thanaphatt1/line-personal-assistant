@@ -1,4 +1,6 @@
 """Metadata-driven relational analysis of complete current-request snapshots."""
+
+from .action_trace import observed
 from copy import deepcopy
 from datetime import date,datetime,timedelta
 import re
@@ -40,6 +42,7 @@ def definitions():
 def columns(*values):return [{'name':name,'type':kind} for name,kind in values]
 
 
+@observed('query_materialize')
 def materialize(h,ref):
     try:output=h._query_reads[ref]
     except KeyError:raise PlanningError('relation_reference_unavailable') from None
@@ -162,14 +165,15 @@ def followup_scope(h,relations,used,sql,result_columns,row_count):
     return scope
 
 
-def execute(h,args):
+def execute(h,args,*,relations=None):
     base={'relational_query':True,'query_analysis':True,'domain':'relation','read_only':True,
         'financial_write_authorized':False,'calendar_write_authorized':False}
     try:
         p=Plan.model_validate(args);h._owner_sources(p.source_refs)
         if h._current['source_ref'] not in p.source_refs:raise PlanningError('relation_current_source_required')
         if len(set(p.query_refs))!=len(p.query_refs):raise PlanningError('relation_duplicate_reference')
-        relations=[materialize(h,ref) for ref in p.query_refs]
+        relations=[materialize(h,ref) for ref in p.query_refs] if relations is None else relations
+        if [r['query_ref'] for r in relations]!=p.query_refs:raise PlanningError('relation_reference_unavailable')
         names,records,used=run_sql(relations,p.sql)
         from .relational_metadata import result_columns
         cols=result_columns(relations,p.sql,names,records)
@@ -201,5 +205,5 @@ def execute(h,args):
             'relation_resource_limit':'แผนค้นหานี้ใช้ทรัพยากรเกินขอบเขตของรอบประมวลผล'}
         return {**base,'ok':False,'complete':False,'status':'clarification','error_code':str(error) if isinstance(error,PlanningError) else 'relation_invalid_arguments',
             **({'sql_diagnostic':error.detail} if hasattr(error,'detail') else {}),
-            'recovery':recovery(error,kind=None if isinstance(error,PlanningError) else 'assistant_arguments',tools=[NAME,'query_expenses','query_calendar','query_table','describe_table']),
+            'recovery':recovery(error,kind=None if isinstance(error,PlanningError) else 'assistant_arguments',tools=['act','query',NAME,'query_expenses','query_calendar','query_table','describe_table']),
             'message':causes.get(code,'แผนค้นหาหรือข้อมูลที่อ้างอิงยังใช้ไม่ได้')+'ครับ'}

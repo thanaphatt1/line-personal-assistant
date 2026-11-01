@@ -91,8 +91,8 @@ def render(output):
     if not output['ok']:return Result('clarification','ยังตรวจขอบเขตข้อมูลจากคำขอนี้ไม่ได้ครับ',{'data_inventory':True,'tool_result':output,'read_only':True})
     tools=set(output['available_tools']);lines=[]
     if output['source']=='capabilities':
-        if 'query_expenses' in tools:lines.append('รายจ่าย: อ่านยอดและรายการ กรอง จัดกลุ่ม เรียงยอด และจับคู่กับวันที่จากปฏิทินได้')
-        if 'query_calendar' in tools and output['data_sources']['calendar']['enabled']:lines.append('ปฏิทิน: อ่านนัดในช่วงวันที่และตีความเงื่อนไขกิจกรรมได้')
+        if 'act' in tools or 'query' in tools or 'query_expenses' in tools:lines.append('รายจ่าย: อ่านยอดและรายการ กรอง จัดกลุ่ม เรียงยอด และจับคู่กับวันที่จากปฏิทินได้')
+        if ('act' in tools or 'query' in tools or 'query_calendar' in tools) and output['data_sources']['calendar']['enabled']:lines.append('ปฏิทิน: อ่านนัดในช่วงวันที่และตีความเงื่อนไขกิจกรรมได้')
         lines.append('อ่านรายจ่ายได้ครั้งละไม่เกิน 10 ปี และปฏิทินไม่เกิน 3 ปี')
         lines.append('เข้าถึงเฉพาะฐานข้อมูลและปฏิทินที่เชื่อมให้ระบบ สิทธิ์อ่านนัดต้องตรวจเมื่ออ่านจริง ยังไม่ใช่ทุกปฏิทินในอีเมล')
         lines.append('รายรับเพิ่มเติมขึ้นอยู่กับ table ที่เชื่อมไว้; รายจ่ายเดิมไม่มีข้อมูลยอดคงเหลือ' if output['data_sources'].get('tables') else 'ยังไม่มีข้อมูลรายรับหรือยอดคงเหลือ')

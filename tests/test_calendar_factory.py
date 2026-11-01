@@ -52,7 +52,8 @@ class Hosted:
             return httpx.Response(200,json={'access_token':'synthetic-token','expires_in':3600,'token_type':'Bearer'},headers={'Metadata-Flavor':'Google'})
         if host=='api.openai.com':
             body=json.loads(request.content);self.model_bodies.append(body);value=self.queue.pop(0)
-            return httpx.Response(200,json=value(body) if callable(value) else value)
+            from legacy_query_fixtures import adapt_response
+            return httpx.Response(200,json=adapt_response(body,value(body) if callable(value) else value))
         if host=='www.googleapis.com':
             base='/calendar/v3/calendars/'+CALENDAR+'/events';path=unquote(request.url.path);assert path.startswith(base)
             self.calendar_requests.append((request.method,path))

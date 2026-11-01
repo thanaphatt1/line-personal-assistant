@@ -4,6 +4,8 @@ Iteration covers this session's conversation and unresolved operations. Historic
 replay uses exact keys; it does not enumerate a month's completed evidence.
 Every changed record commits atomically with the owner lease/version fence.
 """
+
+from .action_trace import observed
 from collections.abc import MutableMapping
 from contextvars import ContextVar
 from copy import deepcopy
@@ -238,6 +240,7 @@ class StateRecords:
                     raise OutcomeUnknown('Calendar batch parent evidence is missing or foreign')
                 target.setdefault('actions',{})[key]=deepcopy(entry['row']['values']['actions'])
 
+    @observed('state_hydrate')
     def hydrate(self):
         self.install()
         # Only unfinished business effects need a global blocking view. Model
@@ -340,6 +343,7 @@ class StateRecords:
             result.append((entry, row, write))
         return result
 
+    @observed('records_commit')
     def commit(self, previous, fields, extra=None):
         condition = {'updateTime': previous['updateTime']} if previous else {'exists': False}
         plans = self.planned() if self.mode == 'ready' and extra is None else []

@@ -3,6 +3,8 @@
 Conversation text is data. This module cannot approve a financial effect.
 No total history byte/turn ceiling: only the rolling time window applies.
 """
+
+from .action_trace import observed
 from copy import deepcopy
 from contextvars import ContextVar
 from datetime import datetime,timedelta,timezone
@@ -67,10 +69,12 @@ def valid(row):
 
 class MemoryJournal:
     def __init__(self):self.rows={}
+    @observed('journal_put')
     def put(self,row):
         valid(row);k=key(row);old=self.rows.get(k)
         if old and old!=row:raise HistoryUnavailable('Immutable speaker record changed')
         self.rows[k]=deepcopy(row)
+    @observed('journal_load')
     def load(self,now):
         return [deepcopy(r) for r in self.rows.values() if now-WINDOW<datetime.fromisoformat(r['at'])<=now]
 
@@ -81,12 +85,14 @@ class SQLiteJournal:
         with sqlite3.connect(self.path) as c:
             c.execute('CREATE TABLE IF NOT EXISTS raw_speakers(scope TEXT, id TEXT, at TEXT, payload TEXT, PRIMARY KEY(scope,id))')
         self.path.chmod(0o600)
+    @observed('journal_put')
     def put(self,row):
         valid(row);payload=json.dumps(row,ensure_ascii=False,sort_keys=True);k=key(row)
         with sqlite3.connect(self.path) as c:
             old=c.execute('SELECT payload FROM raw_speakers WHERE scope=? AND id=?',(self.scope,k)).fetchone()
             if old and old[0]!=payload:raise HistoryUnavailable('Immutable speaker record changed')
             c.execute('INSERT OR IGNORE INTO raw_speakers VALUES(?,?,?,?)',(self.scope,k,datetime.fromisoformat(row['at']).astimezone(timezone.utc).isoformat(),payload))
+    @observed('journal_load')
     def load(self,now):
         cutoff=(now-WINDOW).astimezone(timezone.utc).isoformat()
         with sqlite3.connect(self.path) as c:
@@ -119,6 +125,7 @@ class FirestoreJournal:
                 and datetime.fromisoformat(fields['at']['timestampValue'])==datetime.fromisoformat(row['at'])
                 and all(fields[k]==expected[k] for k in ['payload','auth_mac']))
         except (KeyError,TypeError,ValueError):return False
+    @observed('journal_put')
     def put(self,row):
         valid(row);name=self.parent+'/assistant_raw_messages/'+key(row)
         fields=self.fields(row)
@@ -131,6 +138,7 @@ class FirestoreJournal:
             # record, rather than retrying a write or assuming it succeeded.
             doc=self.client.request('GET','/v1/'+name)
             if not self.matches(doc.get('fields',{}),row):raise HistoryUnavailable('Speaker journal acknowledgement unverified')
+    @observed('journal_load')
     def load(self,now):
         result=[];cursor=None
         while True:
@@ -152,6 +160,7 @@ class FirestoreJournal:
             if new==cursor:raise HistoryUnavailable('Journal pagination did not advance')
             cursor=new
 
+@observed('history_load')
 def speakers(state,now,*,production=False):
     rows=[]
     for row in state.history:
@@ -225,6 +234,7 @@ def summary_view(verified):
     result['source_dates']={ref:{k:v for k,v in metadata.items() if k!='text_sha256'} for ref,metadata in verified['source_dates'].items()}
     return result
 
+@observed('context_build')
 def request(state,text,at,event,definitions,previous=None,*,production=False,summary=None,context_tokens=MODEL_CONTEXT_TOKENS,available_drafts=None,date_references=(),calendar_drafts=None,calendar_batches=None,query_context=None):
     rows=speakers(state,at,production=production)
     rows=[r for r in rows if r['event']!=event]
@@ -264,6 +274,7 @@ def request(state,text,at,event,definitions,previous=None,*,production=False,sum
     if bound+body['max_output_tokens']>context_tokens:raise ContextOverflow('Full history exceeds the verified model context; summary needed')
     return body,refs,{'utf8_bytes':bound-FRAMING_TOKEN_RESERVE,'token_upper_bound':bound,'removed_records':0,'raw_speaker_records':len(view),'rolling_summary_used':bool(summary)}
 
+@observed('summary_build')
 def summary_request(state,at,event,*,production=False,context_tokens=MODEL_CONTEXT_TOKENS):
     rows=[r for r in speakers(state,at,production=production) if r['event']!=event]
     if len(rows)<4:raise ContextOverflow('Recent exchange cannot be summarized safely')
@@ -290,6 +301,7 @@ def summary_request(state,at,event,*,production=False,context_tokens=MODEL_CONTE
     if not selected:raise ContextOverflow('One original message exceeds summary context')
     return body_for(selected),selected,protected
 
+@observed('summary_accept')
 def accept_summary(state,selected,protected,args,at):
     if set(args)!={'summary','source_refs'} or not isinstance(args['summary'],str) or not args['summary'].strip():raise HistoryUnavailable('Invalid summary output')
     refs=args['source_refs']

@@ -7,6 +7,8 @@ model cannot invent one. Results only populate the existing owner choice
 ("X หมายถึง Y ใช่ไหมครับ หรือเป็นรายการใหม่?"); nothing is selected or written.
 Unavailable, slow or invalid output keeps the previous behaviour.
 """
+
+from .action_trace import observed
 from contextvars import copy_context
 from queue import Queue,Empty
 from threading import Thread
@@ -93,6 +95,7 @@ def _send(host,body,timeout):
     except Empty:return 'timeout',None
 
 
+@observed('catalog_match')
 def candidates(host,wording,taxonomy):
     """Existing names (high/medium confidence) for one unknown wording; [] keeps the old flow."""
     from .action_trace import emit,ref,code

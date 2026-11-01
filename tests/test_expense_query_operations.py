@@ -93,7 +93,7 @@ def test_invalid_operations_are_rejected_instead_of_silently_showing_chronologic
     api=SemanticHosted();seed(api,[('2026-09-01','กาแฟ',700)])
     result,_=turn(api,'เดือน ก.ย. เรียงรายการ',expense(**options))
     # Schema errors stay invalid; a conflicting view/sort/group goes back to the planner.
-    assert result.data['tool_result']['error_code'] in {'invalid_arguments','expense_view_conflict'} and 'entries' not in result.data['tool_result']
+    assert result.data['tool_result']['error_code'] in {'query_invalid_arguments','expense_view_conflict'} and 'entries' not in result.data['tool_result']
 
 
 def test_a_total_ignores_sort_flags_instead_of_refusing_the_read():

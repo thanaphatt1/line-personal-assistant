@@ -116,7 +116,7 @@ def test_incomplete_calendar_basis_never_yields_zero_or_a_partial_total():
             'source_refs':[c['current_source_ref']],'continue_analysis':False})
     r,_=turn(api,'นัด 3 พ.ย. มีกี่ครั้ง',read('calendar','2026-11-03'),incomplete)
     assert r.status=='clarification' and 'rows' not in r.data['tool_result'],r
-    assert r.data['tool_result']['error_code']=='relation_incomplete_source'
+    assert r.data['tool_result']['error_code']=='query_incomplete_source'
 
 
 def test_summary_without_raw_rows_is_explicitly_unavailable_for_sql():

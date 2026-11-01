@@ -15,7 +15,7 @@ def test_model_arguments_cannot_expand_read_surface(field,value):
         answer=plan()(body);args=json.loads(answer['output'][0]['arguments']);args[field]=value
         answer['output'][0]['arguments']=json.dumps(args);return answer
     r,_=turn(api,'ขอดูรายจ่าย',malicious)
-    assert not r.data['tool_result']['complete'] and r.data['tool_result']['error_code'] in {'invalid_arguments','filter_unknown'}
+    assert not r.data['tool_result']['complete'] and r.data['tool_result']['error_code'] in {'query_invalid_arguments','filter_unknown'}
     assert not api.calendar.posts and not api.google.sheet_writes
 
 @pytest.mark.parametrize('mutation',['drop','duplicate','unknown','money','date','name','saved','swapped_units'])
@@ -73,7 +73,7 @@ def test_model_selects_relative_frame_server_only_calculates_calendar(mode,offse
 @pytest.mark.parametrize('offset',[True,121,-121,'1'])
 def test_invalid_relative_offsets_cannot_expand_query(offset):
     api=VoiceHosted();r,_=turn(api,'คำถาม',plan(start=None,date_mode='calendar_month',relative_offset=offset))
-    assert r.data['tool_result']['error_code']=='invalid_arguments'
+    assert r.data['tool_result']['error_code']=='query_invalid_arguments'
 
 
 @pytest.mark.parametrize('again',['repeat','ask'])

@@ -4,6 +4,8 @@ No SDK discovery, credentials, history, external tools or provider writes here.
 The injected HTTP port and server-owned state/event context own authorization.
 """
 
+from .action_trace import observed
+
 from copy import deepcopy
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_CEILING
@@ -166,6 +168,7 @@ class DurableModelGuard:
         self.before_request = before_request or state.before_effect
         self.reservation_calculator=reservation_calculator
 
+    @observed('model_reserve')
     def reserve(self, event_id, body):
         # Called only inside Assistant.handle's owner-scoped state/lease session.
         if event_id not in self.state.claims or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", event_id):
@@ -215,6 +218,7 @@ class DurableModelGuard:
         self.before_request()  # Commit reservation and verify/renew owner lease.
         return None
 
+    @observed('model_complete')
     def complete(self, event_id, decision):
         run = self.state.model_runs[event_id]
         run.status, run.decision = "completed", deepcopy(decision)

@@ -43,7 +43,7 @@ def test_six_reads_and_finish_exceed_two_calls_and_preserve_every_tool_output():
     calls=[read('calendar',f'2026-11-0{i}',identifier=f'call_{i}') for i in range(1,7)]
     def done(body):
         assert len(results(body))==6
-        assert {t['name'] for t in body['tools']}=={'query_sources','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_temporal','query_relations'}
+        assert {t['name'] for t in body['tools']}=={'act','finish_query_analysis','resolve_temporal'}
         return finish('calendar_count')(body)
     result,original=turn(api,'ดูนัด 1-6 พ.ย. รวมกี่ครั้ง',*calls,done)
     output=result.data['tool_result']
@@ -165,7 +165,7 @@ def test_a_source_report_is_repaired_into_an_explicit_result_projection():
     def repaired(body):
         outputs=results(body)
         assert outputs[-1]['repair_feedback']['error_code']=='analysis_projection_required'
-        assert outputs[-1]['repair_feedback']['allowed_tools']==['finish_query_analysis','query_relations']
+        assert outputs[-1]['repair_feedback']['allowed_tools']==['act','finish_query_analysis']
         context=json.loads(body['input'][0]['content'])
         assert context['relations_catalog'][0]['analysis_input_only'] is True
         return sql(lambda rs:f"SELECT SUM(amount) AS total FROM {rs[0]['sql_table']}")(body)

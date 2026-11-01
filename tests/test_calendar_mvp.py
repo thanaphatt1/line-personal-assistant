@@ -57,7 +57,8 @@ class FakeModel:
     def request(self,method,path,*,body):
         assert (method,path)==('POST','/v1/responses');self.requests.append(deepcopy(body))
         value=self.values.pop(0)
-        return value(body) if callable(value) else deepcopy(value)
+        from legacy_query_fixtures import adapt_response
+        return adapt_response(body,value(body) if callable(value) else deepcopy(value))
 
 class Harness:
     def __init__(self,*,state=None,provider=None,enabled=True):
