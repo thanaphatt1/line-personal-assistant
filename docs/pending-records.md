@@ -35,6 +35,22 @@ can be a semantic model proposal, so a synonym need not repeat a canonical
 enum label. Such an interpretation is reviewable, not proof of owner consent.
 The owner must inspect the proposed values before confirming them.
 
+Choice validation checks membership in the offered enum, rather than passing
+catalog labels through the generic table text validator as well. An explicitly
+offered empty string is a valid choice, including a catalog pair with no
+subcategory. Expense subcategory metadata retains that empty member. For any
+pending enum that explicitly offers an empty member, an explicit `null` is
+canonicalized to that member before validation; both forms select the same
+choice. This never invents an unavailable member. Omitting the field retains
+the previous selection. The planner interprets
+the owner's wording and selects the member; there is no phrase-specific server
+conversion. The staged expense adapter still verifies the selected category/
+subcategory pair. Generic table type/storage contracts remain unchanged.
+
+Known enrollment errors retain their specific server-owned explanation in the
+pending-patch reply, instead of being replaced by a generic diagnosis. Unknown
+failures still do not acquire a guessed cause or write permission.
+
 In the raw-history model workflow, the planner interprets requests, questions,
 conditional requests, hypothetical examples and negations. Keyword intent
 guards do not veto preparation; a tool call still cannot confirm a write.

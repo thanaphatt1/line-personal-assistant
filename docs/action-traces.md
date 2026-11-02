@@ -50,6 +50,11 @@ Each attempt can show:
 - Tool outcome, machine error code, known invalid/missing field paths, next
   required category field, diagnosed failure kind/next action and bounded
   before/after draft/action summaries.
+- Pending-patch arguments include bounded per-change field references and value
+  kinds (`missing`, `null`, `empty_string`, `string`, `integer`, `boolean`,
+  `other`). Only fixed known field names are readable; other names are hashed.
+  Proposed values and source quotes remain excluded. This distinguishes an
+  explicit blank choice from a missing/null argument on future deployed turns.
 - Action checkpoints (`prepared`, `executing`, `effect_returned`,
   `action_completed`), a hashed action key, kind and status. A checkpoint does
   not independently prove an external effect; the existing action proof and

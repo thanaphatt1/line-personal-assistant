@@ -46,7 +46,7 @@ def test_scripted_positive_controls_match_independent_oracle(case):
     ('grouped-item-total','SELECT item,SUM(amount) AS total FROM e GROUP BY item ORDER BY total DESC,item'),
     ('activity-dates-no-duplicate-money',"SELECT SUM(e.amount) AS total FROM e JOIN c ON e.date=c.start_date WHERE c.title='สอน'"),
 ])
-def test_valid_sql_and_truthy_model_review_cannot_self_award_semantic_pass(id,sql):
+def test_valid_sql_and_successful_response_cannot_self_award_semantic_pass(id,sql):
     scores=run(id,sql=sql)['turns'][0]['scores']
     assert scores=={'intent_outcome':False,'execution_contract':True,'structural_grounding':True,
                     'authorized_effects':True,'human_answer_review':'pending'}

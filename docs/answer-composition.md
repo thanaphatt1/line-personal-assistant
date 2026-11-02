@@ -64,6 +64,13 @@ validation. Filters, ordering notes, same-day spending caveats and truncation
 notices remain required evidence. Source text resembling template syntax is
 inserted literally and is never evaluated again.
 
+When exactly one record is offered, text blocks may also reference that
+record's cells directly. They can form one sentence or several paragraphs
+without an artificial rows block. Its required cells must still be covered,
+and combining an inline record with another rows rendering of the same record
+is rejected as a duplicate. Multi-record cell references still need explicit
+rows blocks, preserving membership and ranking order.
+
 The composer also receives the executed logical scope and SQL, excluding
 physical bindings and raw source rows. It must describe the actual calculation
 rather than repeat an unfulfilled requested condition. A legacy expense
@@ -150,20 +157,22 @@ budget/deadline exhaustion, invalid feedback, replay and isolation from writes.
 
 ## Owner evidence and result references
 
-The native `act` respond schema offers `current_source_ref` as the owner evidence
-choice in `source_refs`. Its `response_ref` separately binds the actual executed
-query result, facts and core reply. A `query_ref`/`response_ref` is not an owner
-message source. Mixing these types returns `response_owner_source_required`
-with a specific repair instruction; it never rereads a provider or relaxes the
-result proof. This is a field contract, not another intent classifier.
+The native `act` respond schema requires only `intent`, `response_ref` and
+`document`. The server derives current owner evidence while rebuilding the
+result. `response_ref` already binds the owner, active event, actual executed
+query, facts and core reply. New proposals do not repeat `source_refs` or
+self-review booleans. Legacy source/review fields are read conservatively:
+foreign/mixed source refs and explicitly negative/unresolved reviews still
+fail, without rereading a provider. Removing the redundant argument does not
+make previous-turn, foreign or changed results valid.
 
 For native `act` responses, an invalid presentation document no longer starts
-another model turn once owner evidence, the current result proof, completeness
-and the selection/output review have passed. The server discards the rejected
+another model turn once owner evidence, the current result proof and
+completeness have passed. The server discards the rejected
 document and builds a placeholder-only layout from those same facts and cells.
 That layout passes through the same renderer, preserving every required value,
 unit and record order. If it cannot pass validation, the response still fails
-closed. Stale references, incomplete reads and unresolved or rejected reviews
+closed. Stale references, incomplete reads and negative/unresolved legacy reviews
 never qualify. `reply_fallback` and bounded realization metadata record this
 presentation fallback without logging the document or values. The optional
 auxiliary composer described above keeps its existing one-repair contract.

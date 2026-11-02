@@ -21,7 +21,7 @@ INSTRUCTIONS = (
     'Choose the layout and write concise natural Thai prose yourself: paragraphs, headings, inline answers or lists. '
     'There is no prescribed header or per-row wording and no allowed-word vocabulary. '
     'Insert business values ONLY through {{fact_id}} or {{cell_id}} placeholders, never copy, calculate or invent them. '
-    'Text blocks can reference summary facts. Rows blocks select record_refs in their supplied order and use one template per group. '
+    'Text blocks can reference summary facts and, when exactly one record is offered, its cells. Rows blocks select record_refs in their supplied order and use one template per group. '
     'Every displayed record must appear exactly once, every required cell and summary fact must be covered. '
     'A rows heading can reference a cell only when its group_key is identical across ALL selected records. '
     'Headings are templates too: use heading="{{c1}}:" for a shared date cell, never copy its date digits into the heading. '
@@ -276,7 +276,7 @@ REPAIR_GUIDANCE={
     'answer_template':'Use string templates within the schema size limits.',
     'answer_placeholder':'Use exactly {{fact_id}}, {{cell_id}} or optional {{index}}; do not nest placeholders.',
     'unsupported_answer_literal':'Use placeholders for business dates/numbers, even when copied correctly. No writes, consent requests or instructions. Numeric conditions absent from display facts need not be restated.',
-    'unknown_answer_fact':'Use only supplied fact IDs or cells of the current row/shared heading; check covered_by for omitted dates.',
+    'unknown_answer_fact':'Use supplied facts or row/shared-heading cells. Text may use cells when exactly one record is offered; otherwise select rows. Check covered_by for omitted dates.',
     'unknown_answer_record':'Use only offered record_refs, each exactly once in their supplied order.',
     'answer_record_coverage_or_order':'Include every displayed record once in its original order. Do not duplicate, omit or reorder rows.',
     'answer_fact_coverage':'Include every required summary fact through its placeholder.',
@@ -361,6 +361,8 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
     facts = view['facts']; records = {r['id']: r for r in view['records']}
     seen_facts = set(); seen_rows = []; row_cells = {}; chunks = []; literal_size = 0
     heading_scope={}
+    inline_record=next(iter(records.values())) if len(records)==1 else None
+    inline_seen=False
 
     def template(text, fields=None, index=None):
         nonlocal literal_size
@@ -388,7 +390,14 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
             if set(block) != {'kind', 'template'}: raise AnswerError('answer_text_block')
             heading_scope={}
             if paragraphs and chunks:chunks.append('')
-            text, _ = template(block['template']); chunks.append(text)
+            text, refs = template(block['template'],inline_record['fields'] if inline_record else None)
+            if inline_record:
+                cells=refs & inline_record['fields'].keys()
+                if cells:
+                    if not inline_seen:
+                        seen_rows.append(inline_record['id']);inline_seen=True
+                    row_cells.setdefault(inline_record['id'],set()).update(cells)
+            chunks.append(text)
         elif block.get('kind') == 'rows':
             if set(block) != {'kind', 'record_refs', 'heading', 'template'}: raise AnswerError('answer_rows_block')
             refs = block['record_refs']

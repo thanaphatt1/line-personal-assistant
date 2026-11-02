@@ -61,8 +61,9 @@ def views(h):
                     field('category','หมวด','enum',choices=[c['label'] for c in categories],interpretation='choice')]
                 names=[c['item'] for c in resolution['existing_item_choices']] if resolution else []
                 if names:fields.append(field('existing_item','เลือกชื่อเดิม','enum',choices=names,interpretation='choice'))
-                subs=list(dict.fromkeys(s['label'] for c in categories for s in c['subcategories'] if s['label']))
-                if subs:fields.append(field('subcategory','หมวดย่อย','enum',choices=subs,interpretation='choice'))
+                subs=list(dict.fromkeys(s['label'] for c in categories for s in c['subcategories']))
+                if subs:fields.append(field('subcategory','หมวดย่อย','enum',choices=subs,required=True,interpretation='choice',
+                    description='Select an existing subcategory of the chosen category (or a category selected in this patch). When an empty choice is listed, "" or explicit null selects no subcategory. Omit this field to retain the previous selection.'))
             records.append({'record_ref':e['entry_ref'],'ordinal':ordinal,'values':{k:deepcopy(e.get(k)) for k in ['item','amount','date','note']},
                 'fields':fields,'question_focus':bool(resolution and resolution['question_focus'] or
                     focus.get('draft_ref')==d['draft_ref'] and focus.get('version')==d['version'] and focus.get('record_ref')==e['entry_ref'])})
@@ -114,12 +115,12 @@ def contextualize(h,call,output):
     if not isinstance(args,dict):return output
     view=getattr(h,'_pending_record_views',{}).get(args.get('draft_ref'))
     if not view or view['version']!=args.get('draft_version'):return output
-    reasons={'catalog_changed':'รายการที่เลือกอ้างอิง Database ก่อนมีการเปลี่ยนแปลงครับ จึงยังแก้รายการนั้นต่อไม่ได้',
+    from .validation_explanations import REASONS
+    reasons={**REASONS,'catalog_changed':'รายการที่เลือกอ้างอิง Database ก่อนมีการเปลี่ยนแปลงครับ จึงยังแก้รายการนั้นต่อไม่ได้',
         'ambiguous_or_recorded_reference':'ข้อมูลที่อ้างอิงถูกใช้กับรายการก่อนแล้วครับ หากต้องการเพิ่มอีกครั้งต้องเตรียมเป็นรายการใหม่'}
     result={**output,'pending_patch_error':True,'domain':view['domain'],
         'message':output.get('message',reasons.get(output.get('error'),'ขั้นตอนตรวจการแก้ไขรายการไม่สำเร็จ จึงยังระบุสาเหตุที่เจาะจงกว่านี้ไม่ได้'))}
     if output.get('error')=='invalid_fields' and output.get('invalid_fields'):
-        from .validation_explanations import REASONS
         codes=[v.rsplit('.',1)[-1] for v in output['invalid_fields']]
         if all(code in REASONS for code in codes):
             result['message']='; '.join(dict.fromkeys(REASONS[code] for code in codes))
@@ -183,6 +184,16 @@ def validate_targets(p,view):
             if change.field not in fields:raise PatchError('patch_unknown_field',change.field)
 
 
+def validate_value(metadata,value):
+    # A pending choice is governed by its offered members, not the generic
+    # table text grammar. An explicitly offered empty member is still a choice.
+    if metadata['type']=='enum':
+        if value is None and not metadata.get('required',False):return
+        if isinstance(value,str) and value in metadata['choices']:return
+        raise ValueError('invalid_choice')
+    normalize(Column.model_validate({k:v for k,v in metadata.items() if k not in {'interpretation','implied_by'}}),value)
+
+
 def validate(h,p,view):
     validate_targets(p,view)
     records={r['record_ref']:r for r in view['records']}
@@ -196,7 +207,7 @@ def validate(h,p,view):
                 raise PatchError('patch_invalid_certainty',change.field)
             rows=h._owner_sources([change.source_ref])
             if not any(change.source_text in r['text'] for r in rows):raise PatchError('patch_owner_evidence',change.field)
-            try:normalize(Column.model_validate({k:v for k,v in f.items() if k not in {'interpretation','implied_by'}}),change.value)
+            try:validate_value(f,change.value)
             except (ValueError,TableError):raise PatchError('patch_invalid_value',change.field) from None
             if change.temporal_ref:
                 from .temporal import get,projection
@@ -246,6 +257,10 @@ def canonical_patch(p,view):
     records={r['record_ref']:r for r in view['records']};result=[]
     for record in p.records:
         fields={f['name']:f for f in records.get(record.record_ref,{}).get('fields',[])}
+        record=record.model_copy(update={'changes':[
+            v.model_copy(update={'value':''}) if v.value is None
+            and fields.get(v.field,{}).get('type')=='enum' and '' in fields[v.field]['choices'] else v
+            for v in record.changes]})
         present={v.field for v in record.changes}
         retained=records.get(record.record_ref,{}).get('values',{})
         unresolved=records.get(record.record_ref,{}).get('uncertain_fields',[])

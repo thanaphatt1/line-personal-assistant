@@ -117,6 +117,26 @@ def test_argument_redaction_covers_generic_table_values_and_physical_coordinates
     assert not any(value in json.dumps(result) for value in ['private-person','private-workbook','private-amount','private-source','private-draft','private-row','secret_person'])
 
 
+def test_patch_diagnostics_distinguish_null_empty_and_literal_without_logging_values():
+    changes=[{'field':'subcategory','value':value,'source_text':'private owner quote','source_ref':'private-source'}
+        for value in [None,'','private-subcategory',False,123,{'private':'business'}]]
+    changes.append({'field':'private-column','source_text':'private owner quote'})
+    result=trace.arguments({'arguments':json.dumps({'records':[{'record_ref':'private-row','changes':changes}]})})
+    shaped=result['records'][0]['changes']
+    assert [c['value_kind'] for c in shaped]==['null','empty_string','string','boolean','integer','other','missing']
+    assert all(c['field']=='subcategory' for c in shaped[:-1])
+    assert shaped[-1]['field']=='other' and shaped[-1]['field_ref']==trace.ref('private-column')
+    for private in ['private owner quote','private-source','private-subcategory','private-column','private-row','business']:
+        assert private not in json.dumps(result)
+
+
+def test_patch_diagnostics_respect_record_and_change_caps():
+    result=trace.arguments({'arguments':json.dumps({'records':[{'changes':[
+        {'field':'subcategory','value':''} for _ in range(100)]} for _ in range(20)]})})
+    assert len(result['records'])==8
+    assert all(len(r['changes'])==40 and r['field_count']==100 for r in result['records'])
+
+
 def test_busy_trace_reserves_bounded_space_for_proposals_stops_and_final_status():
     rows=[];collector=trace.Trace('synthetic',rows.append)
     for _ in range(trace.MAX_RECORDS+8):collector.emit('process_started',process='state_read')

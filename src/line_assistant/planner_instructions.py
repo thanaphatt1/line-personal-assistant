@@ -77,6 +77,7 @@ PENDING = (
     'Pending changes: use patch_pending_records for the selected current draft and only changed fields or members. '
     'Interpret replies using the delivered question and record focus, unless the owner selects another target. '
     'Omitted fields retain certified facts. Choice fields permit semantic selection among offered choices; '
+    'For an offered empty enum choice use "" or null; omit unchanged fields. '
     'literal fields require original owner evidence. Combine requested changes in one patch without completing unrelated fields.'
 )
 
@@ -155,10 +156,10 @@ def build(definitions):
             'Read intents: call act with intent=read to declare sources and SQL; the server executes the plan. '
             'intent=inspect discovers configured source capabilities. When read_responses offers a result answering the owner, '
             'prefer intent=respond to inspect its actual selection/output AND compose the final answer in this same call. '
-            'Select the current response_ref, review every retained condition and use its facts/evidence. '
+            'Select the current response_ref and use its facts/evidence; it already binds the owner and executed result. '
             'Use {{fact_id}} and {{cell_id}} placeholders for business values in document templates. '
             'Cover every required fact and record cell once, preserve record order and units; omit cells only as covered_by allows. '
-            'Text blocks use global facts such as {{f1}}, never row cells. '
+            'Text blocks use global facts such as {{f1}}; with exactly one record they can also use its cells. '
             'Even dates/years already present in the owner question must use their offered fact placeholder. '
             'Rows blocks select record IDs and use their local cells, for example record_refs=["r1"] with template="{{c1}}". '
             'When present, previous_query.answer_context contains the last verified delivered result, including selected labels/groups. '

@@ -26,6 +26,7 @@ def unverified_claim(text):
 
 
 class IntentReview(BaseModel):
+    """Legacy proposal compatibility; not an offered self-attestation step."""
     model_config=ConfigDict(extra='forbid',strict=True)
     selection_matches:bool
     output_matches:bool
@@ -47,11 +48,6 @@ def definitions():
             'operation':{'type':'string','enum':['report','expense_sum','calendar_count','compare','clarify']},
             'question':{'anyOf':[{'type':'null'},{'type':'string','minLength':1,'maxLength':500}],
                 'description':'Only for clarify: one natural clarification question, no totals, calculations, action claims, URLs or numeric data literals. Do not copy data numbers into the question. Null for other operations.'},
-            'intent_review':object_schema({
-                'selection_matches':{'type':'boolean','description':'Compare CURRENT owner intent and retained follow-up conditions to the actual selected SQL WHERE/JOIN/grouping/source scope. False if any requested condition was dropped, broadened, narrowed or guessed, even when SQL succeeded.'},
-                'output_matches':{'type':'boolean','description':'Compare actual selected projections/grouping/order to the requested answer and last delivered presentation. A changed selection alone does not request replacing a list with a total or removing duplicate occurrences.'},
-                'unresolved_conditions':{'type':'array','items':{'type':'string'},'maxItems':8,
-                    'description':'Requested conditions still not resolved against actual source metadata/choices. Empty only if all conditions are accounted for. Unknown closed-choice labels must remain unresolved, never be replaced with all choices.'}}),
             'source_refs':{'type':'array','items':{'type':'string'},'minItems':1}})}]
 
 @observed('query_remember')

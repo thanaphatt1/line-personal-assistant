@@ -113,6 +113,33 @@ def test_templates_in_source_values_are_never_executed_or_interpolated_again():
     assert composition.render(document(rows(['r1'],'{{c1}}')),view.data())=='{{f1}} บันทึก 999'
 
 
+def test_one_record_cells_can_be_inline_across_paragraphs_with_units_and_full_coverage():
+    view=composition.View();view.fact('ช่วงทดสอบ')
+    view.row([('ชื่อ','{{f1}} ชื่อทดสอบ',None,None),('ยอด','0.30',None,'บาท')])
+    text=composition.render(document(paragraph('{{f1}} {{c1}}'),paragraph('รวม {{c2}}ครับ')),view.data())
+    assert text=='ช่วงทดสอบ {{f1}} ชื่อทดสอบ\nรวม 0.30 บาทครับ'
+
+
+@pytest.mark.parametrize('bad',[
+    document(paragraph('{{f1}} {{c1}}')),
+    document(paragraph('{{f1}} {{c1}} {{c3}}')),
+    document(paragraph('{{f1}} {{c1}} {{c2}} 999 บาท')),
+    document(paragraph('{{f1}} {{c1}} {{c2}}'),rows(['r1'],'{{c1}} {{c2}}')),
+    document(rows(['r1'],'{{c1}} {{c2}}'),paragraph('{{f1}} {{c1}} {{c2}}')),
+])
+def test_inline_layout_cannot_drop_invent_or_duplicate_a_record(bad):
+    view=composition.View();view.fact('ช่วงทดสอบ')
+    view.row([('ชื่อ','รายการทดสอบ',None,None),('ยอด','0.30',None,'บาท')])
+    with pytest.raises(composition.AnswerError):composition.render(bad,view.data())
+
+
+def test_inline_cells_remain_ambiguous_for_multiple_records():
+    view=composition.View()
+    for name in ['รายการทดสอบหนึ่ง','รายการทดสอบสอง']:view.row([('ชื่อ',name,None,None)])
+    with pytest.raises(composition.AnswerError,match='unknown_answer_fact'):
+        composition.render(document(paragraph('{{c1}}')),view.data())
+
+
 def test_fallback_document_preserves_heterogeneous_cells_order_units_and_source_templates():
     view=composition.View();view.fact('ช่วงทดสอบ 2026')
     view.row([('รายการ','{{f1}} บันทึก 999',None,None),('ยอด','0.30',None,'บาท')])

@@ -101,6 +101,16 @@ def fingerprint(value):
     except (ValueError,TypeError,OverflowError):return None
 
 
+def patch_change(change):
+    """Type/empty diagnostics only; never a proposed value or source quote."""
+    value=change.get('value');field=change.get('field')
+    kind=('missing' if 'value' not in change else 'null' if value is None else
+        'empty_string' if value=='' else 'boolean' if type(value) is bool else
+        'integer' if type(value) is int else 'string' if isinstance(value,str) else 'other')
+    return {'field':field if isinstance(field,str) and field in FIELDS else 'other',
+        'field_ref':ref(field),'value_kind':kind}
+
+
 def arguments(call):
     try:value=json.loads(call['arguments'])
     except (KeyError,ValueError,TypeError):return {'valid_object':False}
@@ -135,6 +145,7 @@ def arguments(call):
     if isinstance(value.get('records'),list):
         result['record_count']=len(value['records'])
         result['records']=[{'entry_ref':ref(v.get('record_ref')),'field_count':len(v.get('changes',[])),
+            'changes':[patch_change(c) for c in v.get('changes',[])[:40] if isinstance(c,dict)],
             'source_refs':[ref(c.get('source_ref')) for c in v.get('changes',[])[:40] if isinstance(c,dict)]}
             for v in value['records'][:8] if isinstance(v,dict) and isinstance(v.get('changes',[]),list)]
     return result

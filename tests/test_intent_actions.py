@@ -39,15 +39,14 @@ def respond(*, mutate=None):
     def choose(body):
         c=json.loads(body['input'][0]['content']);offered=c['read_responses'][-1]
         args={'intent':'respond','response_ref':offered['response_ref'],
-            'review':{'selection_matches':True,'output_matches':True,'unresolved_conditions':[]},
-            'document':document(offered['facts']),'source_refs':[c['current_source_ref']]}
+            'document':document(offered['facts'])}
         if mutate:mutate(args)
         value=response('act',{'request':args});value['output'][0]['call_id']='respond_'+str(len(body['input']))
         return value
     return choose
 
 
-def test_read_review_and_composition_complete_in_two_model_calls():
+def test_read_selection_and_composition_complete_in_two_model_calls():
     h=harness();rows=[];h.app.action_trace_sink=rows.append
     r=h.send('เดือนตุลาคม BTS รวมเท่าไร',read("SELECT SUM(amount) AS total FROM e WHERE item='BTS'"),respond())
     assert r.status=='answer' and ('0.30' in r.message or '0.3' in r.message),r
@@ -75,7 +74,7 @@ def test_bad_final_intents_do_not_publish_unverified_answers(mutation):
         elif mutation=='drop_cell':args['document']['blocks'][-1]['template']=''
         elif mutation=='foreign_response':args['response_ref']='answer_foreign'
         elif mutation=='owner':args['source_refs']=['assistant_source']
-        elif mutation=='review':args['review']['selection_matches']=False
+        elif mutation=='review':args['review']={'selection_matches':False,'output_matches':True,'unresolved_conditions':[]}
         else:args['intent']='execute_write'
     r=h.send('เดือนตุลาคม รวมเท่าไร',read(),respond(mutate=damage),response(text='ยังสรุปไม่ได้ครับ'))
     assert '999 บาท' not in r.message
@@ -100,7 +99,7 @@ def test_received_invalid_document_falls_back_without_another_model_or_source_ca
 
 def test_a_repeated_invalid_response_stops_bounded_repair_without_retrying_reads():
     h=harness()
-    def bad(args):args['review']['selection_matches']=False
+    def bad(args):args['review']={'selection_matches':False,'output_matches':True,'unresolved_conditions':[]}
     r=h.send('เดือนตุลาคม รวมเท่าไร',read(),respond(mutate=bad),respond(mutate=bad))
     assert r.status=='clarification' and r.data['query_loop_stopped']=='repeated_read',r
     assert len(h.model.requests)==3 and not h.sheets.write_log
@@ -157,13 +156,41 @@ def test_response_view_budget_is_bounded_and_has_no_provider_or_model_effect(mon
     assert len(h.model.requests)==calls and not h.sheets.write_log
 
 
-def test_response_schema_distinguishes_owner_evidence_from_executed_query_refs():
+def test_response_schema_binds_the_result_without_self_review_or_duplicate_owner_refs():
     h=harness();h.send('เดือนตุลาคม รวมเท่าไร',read(),respond())
     body=h.model.requests[1];context=json.loads(body['input'][0]['content'])
     act=next(t for t in body['tools'] if t['name']=='act')
     spec=next(v for v in act['parameters']['properties']['request']['anyOf'] if v['properties']['intent']['enum']==['respond'])
-    assert spec['properties']['source_refs']['items']['enum']==[context['current_source_ref']]
+    assert set(spec['properties'])=={'intent','response_ref','document'}
+    assert spec['properties']['response_ref']['enum']==[v['response_ref'] for v in context['read_responses']]
     assert context['read_responses'][0]['query_ref']!=context['current_source_ref']
+
+
+def test_single_result_can_answer_inline_without_layout_fallback_or_repeated_evidence():
+    h=harness();trace=[];h.app.action_trace_sink=trace.append
+    def inline(args):
+        args['document']={'blocks':[{'kind':'text','template':'{{f1}} รวม {{c1}}ครับ'}]}
+    result=h.send('เดือนตุลาคม BTS รวมเท่าไร',read("SELECT SUM(amount) AS total FROM e WHERE item='BTS'"),respond(mutate=inline))
+    assert result.status=='answer' and '0.30 บาท' in result.message,result
+    assert result.data['response_realization']['status']=='llm' and len(h.model.requests)==2
+    assert not any(row['phase']=='reply_fallback' for row in trace)
+    call=next(row['call'] for row in h.app.trace if row['call']['name']=='act' and json.loads(row['call']['arguments'])['request']['intent']=='respond')
+    assert set(json.loads(call['arguments'])['request'])=={'intent','response_ref','document'}
+    assert not h.sheets.write_log and not h.state.actions and not h.provider.posts
+
+
+def test_finish_analysis_offers_no_self_review_and_can_select_actual_results_without_it():
+    from test_unified_query import finish
+    h=harness();h.app.response_realization_enabled=False
+    def minimal(body):
+        tool=next(t for t in body['tools'] if t['name']=='finish_query_analysis')
+        assert 'intent_review' not in tool['parameters']['properties']
+        value=finish(body);args=json.loads(value['output'][0]['arguments']);args.pop('intent_review')
+        value['output'][0]['arguments']=json.dumps(args)
+        return value
+    result=h.send('เดือนตุลาคม BTS รวมเท่าไร',read("SELECT SUM(amount) AS total FROM e WHERE item='BTS'"),minimal)
+    assert result.status=='answer' and '0.30' in result.message and len(h.model.requests)==2,result
+    assert not h.sheets.write_log and not h.state.actions and not h.provider.posts
 
 
 def test_mixed_owner_and_query_refs_receive_specific_repair_without_rereading(monkeypatch):
@@ -173,7 +200,7 @@ def test_mixed_owner_and_query_refs_receive_specific_repair_without_rereading(mo
     def mixed(body):
         value=respond()(body);context=json.loads(body['input'][0]['content'])
         args=json.loads(value['output'][0]['arguments'])
-        args['request']['source_refs'].append(context['read_responses'][0]['query_ref'])
+        args['request']['source_refs']=[context['current_source_ref'],context['read_responses'][0]['query_ref']]
         value['output'][0]['arguments']=json.dumps(args,ensure_ascii=False)
         return value
     result=h.send('เดือนตุลาคม รวมเท่าไร',read(),mixed,respond())

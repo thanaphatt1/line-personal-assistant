@@ -24,9 +24,11 @@ MAX_ANSWER_CONTEXT_BYTES = 6_000
 
 class Respond(Strict):
     response_ref: str = Field(min_length=1, max_length=64)
-    review: IntentReview
     document: dict
-    source_refs: list[str] = Field(min_length=1, max_length=16)
+    # Read old proposals conservatively, but do not ask new planners to
+    # self-attest correctness or repeat evidence already bound by response_ref.
+    review: IntentReview | None = None
+    source_refs: list[str] | None = Field(default=None, min_length=1, max_length=16)
 
 
 def _answer_context(host, query_ref):
@@ -98,16 +100,10 @@ def definitions(host):
     variants.append(object_schema({'intent': {'type': 'string', 'enum': ['inspect']}, **inspect}))
     responses = response_views(host)
     if responses:
-        from .table_workflow import schema
-        review = schema(IntentReview)
         variants.append(object_schema({
             'intent': {'type': 'string', 'enum': ['respond']},
             'response_ref': {'type': 'string', 'enum': list(responses)},
-            'review': review,
             'document': answer_composition.schema(),
-            'source_refs': {'type': 'array', 'minItems': 1, 'maxItems': 16,
-                'description': 'Owner-message evidence only: use current_source_ref. Query and response refs are not owner sources; response_ref already binds the executed result.',
-                'items': {'type': 'string', 'enum': [host._current['source_ref']]}},
         }))
     return [{'type': 'function', 'name': NAME, 'strict': True,
         'description': 'Submit a read-only intent. read declares configured sources and SQL; the server handles fetching and computation. inspect discovers available source capabilities. respond checks actual selection/output against the owner request and composes a grounded answer from an offered read_responses view in this same planning call. Use facts/cells for business values. No writes, confirmations or new access.',
@@ -143,13 +139,14 @@ def execute(host, args):
         return inspect(host, request)
     try:
         plan = Respond.model_validate(request)
-        try:
-            host._owner_sources(plan.source_refs)
-        except ValueError:
-            return _failure('response_owner_source_required', required=[
-                'Use current_source_ref in source_refs; keep query/response refs only in their dedicated fields.'])
-        if host._current['source_ref'] not in plan.source_refs:
-            return _failure('response_owner_source_required')
+        if plan.source_refs is not None:
+            try:
+                host._owner_sources(plan.source_refs)
+            except ValueError:
+                return _failure('response_owner_source_required', required=[
+                    'Omit source_refs when responding; response_ref already binds the current owner and executed result.'])
+            if host._current['source_ref'] not in plan.source_refs:
+                return _failure('response_owner_source_required')
         offered = getattr(host, '_intent_responses', {}).get(plan.response_ref)
         if offered is None:
             return _failure('response_reference_unavailable')
@@ -158,7 +155,8 @@ def execute(host, args):
         actual = _response(host, offered['query_ref'])
         if actual is None or actual['response_ref'] != plan.response_ref:
             return _failure('response_reference_unavailable')
-        if not plan.review.selection_matches or not plan.review.output_matches or plan.review.unresolved_conditions:
+        if plan.review is not None and (
+                not plan.review.selection_matches or not plan.review.output_matches or plan.review.unresolved_conditions):
             return _failure('analysis_intent_mismatch', required=[
                 'Correct the read plan to preserve all owner conditions and presentation, or use finish_query_analysis clarify for genuinely unresolved conditions.'])
         metadata={'status':'llm','mode':'planner_intent'}
@@ -166,8 +164,8 @@ def execute(host, args):
             try:
                 text = answer_composition.render(plan.document, actual['facts'])
             except answer_composition.AnswerError as error:
-                # Selection, owner evidence and the current result proof have
-                # passed. Discard all rejected prose and render the same facts;
+                # Owner evidence and the current result proof have passed.
+                # Discard all rejected prose and render the same facts;
                 # a wording failure must not erase a complete selected answer.
                 text=answer_composition.render(answer_composition.fallback_document(actual['facts']),actual['facts'])
                 metadata.update(status='fallback',reason='invalid_answer_document',validation_code=str(error))

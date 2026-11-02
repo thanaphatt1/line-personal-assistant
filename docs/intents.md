@@ -39,18 +39,25 @@ For example, the first call can submit:
 The next request includes `read_responses`: current response references with
 verified facts, record cells, units, source coverage and executed SQL evidence.
 The planner can correct its read plan if those results do not answer the owner.
-Otherwise it submits `intent=respond`, the actual `response_ref`, an intent
-review, a document over fact/cell placeholders and the current owner source.
-This performs result selection, review and presentation together. No nested
-planning model or auxiliary reply-model call is introduced.
+Otherwise it submits `intent=respond`, the actual `response_ref` and a document
+over fact/cell placeholders. Result selection and presentation happen together;
+there is no model-supplied self-review flag or duplicate owner-source argument.
+No nested planning model or auxiliary reply-model call is introduced.
 
 The server rebuilds the selected core result and binds its response reference to
 the owner, active event, query result, rendered facts and execution evidence.
 Previous-turn, foreign or changed response references fail. Documents cannot
 copy amounts, invent facts, drop required cells, reorder ranked rows or change
 units. The existing answer renderer and repeat/deadline/repair guards remain.
-An invalid received document can be corrected in a later planner call using
-the same source snapshots; it does not retry a failed provider request.
+An invalid received document uses a complete placeholder-only fallback through
+the same renderer, without another model call or source read.
+
+`finish_query_analysis` also omits the self-review object from its offered
+schema. Selecting a response/report is the planner's decision; true booleans
+cannot prove semantic correctness. Legacy review/source fields remain readable
+for compatibility, and an explicitly negative/unresolved legacy review is
+still rejected. Neither a simplified schema nor a valid document proves that
+the SQL matches every owner condition; independent outcome tests remain needed.
 
 At most eight response candidates and 24,000 encoded context bytes are offered,
 with recent candidates preferred. Large or nonreportable results retain the
