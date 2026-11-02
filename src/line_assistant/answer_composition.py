@@ -67,6 +67,23 @@ def schema():
                            'heading': text, 'template': text})]}}}, 'required': ['blocks']}
 
 
+def fallback_document(view):
+    """A complete layout made only from the server's verified placeholders."""
+    blocks=[]
+    if view['facts']:
+        blocks.append({'kind':'text','template':'\n'.join('{{'+key+'}}' for key in view['facts'])})
+    previous_fields=None
+    for row in view['records']:
+        fields=tuple(row['fields'])
+        if fields==previous_fields:
+            blocks[-1]['record_refs'].append(row['id'])
+        else:
+            blocks.append({'kind':'rows','record_refs':[row['id']],'heading':'',
+                'template':' | '.join('{{'+key+'}}' for key in fields)})
+            previous_fields=fields
+    return {'blocks':blocks}
+
+
 def display(value, kind=None, unit=None):
     from .read_queries import day_label
     if value is None or isinstance(value,str) and not value.strip(): return 'ว่าง'

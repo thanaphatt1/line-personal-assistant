@@ -1,7 +1,7 @@
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.15.1
-certifi==2026.7.22
+certifi==2026.10.23
 cffi==2.1.1
 click==8.5.0
 cryptography==50.0.2
@@ -15,13 +15,13 @@ iniconfig==2.3.1
 opentelemetry-api==1.45.1
 packaging==26.3
 pluggy==1.6.0
-pyasn1==0.6.4
+pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pycparser==3.11
 pydantic==2.14.0
 pydantic_core==2.50.0
 Pygments==2.21.0
-pytest==8.4.2
+pytest==9.0.3
 starlette==1.7.0
 sqlglot==30.24.0
 typing-inspection==0.4.4

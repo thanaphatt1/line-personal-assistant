@@ -158,7 +158,12 @@ def build(definitions):
             'Select the current response_ref, review every retained condition and use its facts/evidence. '
             'Use {{fact_id}} and {{cell_id}} placeholders for business values in document templates. '
             'Cover every required fact and record cell once, preserve record order and units; omit cells only as covered_by allows. '
-            'Text blocks use global facts; rows blocks select record IDs and use their local cells. '
+            'Text blocks use global facts such as {{f1}}, never row cells. '
+            'Even dates/years already present in the owner question must use their offered fact placeholder. '
+            'Rows blocks select record IDs and use their local cells, for example record_refs=["r1"] with template="{{c1}}". '
+            'When present, previous_query.answer_context contains the last verified delivered result, including selected labels/groups. '
+            'For a follow-up preserve the referenced subject as well as its period; an explicit new subject replaces it. '
+            'This snapshot requires a fresh source read/calculation and is never a current result reference or write consent. '
             'Never copy values into prose, calculate totals or claim a write. If results do not match, correct the read plan '
             'or clarify a genuinely unresolved condition. finish_query_analysis remains available for other result combinations '
             'and clarification; a complete offered response does not need a separate finish or reply-model call.')),

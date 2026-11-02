@@ -1,0 +1,167 @@
+{
+  "now": "2026-10-16T08:00:00+00:00",
+  "catalog": [
+    {
+      "item": "ข้าว",
+      "category": "Food",
+      "subcategory": "Meal"
+    },
+    {
+      "item": "ชา",
+      "category": "Food",
+      "subcategory": "Drink"
+    },
+    {
+      "item": "BTS",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "item": "รถเมล์",
+      "category": "Transportation",
+      "subcategory": "Bus"
+    },
+    {
+      "item": "คอมพิวเตอร์",
+      "category": "Equipment",
+      "subcategory": "Computer"
+    }
+  ],
+  "expense": [
+    {
+      "date": "2026-09-30",
+      "item": "BTS",
+      "amount": "611",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-01",
+      "item": "ข้าว",
+      "amount": "47",
+      "category": "Food",
+      "subcategory": "Meal"
+    },
+    {
+      "date": "2026-10-01",
+      "item": "ชา",
+      "amount": "18",
+      "category": "Food",
+      "subcategory": "Drink"
+    },
+    {
+      "date": "2026-10-02",
+      "item": "BTS",
+      "amount": "36",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-02",
+      "item": "BTS",
+      "amount": "36",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-03",
+      "item": "BTS",
+      "amount": "44",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-04",
+      "item": "รถเมล์",
+      "amount": "92",
+      "category": "Transportation",
+      "subcategory": "Bus"
+    },
+    {
+      "date": "2026-10-15",
+      "item": "ข้าว",
+      "amount": "73",
+      "category": "Food",
+      "subcategory": "Meal"
+    },
+    {
+      "date": "2026-10-16",
+      "item": "BTS",
+      "amount": "0.15",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-16",
+      "item": "BTS",
+      "amount": "0.25",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2026-10-17",
+      "item": "ชา",
+      "amount": "29",
+      "category": "Food",
+      "subcategory": "Drink"
+    },
+    {
+      "date": "2026-10-22",
+      "item": "คอมพิวเตอร์",
+      "amount": "3990",
+      "category": "Equipment",
+      "subcategory": "Computer"
+    },
+    {
+      "date": "2026-11-01",
+      "item": "BTS",
+      "amount": "880",
+      "category": "Transportation",
+      "subcategory": "Rail"
+    },
+    {
+      "date": "2027-01-01",
+      "item": "ชา",
+      "amount": "160",
+      "category": "Food",
+      "subcategory": "Drink"
+    },
+    {
+      "date": "2026-10-06",
+      "item": "ข้าว",
+      "amount": "91",
+      "category": "Food",
+      "subcategory": "Meal"
+    }
+  ],
+  "calendar": [
+    {
+      "date": "2026-10-01",
+      "title": "สอน"
+    },
+    {
+      "date": "2026-10-01",
+      "title": "สอน"
+    },
+    {
+      "date": "2026-10-02",
+      "title": "ตรวจฟัน"
+    },
+    {
+      "date": "2026-10-16",
+      "title": "สอน"
+    },
+    {
+      "date": "2026-10-22",
+      "title": "ประชุม"
+    },
+    {
+      "date": "2026-11-01",
+      "title": "สอน"
+    },
+    {
+      "date": "2026-10-14",
+      "title": "สัมมนา"
+    }
+  ]
+}

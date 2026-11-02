@@ -1,6 +1,7 @@
 """Default-off history-first prototype. Direct tools, local effects only."""
 
 from .action_trace import observed
+from .planner_failures import PlannerOutputLimit,planner_failure,planner_failure_message
 from .reply_display import money, named
 from .expense_storage import storage_scope
 from copy import deepcopy
@@ -139,9 +140,6 @@ def tools(*,enrollment=False,semantic=False,controls=False):
     return [{'type':'function','name':name,'description':brief[name] if semantic else description,'strict':True,'parameters':schema} for name,description,schema in specs
             if (enrollment or name!='prepare_item_enrollment') and (semantic and controls or name!='control_expense_draft')]
 
-class PlannerOutputLimit(ValueError):pass
-
-
 def parse_response(value,*,max_input_tokens=MAX_INPUT_TOKENS_BOUND,allowed_tools=None,max_output_tokens=MAX_OUTPUT_TOKENS):
     from .raw_history import PLANNER_MAX_OUTPUT_TOKENS
     if max_output_tokens not in {MAX_OUTPUT_TOKENS,4096,PLANNER_MAX_OUTPUT_TOKENS}:raise ValueError('output_configuration')
@@ -177,20 +175,6 @@ def parse_response(value,*,max_input_tokens=MAX_INPUT_TOKENS_BOUND,allowed_tools
     if len(text)>3000 or (not calls and not text.strip()):raise ValueError('missing_answer')
     return {'call':calls[0] if calls else None,'text':text}
 
-def planner_failure(error):
-    """Fixed diagnostics only: never copy provider bodies or exception prose."""
-    import httpx
-    from .transport import ApiError,OutcomeUnknown
-    kind='unavailable';status=None
-    if isinstance(error,PlannerOutputLimit):kind='output_limit'
-    elif isinstance(error,httpx.TimeoutException) or isinstance(error,TimeoutError):kind='timeout'
-    elif isinstance(error,OutcomeUnknown):kind=error.reason or 'outcome_unknown'
-    elif isinstance(error,ApiError):
-        status=error.status
-        kind='rate_limited' if status==429 else 'provider_error' if status>=500 else 'provider_rejected'
-    elif isinstance(error,httpx.HTTPError):kind='transport'
-    elif isinstance(error,ValueError):kind='invalid_response'
-    return {'kind':kind,**({'http_status':status} if status is not None else {})}
 
 
 EVIDENCE_ERRORS={'full_item_name_required','item_source_conflicts_with_current_expense','amount_occurrence_missing_or_reused',
@@ -198,18 +182,6 @@ EVIDENCE_ERRORS={'full_item_name_required','item_source_conflicts_with_current_e
     'source_not_in_visible_context','source_expired_or_removed','cancelled_fact_source','field_source_unavailable',
     'field_source_not_owner_fact','stale_or_unrelated_fact_source'}
 
-def planner_failure_message(detail):
-    # The planner never writes; say so plainly instead of naming internals.
-    retry='ยังไม่ได้บันทึกหรือสร้างอะไรครับ ลองส่งข้อความเดิมอีกครั้งได้เลยครับ'
-    return {'timeout':'รอบนี้ใช้เวลาคิดนานเกินไปครับ '+retry,
-        'transport':'ตอนนี้ผมตอบกลับไม่ได้ชั่วคราวครับ '+retry,
-        'rate_limited':'ตอนนี้มีคำขอเข้ามามากเกินไปชั่วคราวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองอีกครั้งในอีกสักครู่ได้เลยครับ',
-        'provider_error':'ตอนนี้ผมตอบกลับไม่ได้ชั่วคราวครับ '+retry,
-        'invalid_response':'รอบนี้ผมเรียบเรียงคำขอไม่สำเร็จครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองพิมพ์ใหม่หรือแยกเป็นทีละเรื่องได้ไหมครับ?',
-        'response_too_large':'คำขอนี้ยาวเกินกว่าที่ผมทำได้ในรอบเดียวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองแยกเป็นทีละเรื่องได้ไหมครับ?',
-        'output_limit':'คำขอนี้ยาวเกินกว่าที่ผมทำได้ในรอบเดียวครับ ยังไม่ได้บันทึกหรือสร้างอะไร ลองแยกเป็นทีละเรื่องได้ไหมครับ?',
-        'usage_bound':'รอบนี้ใช้การประมวลผลเกินขีดจำกัดที่ตั้งไว้ครับ ยังไม่ได้บันทึกหรือสร้างอะไร',
-        }.get(detail.get('kind'),'รอบนี้ผมทำต่อไม่สำเร็จครับ '+retry)
 
 def success_claim(text):
     # Completion claims are controlled outputs, not a broad ban on discussing
@@ -382,11 +354,8 @@ class HistoryFirstAssistant(Assistant):
         if len(candidates)!=1:return {'ok':False,'error':'ambiguous_unknown_item','clarification_required':True}
         e=candidates[0]
         if not e['item']:return {'ok':False,'error':'item_missing','clarification_required':True}
-        if blocked_intent and not correction:
-            from .catalog_names import conditional_new_item,focused_choice
-            if not (self.raw_history_enabled and p.resolution_step=='begin_new_item'
-                    and conditional_new_item(self._current['text']) and focused_choice(self,d,e) is True):
-                return {'ok':False,'error':'owner_no_write','clarification_required':True}
+        if blocked_intent:
+            return {'ok':False,'error':'owner_no_write','clarification_required':True}
         if self.raw_history_enabled:
             step=p.resolution_step
             selection=e.get('enrollment')
@@ -1932,51 +1901,11 @@ class HistoryFirstAssistant(Assistant):
                 controls=self.semantic_enabled and any(d['status']!='recorded' for d in self.state.drafts.values())
                 instructions=SEMANTIC_INSTRUCTIONS if self.semantic_enabled else ENROLLMENT_INSTRUCTIONS if enrollment else INSTRUCTIONS
                 if self.raw_history_enabled:
-                    from . import raw_history as raw
-                    from .draft_workflow import definitions
-                    self.state.enable_raw_history()
-                    available=self._workflow()
-                    date_targets=semantic.date_targets(self)
-                    self._request_date_views={v['date_ref']:deepcopy(v) for v in date_targets}
-                    definitions_for_request=definitions(tools(enrollment=enrollment,semantic=self.semantic_enabled,controls=controls),available,date_targets,previous_prices=self.previous_prices.enabled)
-                    from .read_queries import context as query_context
-                    from .unified_query import context as unified_context
-                    from .intent_actions import definitions as query_definitions,context as intent_context
-                    definitions_for_request=[t for t in definitions_for_request if t['name']!='spending_summary']+query_definitions(self)
-                    from .query_analysis import definitions as analysis_definitions,READ_TOOLS
-                    definitions_for_request+=analysis_definitions()
-                    from .relational import context as relation_context
-                    from .query_followups import definitions as followup_definitions,context as followup_context
-                    definitions_for_request+=followup_definitions(self)
-                    from .activity_labels import definitions as label_definitions,context as label_context
-                    definitions_for_request+=label_definitions(self)
-                    from .data_inventory import context as inventory_context
-                    if self.calendar_flow.enabled:definitions_for_request+=self.calendar_flow.definitions()
-                    from .calendar_connections import definitions as connection_definitions,context as connection_context
-                    if self.calendar_connections_enabled:definitions_for_request+=connection_definitions()
-                    definitions_for_request+=self.saved_edits.definitions()
-                    definitions_for_request+=self.provisional_categories.definitions()
-                    definitions_for_request+=self.historical_categories.definitions()
-                    definitions_for_request+=self.table_flow.definitions()
-                    definitions_for_request+=self.catalog_aliases.definitions()
-                    from .temporal import definitions as temporal_definitions,context as temporal_context
-                    definitions_for_request+=temporal_definitions()
-                    from .pending_records import views as pending_views,definitions as pending_definitions,planner_tools
-                    pending=pending_views(self)
-                    self._pending_record_views={v['draft_ref']:deepcopy(v) for v in pending}
-                    definitions_for_request=planner_tools(definitions_for_request,pending)
-                    definitions_for_request+=pending_definitions(pending)
-                    from .response_realization import repair_exit_definition
-                    definitions_for_request+=repair_exit_definition(self)
-                    if repair_allowed is not None:definitions_for_request=[t for t in definitions_for_request if t['name'] in repair_allowed]
-                    if self._query_analysis_active:definitions_for_request=[t for t in definitions_for_request if t['name'] in READ_TOOLS]
-                    self.state.raw_tool_definitions=deepcopy(definitions_for_request)
+                    from .planning_context import build_raw_request
                     try:
-                        request,self.visible,stats=raw.request(self.state,self._current['text'],at,event,
-                            definitions_for_request,exchanges,available_drafts=available,date_references=date_targets,
-                            calendar_drafts=self.calendar_flow.views() if self.calendar_flow.enabled else None,
-                            calendar_batches=self.calendar_flow.batches.views() if self.calendar_flow.enabled else None,
-                        production=getattr(self,'production',False),summary=self.state.rolling_summary,context_tokens=self.raw_context_tokens,query_context={**query_context(self),**unified_context(self),**intent_context(self),**followup_context(self),**label_context(self),**inventory_context(self),**connection_context(self),**self.saved_edits.context(),**self.provisional_categories.context(),**self.historical_categories.context(),**self.table_flow.context(),**self.catalog_aliases.context(),**temporal_context(self),**relation_context(self),**({'repair_feedback':response_feedback} if response_feedback else {}),'query_analysis_active':self._query_analysis_active,'pending_records':pending,'recent_recorded_expenses':semantic.recorded_expenses(self)})
+                        request,self.visible,stats=build_raw_request(self,at,event,exchanges,
+                            base_tools=tools,enrollment=enrollment,controls=controls,
+                            repair_allowed=repair_allowed,response_feedback=response_feedback)
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True

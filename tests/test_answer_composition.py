@@ -113,6 +113,24 @@ def test_templates_in_source_values_are_never_executed_or_interpolated_again():
     assert composition.render(document(rows(['r1'],'{{c1}}')),view.data())=='{{f1}} บันทึก 999'
 
 
+def test_fallback_document_preserves_heterogeneous_cells_order_units_and_source_templates():
+    view=composition.View();view.fact('ช่วงทดสอบ 2026')
+    view.row([('รายการ','{{f1}} บันทึก 999',None,None),('ยอด','0.30',None,'บาท')])
+    view.row([('ว่าง',None,None,None)])
+    view.row([('จำนวน',0,None,'ครั้ง'),('สถานะ',False,None,None)])
+    text=composition.render(composition.fallback_document(view.data()),view.data())
+    assert text=='ช่วงทดสอบ 2026\n{{f1}} บันทึก 999 | 0.30 บาท\nว่าง\n0 ครั้ง | ไม่ใช่'
+
+
+def test_fallback_groups_full_hundred_record_result_within_document_budget():
+    view=composition.View();view.fact('ข้อมูลทดสอบ')
+    for i in range(100):view.row([('จำนวน',i,None,'ครั้ง')])
+    doc=composition.fallback_document(view.data())
+    assert len(doc['blocks'])==2
+    text=composition.render(doc,view.data())
+    assert text.splitlines()[1:]==[f'{i} ครั้ง' for i in range(100)]
+
+
 def test_single_day_signed_reply_uses_date_once_and_replay_is_exact_without_new_calls():
     api=VoiceHosted();seed(api,[('2026-10-15','ชา',20),('2026-10-15','ขนม',30)])
     def composed(body):

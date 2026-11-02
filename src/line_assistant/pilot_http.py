@@ -147,6 +147,11 @@ class PilotHttp:
         response_limit = 950000 if (self.config.state_codec_enabled and url.startswith('https://firestore.googleapis.com/') or authorized_response(self,url)) else 512 * 1024
         if len(response.content) > response_limit:
             raise OutcomeUnknown("Provider response exceeded pilot bound",reason='response_too_large')
+        if model:
+            from .action_trace import model_usage
+            try:usage_response=response.json()
+            except ValueError:usage_response=None
+            model_usage(usage_response)
         return response
 
     def google_token(self, purpose):

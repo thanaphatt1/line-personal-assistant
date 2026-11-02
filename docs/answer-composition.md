@@ -147,3 +147,35 @@ benchmark or a live business end-to-end test.
 [`test_answer_repair.py`](../tests/test_answer_repair.py) covers correction from
 validator feedback, fixed input facts, durable recovery, unknown attempts,
 budget/deadline exhaustion, invalid feedback, replay and isolation from writes.
+
+## Owner evidence and result references
+
+The native `act` respond schema offers `current_source_ref` as the owner evidence
+choice in `source_refs`. Its `response_ref` separately binds the actual executed
+query result, facts and core reply. A `query_ref`/`response_ref` is not an owner
+message source. Mixing these types returns `response_owner_source_required`
+with a specific repair instruction; it never rereads a provider or relaxes the
+result proof. This is a field contract, not another intent classifier.
+
+For native `act` responses, an invalid presentation document no longer starts
+another model turn once owner evidence, the current result proof, completeness
+and the selection/output review have passed. The server discards the rejected
+document and builds a placeholder-only layout from those same facts and cells.
+That layout passes through the same renderer, preserving every required value,
+unit and record order. If it cannot pass validation, the response still fails
+closed. Stale references, incomplete reads and unresolved or rejected reviews
+never qualify. `reply_fallback` and bounded realization metadata record this
+presentation fallback without logging the document or values. The optional
+auxiliary composer described above keeps its existing one-repair contract.
+
+A native completed response can retain an optional `read_query.answer_context`
+snapshot of the selected result columns/records for follow-up interpretation.
+The whole snapshot is omitted if it exceeds 6,000 UTF-8 bytes; records are not
+silently clipped. Calendar observations contain only title/start/end/all-day
+fields. It has no reusable request-local result reference. Existing scope,
+source binding, receipt expiry and verified delivery checks govern admission
+to `previous_query`. The model must read sources again for a new calculation;
+this context never authorizes a write or confirmation. It helps retain a
+selected subject as well as its dates, without a phrase-specific router or
+automatic SQL rewriting. Its availability does not prove that a model will
+interpret every follow-up correctly.

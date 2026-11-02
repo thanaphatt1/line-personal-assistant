@@ -1,0 +1,657 @@
+{
+  "food-exclude-drink": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE category='Food' AND subcategory <> 'Drink'"
+    }
+  ],
+  "transport-exclude-bts": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE category='Transportation' AND item <> 'BTS'"
+    }
+  ],
+  "bts-total": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE item='BTS'"
+    }
+  ],
+  "payment-maximum": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT item, amount FROM e WHERE amount=(SELECT MAX(amount) FROM e)"
+    }
+  ],
+  "item-frequency": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT item, COUNT(*) AS n FROM e GROUP BY item ORDER BY n DESC, item LIMIT 1"
+    }
+  ],
+  "grouped-item-total": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT item, SUM(amount) AS total FROM e GROUP BY item ORDER BY total COLLATE decimal DESC,item"
+    }
+  ],
+  "duplicate-payments": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e WHERE item='BTS'"
+    }
+  ],
+  "exact-decimal": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_day",
+            "start_date": "2026-10-16",
+            "end_date": null,
+            "period_text": "วันที่ 16 ตุลาคม 2026",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE item='BTS'"
+    }
+  ],
+  "whole-month-future": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "เดือนนี้",
+            "relative_offset": 0
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "this-week": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_week",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "สัปดาห์นี้",
+            "relative_offset": 0
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "next-month": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "เดือนหน้า",
+            "relative_offset": 1
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "year-boundary": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_year",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "ปีหน้า",
+            "relative_offset": 1
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "buddhist-year": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม 2569",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "empty-count": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-08-01",
+            "end_date": null,
+            "period_text": "เดือนสิงหาคม 2026",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e"
+    }
+  ],
+  "calendar-duplicates": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "calendar",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null,
+            "filter_text": null,
+            "purpose": "appointments",
+            "count_unit": "events",
+            "upcoming": false
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e"
+    }
+  ],
+  "calendar-list": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "calendar",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null,
+            "filter_text": null,
+            "purpose": "appointments",
+            "count_unit": "events",
+            "upcoming": false
+          }
+        }
+      ],
+      "sql": "SELECT title,start_date FROM e ORDER BY start_date,title"
+    }
+  ],
+  "followup-frequency-money": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT item, COUNT(*) AS n FROM e GROUP BY item ORDER BY n DESC, item LIMIT 1"
+    },
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "previous",
+            "start_date": null,
+            "end_date": null,
+            "period_text": null,
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE item='BTS'"
+    }
+  ],
+  "calendar-confirm-replay": [
+    {
+      "kind": "prepare_calendar",
+      "title": "ตรวจฟัน",
+      "date_text": "22 ตุลาคม 2026",
+      "time_text": "09:00",
+      "end_time_text": "10:00"
+    },
+    {
+      "kind": "no_model"
+    },
+    {
+      "kind": "no_model"
+    }
+  ],
+  "calendar-cancel": [
+    {
+      "kind": "prepare_calendar",
+      "title": "ตรวจฟัน",
+      "date_text": "22 ตุลาคม 2026",
+      "time_text": "09:00",
+      "end_time_text": "10:00"
+    },
+    {
+      "kind": "no_model"
+    }
+  ],
+  "provider-unavailable": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "ambiguous-period": [
+    {
+      "kind": "clarify",
+      "text": "ขอช่วงเวลาและรายการที่ต้องการรวมครับ"
+    }
+  ],
+  "ambiguous-reference": [
+    {
+      "kind": "clarify",
+      "text": "ขอช่วงเวลาและรายการที่ต้องการรวมครับ"
+    }
+  ],
+  "held-meals-count": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e WHERE category='Food' AND subcategory <> 'Drink'"
+    }
+  ],
+  "held-nonfood-total": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE category <> 'Food'"
+    }
+  ],
+  "held-category-ranking": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT category,SUM(amount) AS total FROM e GROUP BY category ORDER BY total COLLATE decimal DESC,category"
+    }
+  ],
+  "held-previous-month": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "เดือนที่แล้ว",
+            "relative_offset": -1
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e"
+    }
+  ],
+  "held-last-week": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_week",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "สัปดาห์ที่แล้ว",
+            "relative_offset": -1
+          }
+        }
+      ],
+      "sql": "SELECT COALESCE(SUM(amount),'0') AS total FROM e"
+    }
+  ],
+  "held-empty-list": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-08-01",
+            "end_date": null,
+            "period_text": "เดือนสิงหาคม 2026",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT item,amount FROM e"
+    }
+  ],
+  "held-calendar-week": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "calendar",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_week",
+            "start_date": null,
+            "end_date": null,
+            "period_text": "สัปดาห์นี้",
+            "relative_offset": 0,
+            "filter_text": null,
+            "purpose": "appointments",
+            "count_unit": "events",
+            "upcoming": false
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e"
+    }
+  ],
+  "held-explicit-range": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "range",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-02",
+            "period_text": "วันที่ 1 ถึง 2 ตุลาคม 2026",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE item='BTS'"
+    }
+  ],
+  "missing-category-mapping": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE category='Food'"
+    }
+  ],
+  "activity-dates-no-duplicate-money": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        },
+        {
+          "source": "calendar",
+          "alias": "c",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null,
+            "filter_text": null,
+            "purpose": "expense_dates",
+            "count_unit": "events",
+            "upcoming": false
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE EXISTS (SELECT 1 FROM c WHERE c.title='สอน' AND e.date BETWEEN c.start_date AND c.last_date)"
+    }
+  ],
+  "topic-shift-back-to-expense": [
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "calendar",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null,
+            "filter_text": null,
+            "purpose": "appointments",
+            "count_unit": "events",
+            "upcoming": false
+          }
+        }
+      ],
+      "sql": "SELECT COUNT(*) AS n FROM e"
+    },
+    {
+      "kind": "read",
+      "sources": [
+        {
+          "source": "expense",
+          "alias": "e",
+          "parameters": {
+            "date_mode": "calendar_month",
+            "start_date": "2026-10-01",
+            "end_date": null,
+            "period_text": "เดือนตุลาคม",
+            "relative_offset": null
+          }
+        }
+      ],
+      "sql": "SELECT SUM(amount) AS total FROM e WHERE item='BTS'"
+    }
+  ]
+}

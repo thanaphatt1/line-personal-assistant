@@ -108,6 +108,13 @@ def test_negated_enrollment_and_wrong_owner_do_not_change_draft():
     event=h.event('เพิ่ม');event['source']['userId']='someone-else';calls=len(h.port.requests)
     assert h.service.handle(event).status=='denied' and h.state.drafts==before and len(h.port.requests)==calls
 
+@pytest.mark.parametrize('text',['ถ้าเพิ่มเครปจะอยู่หมวดไหน','ควรเพิ่มชื่อนี้ไหม','สมมติว่าเพิ่มชื่อเครป'])
+def test_hypothetical_legacy_enrollment_returns_clarification_without_mutation(text):
+    h=Harness();unresolved(h);before=deepcopy(h.state.drafts)
+    result=h.send(text,enrollment(),response(text='รอคำขอเพิ่มชื่อรายการครับ'))
+    assert result.status=='clarification' and result.data['tool_result']['error']=='owner_no_write'
+    assert h.state.drafts==before and not h.sheets.entries and h.sheets.atomic_batches==0
+
 def test_enrollment_expiry_and_wrong_category_child_cannot_change_draft():
     h=Harness();unresolved(h);h.send('เพิ่ม',enrollment())
     before=deepcopy(h.state.drafts)

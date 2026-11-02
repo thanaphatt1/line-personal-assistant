@@ -1,0 +1,160 @@
+[
+  {
+    "id": "held-meals-count",
+    "turns": [
+      {
+        "text": "เดือนตุลาคม อาหารที่ไม่ใช่เครื่องดื่มมีกี่รายการ",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-10-01",
+            "2026-10-31"
+          ],
+          "operation": "count",
+          "where": {
+            "category": "Food"
+          },
+          "exclude": {
+            "subcategory": [
+              "Drink"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-nonfood-total",
+    "turns": [
+      {
+        "text": "เดือนตุลาคม รวมค่าใช้จ่ายที่ไม่ใช่อาหาร",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-10-01",
+            "2026-10-31"
+          ],
+          "operation": "sum",
+          "exclude": {
+            "category": [
+              "Food"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-category-ranking",
+    "turns": [
+      {
+        "text": "เดือนตุลาคม สรุปยอดตามหมวดเรียงมากไปน้อย",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-10-01",
+            "2026-10-31"
+          ],
+          "operation": "group_sum",
+          "group_by": "category",
+          "ordered": true
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-previous-month",
+    "turns": [
+      {
+        "text": "เดือนที่แล้ว ค่าใช้จ่ายรวมเท่าไร",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-09-01",
+            "2026-09-30"
+          ],
+          "operation": "sum"
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-last-week",
+    "turns": [
+      {
+        "text": "สัปดาห์ที่แล้ว ค่าใช้จ่ายรวมเท่าไร",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-10-05",
+            "2026-10-11"
+          ],
+          "operation": "sum"
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-empty-list",
+    "turns": [
+      {
+        "text": "เดือนสิงหาคม 2026 ขอชื่อและจำนวนเงินทุกรายการ",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-08-01",
+            "2026-08-31"
+          ],
+          "operation": "rows",
+          "fields": [
+            "item",
+            "amount"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-calendar-week",
+    "turns": [
+      {
+        "text": "สัปดาห์นี้มีนัดทั้งหมดกี่ครั้ง",
+        "gold": {
+          "kind": "query",
+          "domain": "calendar",
+          "period": [
+            "2026-10-12",
+            "2026-10-18"
+          ],
+          "operation": "count"
+        }
+      }
+    ]
+  },
+  {
+    "id": "held-explicit-range",
+    "turns": [
+      {
+        "text": "วันที่ 1 ถึง 2 ตุลาคม 2026 BTS รวมกี่บาท",
+        "gold": {
+          "kind": "query",
+          "domain": "expense",
+          "period": [
+            "2026-10-01",
+            "2026-10-02"
+          ],
+          "operation": "sum",
+          "where": {
+            "item": "BTS"
+          }
+        }
+      }
+    ]
+  }
+]

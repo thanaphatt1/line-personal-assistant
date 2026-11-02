@@ -212,3 +212,58 @@ public checkout. No production speed claim follows from offline tests.
 References: [OpenAI latency optimization](https://developers.openai.com/api/docs/guides/latency-optimization),
 [LINE loading animation](https://developers.line.biz/en/docs/messaging-api/use-loading-indicator/),
 [Firestore runQuery](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/runQuery).
+
+## Compare workflows and revisions
+
+Terminal performance records now retain a fixed observed `workflow`, repair
+count, stop reasons, fallback reasons and model-failure categories. These
+counters accumulate even when detailed trace records reach the emission cap.
+A read followed by `respond` stays an expense/Calendar/table read; supporting
+reads do not replace the main prepare/change workflow. Expense and Calendar
+reads together are `activity_expense_read`. Unclassified, mixed and replay-only
+paths remain explicit. Labels describe attempted/executed tools, not verified
+owner intent or semantic correctness.
+
+The offline summarizer accepts JSON arrays, Cloud Logging `entries` wrappers
+or JSONL. Cloud Run revision comes from `resource.labels.revision_name`:
+
+```sh
+python scripts/summarize_performance.py /path/outside-checkout/traces.json \
+  --revision assistant-v51 --workflow expense_read --boundary webhook --format markdown
+```
+
+JSON output includes every revision/workflow/boundary group, model/provider-call
+and repair-count p50/p95, fallback rate, stop/failure categories and trace-loss
+counts. Provider RPC counts include the traced identity/state/provider scopes;
+they are not billed document operations. Fallback rate uses only attempts with
+a known fallback count. The report keeps missing usage/cost and metadata
+unknown. It does not infer cold/warm starts or a price from elapsed time.
+Conflicting revision labels produce `unknown`. Older complete exports can infer
+workflow from redacted tool/source enums; incomplete exports cannot. Diagnostic
+sample counts expose missing old counters. Incomplete and invalid-terminal
+counts describe the whole input before filters. Replays are excluded by default.
+Use a complete event/time export, the same boundary/profile, comparable workflow
+samples and sufficient observations for comparisons. A timing report cannot
+establish answer accuracy; use the [current intent oracle](../benchmarks/intent-v2/README.md)
+separately. No script fetches Cloud Run logs or changes production settings.
+
+## Reported model token usage
+
+New raw-history HTTP responses emit `model_usage` after a bounded response is
+received. The record contains only validated numeric input/output counts and,
+when supplied, cached-input/cache-write/reasoning token counts. Reasoning counts
+are accounting metadata; no reasoning content or response body is logged.
+Missing, malformed or wrong-model usage remains unavailable. Detail counts are
+bounded by their input/output totals. This observation does not settle or clear
+model reservations, change deadlines, or authorize another request.
+
+Terminal `performance.token_usage` retains sums and per-field sample counts even
+when detailed events are dropped. The summarizer reports these with model calls
+lacking usage, so partial coverage cannot appear as zero tokens. Old revisions
+have no recoverable token counts from these logs. Deployment is required before
+new records appear in production. Cache-write fields absent from a response stay
+unknown. Cost needs the applicable model/tier/context/cache prices and date;
+counts alone are not an invoice. Reported output tokens already include
+reasoning, so do not add reasoning token counts a second time.
+
+Reference: [OpenAI output token accounting](https://developers.openai.com/api/docs/guides/token-counting).

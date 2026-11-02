@@ -19,6 +19,7 @@ from .tool_errors import recovery
 NAME = 'act'
 MAX_RESPONSES = 8
 MAX_RESPONSE_BYTES = 24_000
+MAX_ANSWER_CONTEXT_BYTES = 6_000
 
 
 class Respond(Strict):
@@ -26,6 +27,23 @@ class Respond(Strict):
     review: IntentReview
     document: dict
     source_refs: list[str] = Field(min_length=1, max_length=16)
+
+
+def _answer_context(host, query_ref):
+    """Selected observations for follow-up interpretation, never reusable data."""
+    output=host._query_reads[query_ref]
+    if isinstance(output.get('rows'),list):
+        records=output['rows'];columns=output.get('columns',[])
+    elif isinstance(output.get('events'),list):
+        records=[{k:row[k] for k in ('title','start','end','all_day') if k in row} for row in output['events']]
+        columns=[]
+    else:return None
+    value={'format':'read-answer-context-v1','domain':output['domain'],
+        'columns':deepcopy(columns),'records':deepcopy(records),
+        'result_count':output.get('count'),'shown':len(records),'requires_fresh_read':True}
+    try:size=len(json.dumps(value,ensure_ascii=False,allow_nan=False).encode())
+    except (ValueError,TypeError):return None
+    return value if size<=MAX_ANSWER_CONTEXT_BYTES else None
 
 
 def _response(host, query_ref):
@@ -39,6 +57,9 @@ def _response(host, query_ref):
     facts = answer_composition.for_result(host, core)
     if facts is None:
         return None
+    if core.data.get('read_query'):
+        previous_answer=_answer_context(host,query_ref)
+        if previous_answer is not None:core.data['read_query']['answer_context']=previous_answer
     evidence=answer_composition.evidence(output)
     response_ref = 'answer_' + digest([host.settings.owner_id,host._active_event_id,query_ref,identity(core),facts,evidence])[:24]
     value={'response_ref': response_ref, 'query_ref': query_ref,
@@ -84,7 +105,9 @@ def definitions(host):
             'response_ref': {'type': 'string', 'enum': list(responses)},
             'review': review,
             'document': answer_composition.schema(),
-            'source_refs': {'type': 'array', 'minItems': 1, 'maxItems': 16, 'items': {'type': 'string'}},
+            'source_refs': {'type': 'array', 'minItems': 1, 'maxItems': 16,
+                'description': 'Owner-message evidence only: use current_source_ref. Query and response refs are not owner sources; response_ref already binds the executed result.',
+                'items': {'type': 'string', 'enum': [host._current['source_ref']]}},
         }))
     return [{'type': 'function', 'name': NAME, 'strict': True,
         'description': 'Submit a read-only intent. read declares configured sources and SQL; the server handles fetching and computation. inspect discovers available source capabilities. respond checks actual selection/output against the owner request and composes a grounded answer from an offered read_responses view in this same planning call. Use facts/cells for business values. No writes, confirmations or new access.',
@@ -120,7 +143,11 @@ def execute(host, args):
         return inspect(host, request)
     try:
         plan = Respond.model_validate(request)
-        host._owner_sources(plan.source_refs)
+        try:
+            host._owner_sources(plan.source_refs)
+        except ValueError:
+            return _failure('response_owner_source_required', required=[
+                'Use current_source_ref in source_refs; keep query/response refs only in their dedicated fields.'])
         if host._current['source_ref'] not in plan.source_refs:
             return _failure('response_owner_source_required')
         offered = getattr(host, '_intent_responses', {}).get(plan.response_ref)
@@ -134,12 +161,22 @@ def execute(host, args):
         if not plan.review.selection_matches or not plan.review.output_matches or plan.review.unresolved_conditions:
             return _failure('analysis_intent_mismatch', required=[
                 'Correct the read plan to preserve all owner conditions and presentation, or use finish_query_analysis clarify for genuinely unresolved conditions.'])
+        metadata={'status':'llm','mode':'planner_intent'}
         with span('intent_reply_render'):
-            text = answer_composition.render(plan.document, actual['facts'])
+            try:
+                text = answer_composition.render(plan.document, actual['facts'])
+            except answer_composition.AnswerError as error:
+                # Selection, owner evidence and the current result proof have
+                # passed. Discard all rejected prose and render the same facts;
+                # a wording failure must not erase a complete selected answer.
+                text=answer_composition.render(answer_composition.fallback_document(actual['facts']),actual['facts'])
+                metadata.update(status='fallback',reason='invalid_answer_document',validation_code=str(error))
+                emit('reply_validation',validation_code=str(error),status='fallback')
+                emit('reply_fallback',reason='invalid_answer_document',validation_code=str(error))
         from .response_realization import identity, apply
-        result = apply(actual['core'], text, {'status': 'llm', 'mode': 'planner_intent',
+        result = apply(actual['core'], text, {**metadata,
             'core_hash': identity(actual['core']), 'response_ref': plan.response_ref})
-        emit('intent_response', status='verified', response_ref=ref(plan.response_ref), query_ref=ref(offered['query_ref']))
+        emit('intent_response', status='verified' if metadata['status']=='llm' else 'fallback', response_ref=ref(plan.response_ref), query_ref=ref(offered['query_ref']))
         return {'ok': True, 'read_only': True, 'prepared_reply_result': asdict(result)}
     except answer_composition.AnswerError as error:
         emit('reply_validation', validation_code=str(error), status='repair_requested')

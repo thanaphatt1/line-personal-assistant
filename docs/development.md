@@ -16,17 +16,19 @@ Behavior regressions share test-only adapters in `tests/behavior_support.py` and
 
 ## Continuous integration
 
-The `CI` GitHub Actions workflow runs on pushes and pull requests using a GitHub-hosted Ubuntu 24.04 runner and Python 3.11. It runs the full offline suite, verifies a deterministic source bundle, builds and installs a local wheel without downloading dependencies, and starts both packages with synthetic integrations. Startup checks cover the local/durable mock, invalid signatures, and history-enabled OFF bridge/ON candidate configurations with zero provider calls.
+The `CI` GitHub Actions workflow runs on pushes and pull requests using a GitHub-hosted Ubuntu 24.04 runner and Python 3.11. Separate jobs run static checks/dependency audit, the full offline suite/package checks, and official Firestore emulator contracts. Packaging verifies a deterministic source bundle, builds and installs a local wheel without downloading dependencies, and starts both packages with synthetic integrations. Startup checks cover the local/durable mock, invalid signatures, and history-enabled OFF bridge/ON candidate configurations with zero provider calls.
 
 Run the same checks locally from the repository root:
 
 ```sh
 python -m pip install -r requirements-ci.txt
 PYTHONDONTWRITEBYTECODE=1 python -m pytest tests -p no:cacheprovider
+python -m ruff check --no-cache
+python -m mypy
 python scripts/check_ci.py
 ```
 
-Dependency installation needs package-index access; the tests and package/startup checks afterward are offline. Official checkout/setup-python actions use full commit SHA pins, checkout credentials are not persisted, and the workflow has only `contents: read`. It does not reference repository secrets, request OIDC/cloud permissions, upload/download workflow artifacts, or use privileged PR triggers. One job has a 20-minute limit; superseded runs on the same branch/PR are cancelled. Existing fork-PR approval policies are unchanged.
+Dependency installation and advisory queries need package-index access; the tests, lint/type and package/startup checks afterward are offline. Official checkout/setup-python actions use full commit SHA pins, checkout credentials are not persisted, and the workflow has only `contents: read`. It does not reference repository secrets, request OIDC/cloud permissions, upload/download workflow artifacts, or use privileged PR triggers. The offline job has a 20-minute limit; quality and emulator jobs each have a 10-minute limit. Superseded runs on the same branch/PR are cancelled. Existing fork-PR approval policies are unchanged. See [quality checks](quality.md) for exact coverage and the audit command.
 
 CI results verify synthetic runtime and packaging contracts. They do not test a real LINE owner, establish model quality, build a cloud image or deploy. Branch protection and release approvals remain separate settings; this workflow does not change them.
 
@@ -48,3 +50,14 @@ Keep business validation, consent, persistence and provider effects separate. Ad
 Persisted protocol/state version strings and compatibility serializers must remain until a deliberate migration is designed and tested. Never clear history, reset the usage ledger or restore an older snapshot to make a test pass. Public documentation describes the architecture by purpose; private release diaries and paid-output reports belong outside the repository.
 
 No deployment or paid-model workflow runs automatically from this repository. Review new automation before enabling it. License selection remains an owner decision.
+
+## Intent semantic evaluation
+
+[Intent evaluation v2](../benchmarks/intent-v2/README.md) adds independent
+synthetic outcome/effect oracles and signed native runtime controls. The normal
+test suite validates its corpus/source manifest and positive/negative controls;
+no model inference runs in CI. Fresh model evaluations and human adjudication
+remain separate from scripted regressions. Preserve raw run artifacts outside
+the public checkout and distinguish current manifests from older benchmark
+versions. Refresh the manifest deliberately after reviewed source/test changes
+with `python scripts/evaluate_intents.py --write-manifest` before new runs.

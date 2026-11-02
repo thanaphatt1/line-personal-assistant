@@ -1,0 +1,31 @@
+# Development tools and their additional dependencies.
+# Shared runtime pins are supplied by requirements-ci.txt / requirements.lock.
+ast_serialize==0.13.1
+boolean.py==5.0
+CacheControl==0.14.4
+charset-normalizer==3.5.2
+cyclonedx-python-lib==11.12.0
+defusedxml==0.7.1
+filelock==4.2.6
+librt==0.16.0
+license-expression==30.4.4
+markdown-it-py==4.2.0
+mdurl==0.1.2
+msgpack==1.2.4
+mypy==2.4.1
+mypy_extensions==1.1.0
+packageurl-python==0.17.6
+pathspec==1.1.1
+pip-requirements-parser==32.0.1
+pip_api==0.0.35
+pip_audit==2.10.1
+platformdirs==4.14.3
+py-serializable==2.1.0
+pyparsing==3.3.3
+requests==2.34.2
+rich==15.0.0
+ruff==0.17.3
+sortedcontainers==2.4.0
+tomli==2.5.0
+tomli_w==1.2.0
+urllib3==2.8.0

@@ -20,6 +20,72 @@ PRIORITY_PHASES={'tool_proposed','planning_stopped','model_request','model_resul
 STEPS={'show_choices','begin_new_item','use_existing_item','choose_category','choose_subcategory'}
 FIELDS={'item','item_text','amount','date','date_text','date_ref','date_context','note','category','subcategory',
         'existing_item','source_refs','field_sources','previous_price_ref','entry_ref'}
+WORKFLOWS={'expense_read','calendar_read','table_read','activity_expense_read','multi_source_read',
+    'source_inspection','pending_inspection','pending_change','saved_record_lookup','expense_prepare',
+    'calendar_prepare','table_prepare','saved_expense_change','saved_calendar_change','category_mapping',
+    'vocabulary_change','calendar_connection','expense_commit','calendar_commit','table_commit','mixed','unknown'}
+
+
+def model_usage(value):
+    """Record validated numeric usage only, never a response body or reasoning."""
+    from .model_api import MODEL_ID
+    usage=value.get('usage') if isinstance(value,dict) and value.get('model')==MODEL_ID else None
+    if not isinstance(usage,dict):
+        emit('model_usage',status='unavailable');return
+    counts={k:usage.get(k) for k in ('input_tokens','output_tokens')}
+    if any(type(v) is not int or not 0<=v<=10_000_000 for v in counts.values()):
+        emit('model_usage',status='unavailable');return
+    for key,detail,name in [('input_tokens_details','cached_tokens','cached_input_tokens'),
+                            ('input_tokens_details','cache_write_tokens','cache_write_tokens'),
+                            ('output_tokens_details','reasoning_tokens','reasoning_tokens')]:
+        mapping=usage.get(key);number=mapping.get(detail) if isinstance(mapping,dict) else None
+        maximum=counts['output_tokens' if name=='reasoning_tokens' else 'input_tokens']
+        if type(number) is int and 0<=number<=maximum:counts[name]=number
+    if counts.get('cached_input_tokens',0)+counts.get('cache_write_tokens',0)>counts['input_tokens']:
+        counts.pop('cached_input_tokens',None);counts.pop('cache_write_tokens',None)
+    emit('model_usage',status='observed',**counts)
+
+
+def workflow_labels(tool,arguments=None,action_kind=None):
+    """Observed server tool/source choices; never classify owner text."""
+    args=arguments if isinstance(arguments,dict) else {}
+    request=args.get('request') if isinstance(args.get('request'),dict) else args
+    intent=args.get('intent',request.get('intent'))
+    if tool=='act' and intent=='inspect' or tool=='inspect_data_sources':return {'source_inspection'}
+    if tool=='act' and intent=='read':
+        sources=request.get('sources',[])
+        if not isinstance(sources,list):return set()
+        return {s['source']+'_read' for s in sources if isinstance(s,dict) and isinstance(s.get('source'),str) and s['source'] in {'expense','calendar','table'}}
+    mapping={
+        'query_expenses':'expense_read','query_calendar':'calendar_read','query_table':'table_read',
+        'prepare_expenses':'expense_prepare','prepare_calendar_event':'calendar_prepare',
+        'prepare_calendar_events':'calendar_prepare','prepare_table_change':'table_prepare',
+        'patch_pending_records':'pending_change','read_expense_drafts':'pending_inspection','read_calendar_drafts':'pending_inspection',
+        'find_saved_records':'saved_record_lookup','prepare_saved_expense_edit':'saved_expense_change',
+        'prepare_saved_expense_delete':'saved_expense_change','prepare_calendar_reschedule':'saved_calendar_change',
+        'propose_expense_categories':'category_mapping','scan_historical_categories':'category_mapping',
+        'propose_historical_categories':'category_mapping','prepare_catalog_alias':'vocabulary_change',
+        'update_activity_label':'vocabulary_change','connect_calendar':'calendar_connection'}
+    if tool=='query':
+        sources=args.get('sources',[])
+        if not isinstance(sources,list):return set()
+        return {s['source']+'_read' for s in sources if isinstance(s,dict) and isinstance(s.get('source'),str) and s['source'] in {'expense','calendar','table'}}
+    actions={'add_transactions':'expense_commit','catalog_expense':'expense_commit','create_event':'calendar_commit',
+        'table_change':'table_commit','edit_saved_expense':'saved_expense_change','delete_saved_expense':'saved_expense_change',
+        'reschedule_saved_event':'saved_calendar_change','save_proposed_mapping':'category_mapping','change_catalog_alias':'vocabulary_change'}
+    selected=(actions.get(action_kind) if isinstance(action_kind,str) else None) or (mapping.get(tool) if isinstance(tool,str) else None)
+    return {selected} if selected else set()
+
+
+def workflow_name(labels):
+    labels=(set(labels)&WORKFLOWS)-{'unknown','mixed'}
+    reads=labels&{'expense_read','calendar_read','table_read'}
+    primary=labels-reads-{'source_inspection','pending_inspection','saved_record_lookup'}
+    if primary:return next(iter(primary)) if len(primary)==1 else 'mixed'
+    if reads:
+        if reads=={'expense_read','calendar_read'}:return 'activity_expense_read'
+        return next(iter(reads)) if len(reads)==1 else 'multi_source_read'
+    return next(iter(labels)) if len(labels)==1 else 'mixed' if labels else 'unknown'
 
 
 def ref(value):
@@ -141,6 +207,8 @@ class Trace:
         self.closed=False
         self.status='unknown'
         self.replayed=False
+        self.workflows=set();self.repairs=0;self.stops={};self.fallback_reasons={};self.failures={}
+        self.token_usage={}
 
     def emit(self,phase,*,final=False,**fields):
         with self.lock:self._emit(phase,final=final,**fields)
@@ -160,14 +228,39 @@ class Trace:
             if start:
                 duration=max(0,round((now-start[0])*1000));fields['duration_ms']=duration
                 label=kind+'_'+start[1];self.durations[label]=self.durations.get(label,0)+duration
-        if phase=='reply_fallback':self.fallbacks+=1
+        if phase=='tool_request':self.workflows.update(workflow_labels(fields.get('tool'),fields.get('arguments')))
+        if phase=='checkpoint':self.workflows.update(workflow_labels(None,action_kind=fields.get('action_kind')))
+        if phase=='planning_repair':self.repairs+=1
+        if phase=='model_usage':
+            self.token_usage['responses']=self.token_usage.get('responses',0)+1
+            if fields.get('status')=='observed':
+                for name in ('input_tokens','output_tokens','cached_input_tokens','cache_write_tokens','reasoning_tokens'):
+                    value=fields.get(name)
+                    if type(value) is int and 0<=value<=10_000_000:
+                        self.token_usage[name]=self.token_usage.get(name,0)+value
+                        self.token_usage[name+'_samples']=self.token_usage.get(name+'_samples',0)+1
+        def increment(target,value):
+            label=code(value)
+            # Diagnostic dictionaries stay bounded even if a future caller
+            # accidentally emits a large set of distinct machine codes.
+            if label not in target and len(target)>=32:label='other'
+            target[label]=target.get(label,0)+1
+        if phase=='planning_stopped':increment(self.stops,fields.get('reason'))
+        if phase=='model_result' and fields.get('failure_kind'):increment(self.failures,fields['failure_kind'])
+        if phase=='reply_fallback':
+            self.fallbacks+=1;increment(self.fallback_reasons,fields.get('reason'))
         if phase=='receipt_replay':self.replayed=True
         if phase=='turn_finished':self.status=code(fields.get('status'))
         if phase=='turn_interrupted':self.status='interrupted'
         if phase=='webhook_finished':fields['status']=self.status
         if phase in {'turn_finished','turn_interrupted','webhook_finished'}:
+            fields.setdefault('dropped_records',self.dropped)
+            fields.setdefault('sink_failures',self.sink_failures)
             fields['performance']={'total_ms':max(0,round((now-self.started)*1000)),
-                'phase_ms':dict(self.durations),'calls':dict(self.calls),'reply_fallbacks':self.fallbacks,'replayed':self.replayed}
+                'phase_ms':dict(self.durations),'calls':dict(self.calls),'reply_fallbacks':self.fallbacks,'replayed':self.replayed,
+                'workflow':workflow_name(self.workflows),'workflow_basis':'observed_tools' if self.workflows else 'unknown',
+                'repairs':self.repairs,'stop_reasons':dict(self.stops),'fallback_reasons':dict(self.fallback_reasons),
+                'model_failures':dict(self.failures),'token_usage':dict(self.token_usage)}
         if self.count>=MAX_RECORDS and not final:
             priority=phase in PRIORITY_PHASES or phase=='process_finished' and fields.get('status')=='failed'
             if not priority or self.priority_count>=MAX_PRIORITY_RECORDS:self.dropped+=1;return

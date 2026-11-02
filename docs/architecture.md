@@ -85,7 +85,7 @@ resource or grant access. The generic registry is empty by default.
 | Area | Modules |
 | --- | --- |
 | Ingress/composition and HTTP scope | `main`, `history_cloud_run`, `pilot_config`, `pilot_http`, `calendar_transport` |
-| Dialogue, planning and offered tools | `history_first`, `raw_history`, `planner_instructions`, `data_inventory` |
+| Dialogue, planning and offered tools | `history_first` (routing, loop, confirmations), `planning_context` (request/tool/view assembly), `planner_failures` (typed diagnostics and owner replies), `raw_history`, `planner_instructions`, `data_inventory` |
 | SQL schemas and isolated execution | `relational`, `relational_sql` |
 | Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
 | Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |
@@ -98,6 +98,13 @@ resource or grant access. The generic registry is empty by default.
 | Local mocks and compatibility | `adapters`, `mock_api`, `conversation_mocks`, `conversation`, `service` |
 
 Older entry points and serializers remain for compatibility and offline tests.
+`history_first` re-exports the existing planner-failure functions and output-limit
+exception; callers retain the same import names and exception identity. Request
+assembly preserves capability order, context merge order, repair/read tool
+restrictions and request-local view snapshots. Model accounting, summary recovery,
+loop decisions and effects remain with the caller. The builder makes no model or
+provider request and grants no confirmation.
+
 The history-enabled factory is the current composition. Persisted protocol names
 such as `calendar-history-v2` are contracts, not release labels to rename.
 Optional [saved-record changes](saved-record-edits.md) and [category proposals](provisional-categories.md)
