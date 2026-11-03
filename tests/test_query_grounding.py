@@ -19,7 +19,7 @@ def test_model_arguments_cannot_expand_read_surface(field,value):
     assert not api.calendar.posts and not api.google.sheet_writes
 
 @pytest.mark.parametrize('mutation',['drop','duplicate','unknown','money','date','name','saved','swapped_units'])
-def test_query_wording_cannot_invent_facts_units_or_success(mutation):
+def test_query_fact_validation_and_prose_are_separate_from_write_authority(mutation):
     api=VoiceHosted()
     def bad(body):
         p=json.loads(body['input'][0]['content']);blocks=[{'kind':'text','template':'{{'+key+'}}'} for key in p['answer_facts']['facts']]
@@ -29,7 +29,14 @@ def test_query_wording_cannot_invent_facts_units_or_success(mutation):
         else:blocks.insert(0,{'kind':'text','template':{'money':'900 บาท','date':'พรุ่งนี้ 2028','name':'{{new_name}}','saved':'บันทึกสำเร็จแล้ว','swapped_units':'{{total_as_items}}'}[mutation]})
         return generated(body,{'blocks':blocks})
     api.voice=bad;r,_=turn(api,'ยอดวันนี้',plan())
-    assert r.data['response_realization']=={**r.data['response_realization'],'status':'fallback','reason':'invalid_output'}
+    if mutation=='saved':
+        # Misleading prose must be judged semantically. Accepting its words
+        # cannot turn a read into a saved result or a provider write.
+        assert r.data['response_realization']['status']=='llm'
+        assert 'บันทึกสำเร็จแล้ว' in r.message and r.status=='summary'
+        assert not r.data.get('refs') and not api.snapshot()['actions']
+    else:
+        assert r.data['response_realization']=={**r.data['response_realization'],'status':'fallback','reason':'invalid_output'}
     assert '0 บาท' in r.message and not api.google.sheet_writes
 
 

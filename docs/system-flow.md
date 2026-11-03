@@ -48,7 +48,7 @@ History includes original owner messages and delivered assistant replies. A roll
 
 The development-only critic benchmark is separate from this runtime flow: it can add one two-second Luna review after exact validation, with a trusted fallback on rejection or timeout. Its frozen two-call baseline remains historical benchmark evidence; see the [benchmark protocol](../benchmarks/PROTOCOL.md).
 
-All runtime LLM roles use the configured model. The raw-history path has **no fixed provider-call count per owner turn**. A verified direct control can use zero interpretation calls. A simple stored-data query normally uses interpretation and optional grounded wording. Multi-step read analysis can continue across table, Expense and Calendar results, including SQL analysis, with a complete call/result transcript and read-only tools. Repeated reads stop rather than executing again. Provider/context/output bounds, request deadlines, replay protections and configured accounting gates remain. A proposal may need another tool-result step; optional wording is no longer suppressed just because two core requests ran. Failed or slow wording uses the code-produced message and cannot call business tools.
+All runtime LLM roles use the configured model. The raw-history path has **no fixed provider-call count per owner turn**. A verified direct control can use zero interpretation calls. A simple stored-data query can use a read intent followed by a combined result-selection and composition intent. Multi-step read analysis can continue across table, Expense and Calendar results, including SQL analysis, with a complete call/result transcript and read-only tools. Repeated reads stop rather than executing again. Provider/context/output bounds, request deadlines, replay protections and configured accounting gates remain. A proposal may need another tool-result step; optional wording is no longer suppressed just because two core requests ran. Failed or slow wording uses the code-produced message and cannot call business tools.
 
 The raw-history planner uses Luna `medium`; auxiliary summary and grounded reply
 roles use `none`. Its 32,768 output-token ceiling covers both reasoning and visible
@@ -66,7 +66,10 @@ unchanged time range, and show Bangkok dates/times in readable form. Only the
 authoritative status, warning and confirmation facts remain fixed. Other outcomes
 retain the conservative whole-fact reply path. A received invalid document can
 repair once against the same facts/deadline; unavailable wording uses a complete
-readable fallback. No presentation request has tools or write authority.
+readable fallback. Native `act` / `intent=respond` instead uses the complete
+verified fallback directly on a rejected document, without another model call.
+Linked-document checks bind values and coverage; they do not prove arbitrary
+prose semantically correct. Presentation cannot authorize a business write.
 
 ## 2. Structured-record writes: metadata, proposal and confirmation
 
@@ -172,25 +175,24 @@ Calendar creation does not invent a missing clock or duration. Approximate wordi
 ```mermaid
 flowchart TD
     Input["CODE: signed request, history, available tools and schema metadata"]:::code
-    Model["LLM: select sources and requested read scope"]:::llm
+    Model["LLM: act intent=read<br/>Sources, aliases, scope and optional SQL"]:::llm
     Scope["CODE: validate logical table/field names, owner refs and dates"]:::code
     Tables["EXT: configured Sheets/Firestore table reads"]:::ext
     Calendar["EXT: readable Calendar events and semantic selection when needed"]:::ext
     Snapshot["CODE: verify completeness and retain ALL matched rows<br/>Output: query refs and relations_catalog columns/types/units/scope"]:::code
-    SQL["LLM: propose read-only SQL<br/>JOIN, CASE, CTE, subquery or window calculation"]:::llm
     Execute["CODE: isolated in-memory SQLite<br/>Selected snapshots only; decimal helpers; no provider SQL or writes"]:::code
     Result["CODE: computed rows and actual source scope"]:::code
+    Respond["LLM: act intent=respond<br/>Select offered result and compose linked document"]:::llm
     Error["CODE: incomplete-source or query diagnosis<br/>No fabricated zero, partial total or unrelated fallback"]:::code
     Reply["CODE: bounded factual reply through shared wording/delivery path"]:::code
     Input --> Model --> Scope
     Scope --> Tables --> Snapshot
     Scope --> Calendar --> Snapshot
-    Snapshot --> SQL --> Execute --> Result
-    Snapshot -->|"Simple typed read"| Reply
-    Result -->|"Answer ready"| Reply
-    Result -->|"Derived query ref for further analysis"| SQL
-    SQL -->|"Another source is needed"| Model
-    Execute -->|"Recoverable SQL error + actual catalog"| SQL
+    Snapshot -->|"SQL supplied in read intent"| Execute --> Result
+    Snapshot -->|"Exploration before SQL"| Model
+    Result -->|"Complete offered result"| Respond --> Reply
+    Result -->|"Further analysis or another source"| Model
+    Execute -->|"Recoverable SQL error + actual catalog"| Model
     Scope -->|"Unavailable or incomplete source"| Error
     Execute -->|"Unresolved query or resource limit"| Error --> Reply
     classDef code fill:#E8F0FE,stroke:#1A73E8,color:#111;
@@ -198,13 +200,20 @@ flowchart TD
     classDef ext fill:#E6F4EA,stroke:#188038,color:#111;
 ```
 
-`query_relations` is the main composable analysis tool. The planner first reads
-necessary sources with `query_table`, `query_expenses` or `query_calendar` and
-`continue_analysis=true`. Actual matched rows, logical columns, units and scope
-become current-request relations. A display of20 rows does not restrict the
-records used for SQL. Results can become derived relations for further queries.
-Simple typed reads and legacy `finish_query_analysis` combinations remain
-available; SQL is not mandatory for every question.
+The current read entry point is `act` with `intent=read`: the planner declares
+sources, aliases and optional SQL in one call. The server executes the source
+reads and SQL without another planner round trip between those stages.
+`sql=null` permits exploration first. Actual matched rows, logical columns,
+units and scope become current-request relations. A display of 20 rows does not
+restrict SQL inputs. Results can become derived relations for further queries.
+
+When enabled and an eligible result fits, `intent=respond` selects that result
+and composes the answer in the same next planner call. `finish_query_analysis`
+remains available for other combinations and clarification. Internal readers
+and `query_relations` retain compatibility contracts; they are not additional
+read actions offered to the current planner. See the [interface map](read-queries.md#current-interface-and-compatibility).
+The diagram shows this normal path; SQL is optional and other finishing paths
+remain available.
 
 Python executes SELECT/CTEs over a new in-memory SQLite connection, with
 extensions disabled, an authorizer and resource bounds. It cannot query provider

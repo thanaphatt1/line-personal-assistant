@@ -100,6 +100,28 @@ def test_invalid_realization_falls_back_to_review_without_any_write(mutation):
     assert r.status=='preview' and r.data['response_realization']['status']=='fallback' and not api.calendar.posts,r
     assert 'กิจกรรมทดสอบA' in r.message and 'กิจกรรมทดสอบB' in r.message
 
+
+def test_linked_review_politeness_is_not_word_filtered_and_only_confirmation_can_save():
+    api=VoiceHosted();phrase='กรุณาตรวจรายละเอียดรายการก่อนครับ'
+    def compose(body):
+        result=generated(body);payload=json.loads(body['input'][0]['content'])
+        if payload.get('operation_document'):
+            part=result['output'][0]['content'][0]
+            document=json.loads(part['text'])
+            document['blocks'].insert(1,{'kind':'text','template':phrase})
+            part['text']=json.dumps(document,ensure_ascii=False)
+        return result
+    api.voice=compose
+    old_expense(api)
+    assert len(api.voice_bodies)==1 and not api.google.sheet_writes and not api.calendar.posts
+    saved,event=turn(api,'ยืนยัน')
+    assert saved.status=='recorded' and api.google.sheet_writes==1 and phrase in saved.message,saved
+    assert saved.data['response_realization']['status']=='llm'
+    assert 'บันทึกรายจ่ายแล้ว' in saved.message
+    calls=len(api.model_bodies)
+    with TestClient(api.app()) as client:assert api.send(client,deepcopy(event)).status_code==200
+    assert api.google.sheet_writes==1 and len(api.model_bodies)==calls
+
 def test_generation_failure_after_actual_fake_effect_does_not_retry_tool_write():
     api=VoiceHosted();turn(api,text(),proposed)
     def unavailable(body):raise httpx.ReadTimeout('synthetic realization failure')

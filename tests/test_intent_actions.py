@@ -179,6 +179,18 @@ def test_single_result_can_answer_inline_without_layout_fallback_or_repeated_evi
     assert not h.sheets.write_log and not h.state.actions and not h.provider.posts
 
 
+def test_read_prose_can_discuss_saved_data_without_creating_a_write_or_format_fallback():
+    h=harness();trace=[];h.app.action_trace_sink=trace.append
+    def prose(args):
+        args['document']={'blocks':[{'kind':'text',
+            'template':'ข้อมูลที่บันทึกไว้ใน{{f1}} รวม {{c1}}ครับ รอบนี้ยังไม่ได้บันทึกเพิ่มเติม'}]}
+    result=h.send('เดือนตุลาคม BTS รวมเท่าไร',read("SELECT SUM(amount) AS total FROM e WHERE item='BTS'"),respond(mutate=prose))
+    assert result.status=='answer' and result.data['response_realization']['status']=='llm',result
+    assert '0.30 บาท' in result.message and 'ยังไม่ได้บันทึกเพิ่มเติม' in result.message
+    assert len(h.model.requests)==2 and not any(r['phase']=='reply_fallback' for r in trace)
+    assert not h.sheets.write_log and not h.state.actions and not h.provider.posts
+
+
 def test_finish_analysis_offers_no_self_review_and_can_select_actual_results_without_it():
     from test_unified_query import finish
     h=harness();h.app.response_realization_enabled=False

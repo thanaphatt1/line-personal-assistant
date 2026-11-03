@@ -161,13 +161,9 @@ def finish(host,args):
             # any dates/counts. Preserve its selection and follow-up contract
             # instead of validating copied numbers in new free-form prose.
             return finish(host,{'query_refs':p.query_refs,'operation':'report','source_refs':p.source_refs})
-        from .history_first import success_claim
         question=p.question.strip() if p.question else ''
         if (not 1<=len(question)<=500 or any(c.isnumeric() for c in question)
-                or re.search(r'https?://|[<>\x00-\x1f]|'
-                    r'(?:เพิ่ม|แก้ไข|ลบ|ยกเลิก|สร้าง|เลื่อน).{0,20}(?:แล้ว|สำเร็จ|เรียบร้อย)|'
-                    r'\b(?:saved|created|updated|deleted|confirm|execute)\b',question,re.I)
-                or success_claim(question) or unverified_claim(question)):
+                or re.search(r'https?://|[<>\x00-\x1f]',question,re.I)):
             return fail('invalid_query_question','ยังระบุคำถามที่ต้องถามให้ชัดเจนไม่ได้ครับ')
         return {'query_analysis':True,'query_clarification':True,'ok':True,'complete':False,
                 'status':'clarification','read_only':True,'financial_write_authorized':False,

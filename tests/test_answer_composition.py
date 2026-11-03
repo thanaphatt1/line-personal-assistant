@@ -72,12 +72,29 @@ def test_multiday_records_can_share_adjacent_day_headings_without_repeating_per_
     document(paragraph('{{f1}} {{invented}} {{f3}}'),rows(['r1','r2'],'{{c2}} {{c3}}')),
     document(paragraph('{{f1}} {{f2}} {{f3}} 500 บาท'),rows(['r1','r2'],'{{c2}} {{c3}}')),
     document(paragraph('{{f1}} {{f2}} {{f3}} ๕๐๐ บาท'),rows(['r1','r2'],'{{c2}} {{c3}}')),
-    document(paragraph('{{f1}} {{f2}} {{f3}} บันทึกเรียบร้อยแล้ว'),rows(['r1','r2'],'{{c2}} {{c3}}')),
-    document(paragraph('{{f1}} {{f2}} {{f3}} saved'),rows(['r1','r2'],'{{c2}} {{c3}}')),
-    document(paragraph('{{f1}} {{f2}} {{f3}} กรุณายืนยัน'),rows(['r1','r2'],'{{c2}} {{c3}}')),
+    document(paragraph('{{f1}} {{f2}} {{f3}} https://example.invalid'),rows(['r1','r2'],'{{c2}} {{c3}}')),
+    document(paragraph('{{f1}} {{f2}} {{f3}} <unbound>'),rows(['r1','r2'],'{{c2}} {{c3}}')),
+    document(paragraph('{{f1}} {{f2}} {{f3}} \x00'),rows(['r1','r2'],'{{c2}} {{c3}}')),
 ])
-def test_missing_swapped_foreign_values_and_mutation_claims_are_rejected(bad):
+def test_missing_swapped_foreign_values_and_unbound_data_are_rejected(bad):
     with pytest.raises(ValueError):composition.render(bad,expense_view())
+
+
+@pytest.mark.parametrize('prose',[
+    'รายการที่บันทึกไว้มีดังนี้ครับ',
+    'รอบนี้ยังไม่ได้บันทึกเพิ่มเติมครับ',
+    'ต้องการตรวจรายละเอียดไหมครับ?',
+    'ดูรายละเอียดอีกครั้งได้หรือเปล่าครับ？',
+    'กรุณาตรวจรายการที่ยืนยันไว้ครับ',
+    'โปรดตรวจข้อมูลก่อนคลิกยืนยันครับ',
+    'The saved records are shown below; confirm the selection if needed.',
+    'created / updated / deleted / execute เป็นคำอธิบายได้',
+])
+def test_linked_documents_do_not_reject_words_or_question_punctuation(prose):
+    view=expense_view()
+    text=composition.render(document(paragraph(prose+' {{f1}} {{f2}} {{f3}}'),
+        rows(['r1','r2'],'{{c2}} {{c3}}')),view)
+    assert prose in text and '50.00 บาท' in text and 'ชา 20.00 บาท' in text
 
 
 def test_shared_date_heading_cannot_hide_rows_from_a_different_day():

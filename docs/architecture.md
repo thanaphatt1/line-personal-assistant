@@ -5,6 +5,10 @@ and **Calendar events**. Tables can represent people, income, expenses, tasks
 or shopping records in Google Sheets/Firestore. Calendar retains its own
 interval, recurrence-read and event-version semantics.
 
+The current planner uses `act` with `intent=read` to declare sources and optional
+SQL together; `intent=respond` selects an offered result and composes its answer.
+See the [current interface and compatibility map](read-queries.md#current-interface-and-compatibility).
+
 The main analysis layer is read-only SQL over observed records. The LLM chooses
 sources and query meaning; Python validates access, materializes complete
 matched snapshots and executes the query. Simple typed reads remain available.
@@ -18,19 +22,24 @@ belong to the tool schemas.
 ```mermaid
 flowchart TD
     LINE[Signed owner request] --> Context[History, tools and schema metadata]
-    Context --> Plan[LLM medium reasoning: sources and read scope]
+    Context --> Plan[LLM read intent: sources, scope and optional SQL]
     Plan --> Read[Typed source reads]
     Sheets[Google Sheets tables] --> Read
     Firestore[Firestore business collections] --> Read
     Calendar[Readable Google Calendar events] --> Read
     Read --> Snapshot[Complete matched rows and current-request refs]
-    Snapshot --> SQL[LLM proposes read-only SQL]
-    SQL --> Execute[Python: isolated in-memory SQLite]
+    Snapshot -->|SQL supplied| Execute[Python: isolated in-memory SQLite]
     Execute --> Result[Computed rows with source scope]
-    Result --> Reply[Grounded LINE reply]
-    Result -->|Further analysis| SQL
-    Snapshot -->|Simple direct read| Reply
+    Result --> Compose[LLM respond intent: select result and compose linked answer]
+    Compose --> Reply[Grounded LINE reply]
+    Result -->|Further analysis| Plan
+    Snapshot -->|Exploration before SQL| Plan
 ```
+
+The diagram shows logical stages, not separate model calls: one read intent can
+include both source selection and SQL. `sql=null` permits exploration first.
+The linked response path requires response realization and an eligible result;
+other combinations and clarification can use `finish_query_analysis`.
 
 `relations_catalog` describes actual columns, types, units, row counts and scope.
 It is built from observed query results, not guessed from provider names. SQL
@@ -80,13 +89,32 @@ feature flags and mounted secrets. Metadata can add ordinary schemas on existing
 supported adapters; it cannot supply an arbitrary provider URL, create a
 resource or grant access. The generic registry is empty by default.
 
+## Technology stack
+
+| Layer | Technology and role | Source |
+| --- | --- | --- |
+| Application | Python 3.11+, FastAPI, Uvicorn and Pydantic 2 serve the webhook and validate data/configuration. | [Dependencies](../pyproject.toml), [app](../src/line_assistant/main.py) |
+| LINE | Messaging API events and replies, with HMAC signature and configured-owner checks. | [LINE adapter](../src/line_assistant/line_api.py), [ingress](../src/line_assistant/main.py) |
+| Language model | OpenAI Responses API with `gpt-6-luna` uses `medium` reasoning for raw-history planning and tool/SQL proposals. Summaries and optional grounded wording keep `none`. A model response cannot authorize a write. | [Model API](../src/line_assistant/model_api.py), [runtime flow](system-flow.md) |
+| SQL analysis | Python's SQLite engine executes read-only queries over current-request snapshots, with decimal helpers and isolated connections. It is not the persistent business store. | [Relation schemas](../src/line_assistant/relational.py), [SQL executor](../src/line_assistant/relational_sql.py) |
+| Business data | Google Sheets and Firestore store metadata-defined tables; Google Calendar stores appointments. Existing expense/catalog adapters retain their workflow. | [Table adapters](../src/line_assistant/table_storage.py), [expense backends](storage-backends.md), [Calendar adapter](../src/line_assistant/calendar_provider.py) |
+| HTTP and identity | `httpx` uses bounded provider REST clients and injectable test transports. Google access and version-pinned secrets use explicit configuration. | [HTTP boundary](../src/line_assistant/pilot_http.py), [authentication](../src/line_assistant/google_auth.py), [configuration](configuration.md) |
+| Durable state | A Firestore owner document holds the lease and active context. Optional evidence records store receipts, actions and model accounting independently, with lazy reads and atomic checkpoints. Local adapters support mocks and restart tests. | [Evidence storage and migration](state-records.md), [state and recovery](#state-and-recovery) |
+| Hosting and build | A non-root container runs on Cloud Run. Cloud Build verifies reviewed source and publishes to Artifact Registry; Cloud Logging holds diagnostics. | [Dockerfile](../deploy/history-production.Dockerfile), [build template](../deploy/cloudbuild.json), [deployment](deployment.md) |
+| Tests and CI | pytest, signed synthetic webhooks, mock providers and temporary stores. GitHub Actions runs offline tests plus source/wheel/startup checks. | [Test guide](../tests/README.md), [CI](../.github/workflows/ci.yml) |
+
+The raw-history runtime has no fixed model-call count per owner turn. Reads and analysis can continue across sources; repeated plans stop and configured request/accounting gates remain. Verified direct controls can skip the model. Reply wording and optional workflows have explicit flags. The critic in the [benchmark work](../benchmarks/PROTOCOL.md) is not a runtime phase; engineering models are separate from the bot's runtime model.
+
+The [database and field guide](database-schema.md) distinguishes business schemas from internal state/history. [requirements.lock](../requirements.lock) pins the installation snapshot; [requirements-ci.txt](../requirements-ci.txt) adds wheel-build tools. A source push runs offline CI and does not build a cloud image or deploy the service.
+
+
 ## Module map
 
 | Area | Modules |
 | --- | --- |
 | Ingress/composition and HTTP scope | `main`, `history_cloud_run`, `pilot_config`, `pilot_http`, `calendar_transport` |
 | Dialogue, planning and offered tools | `history_first` (routing, loop, confirmations), `planning_context` (request/tool/view assembly), `planner_failures` (typed diagnostics and owner replies), `raw_history`, `planner_instructions`, `data_inventory` |
-| SQL schemas and isolated execution | `relational`, `relational_sql` |
+| Read intents, declared sources and SQL execution | `intent_actions`, `unified_query`, `relational`, `relational_sql` |
 | Table metadata, retrieval and reviewed changes | `tables`, `table_workflow`, `table_storage` |
 | Expense/Calendar reads and legacy read combinations | `read_queries`, `query_analysis`, `query_followups`, `calendar_inference` |
 | Pending patches, temporal calculations and repair | `pending_records`, `temporal`, `tool_errors`, `tool_repair` |

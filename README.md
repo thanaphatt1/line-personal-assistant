@@ -1,75 +1,65 @@
 # LINE Personal Assistant
 
-A personal LINE assistant for querying and maintaining structured data and Calendar appointments. It supports people, income, expenses, shopping lists and other metadata-defined tables. The project is designed for occasional use with small running costs; actual model and hosting costs depend on usage.
+A Thai LINE assistant that answers questions about your records and prepares
+changes for your confirmation. It works with Google Sheets, Firestore and Google
+Calendar: expenses, appointments, people, income and other configured tables.
 
-[![A query enters the assistant, which uses metadata and read-only SQL to analyze structured records from Google Sheets, Firestore and Calendar. Changes are reviewed and confirmed before a write.](docs/assets/assistant-overview.svg)](docs/system-flow.md)
+## Example conversations
 
-The assistant treats structured records as **tables** and appointments as **Calendar events**. The LLM uses schema metadata to select sources, fetch records and propose SQL. Python executes the query and validates any proposed changes. Data stays in Google Sheets, Firestore or Google Calendar; SQL analysis runs over observed records in a temporary in-memory SQLite database.
+These are illustrative conversations with synthetic data, not captured model
+outputs. Available tables and optional features depend on configuration.
 
-## What it can do
+**Ask and follow up**
 
-- **Ask questions across data.** Filter, join, group, rank, compare and calculate running totals with SQL. Examples include daily spending with cumulative totals, income linked to people, or spending on dates selected from Calendar appointments.
-- **Maintain structured records.** Prepare inserts, updates and deletes for configured tables, including records with no date or amount columns. A new ordinary table uses metadata and an existing supported storage binding, without another table-specific query function.
-- **Manage appointments.** Read accessible calendars, prepare timed or single-date all-day events, and reschedule saved appointments when the relevant feature is enabled. Calendar retains its event/time tools and provider rules.
-- **Reuse owner activity labels.** With activity memory enabled, a whole-title answer can be remembered for later Calendar and activity-date spending questions. Answers disclose reused labels; the owner can correct or forget them. Choosing only some dates of a title keeps the answer scoped to that question.
+```text
+You:       เดือนตุลาคม 2026 รายการไหนบ่อยสุด
+Assistant: รถไฟฟ้า 13 ครั้งครับ
+You:       รวมเป็นเงินเท่าไหร่
+Assistant: รถไฟฟ้าในเดือนตุลาคม 2026 รวม 130 บาทครับ
+```
 
-Expenses are one supported workflow, with catalog-name resolution, category choices, multiple entries and reviewed saving. Income belongs in a configured income table. The assistant asks which destination to use when the available metadata does not establish a unique one. The generic table registry is empty by default; startup does not create tables or discover unconfigured databases.
+The follow-up uses the delivered question context and reads fresh records.
 
-Optional name matching suggests existing catalog names for unfamiliar expense spellings; the owner chooses an existing name or a new item. Remembering a spelling as a catalog alias requires a separate review and confirmation. Expense reviews show verified same-day duplicates and explain defaulted or reused dates before saving. See the [behavior examples](docs/behavior.md).
+**Review before saving** — assuming both names already exist in the catalog:
 
-## How it works
+```text
+You:       กาแฟ 35 บาท และรถเมล์ 20 บาท วันที่ 31 ต.ค. 2026
+Assistant: [Review: 31 Oct 2026, coffee 35 THB, bus 20 THB; save/cancel controls]
+You:       บันทึก
+Assistant: [Saved receipt for the two entries]
+```
 
-1. **Understand the request and schema.** The planner sees dialogue, original timestamps, pending work, available tools and configured source metadata: purpose, columns, types, units, relationships and allowed operations.
-2. **Submit the read intent.** The planner calls `act` with `intent=read`, configured sources, bounded scopes, logical aliases and SQL. The server retrieves complete snapshots from Sheets/Firestore and readable calendars, then executes read-only analysis. Sources can also reference results from the current request.
-3. **Check and answer together.** When verified response facts are available, `act` with `intent=respond` checks selection/output and composes the final answer from those facts in the same model call. No separate wording call is needed. Exploration, further SQL and multi-result/clarification finishing remain available when necessary. See [read intents](docs/intents.md).
-4. **Prepare changes separately.** Typed table, expense and Calendar tools create reviewed proposals. Shared field patches update pending records; temporal plans compute date/time changes from verified sources. SQL cannot write or confirm a change.
-5. **Confirm and execute.** A new owner confirmation must match the delivered review and version. Durable action IDs, provider versions and receipts govern execution, replay and uncertain outcomes.
+**Complete an appointment**
 
-See the [runtime diagrams](docs/system-flow.md), [SQL analysis guide](docs/relational-queries.md) and [table metadata guide](docs/tables.md).
+```text
+You:       เพิ่มนัดนิทรรศการทดสอบวันที่ 10 พ.ย. 2026
+Assistant: นิทรรศการทดสอบ เป็นนัดทั้งวัน หรือเริ่มกี่โมงครับ?
+You:       ทั้งวัน
+Assistant: [All-day review for 10 Nov 2026; confirmation controls]
+```
 
-SQL operates only on records actually read in the current owner turn. Incomplete sources do not establish complete totals, and a failed query cannot silently fall back to a different earlier answer. Recoverable planning errors return the actual schema and diagnostics to the model; repeated plans stop. Decimal sums and explicit decimal arithmetic helpers avoid implicit floating-point money calculations. Source permissions, provider windows, context, deadlines and accounting gates still apply.
+The last example prepares a review; the event is created after confirmation.
+See [behavior and supported limits](docs/behavior.md) for more examples.
 
-## Data sources and workflows
+## What makes it useful
 
-Google Sheets and Firestore can store generic business records. [Table metadata](docs/tables.md) supplies their meaning and schema; a new storage provider still needs an adapter. The established expense/catalog workflow can use the [configured expense storage backend](docs/storage-backends.md). Firestore also holds internal history, state and recovery records separately from registered business collections.
+- **Questions across records.** Filter, rank, group and join configured tables;
+  calculate daily spending or compare income with people records. New ordinary
+  schemas use metadata on supported adapters instead of a query handler per table.
+- **Changes with a review.** Prepare table inserts, updates and deletes, log
+  expenses, and create appointments. Optional workflows cover saved-record
+  corrections, catalog aliases and category review.
+- **Interrupted conversations.** Keep pending work across questions and restarts.
+  Delivered reviews, versions and durable receipts govern confirmation and replay.
 
-Calendar creation targets one configured calendar. Optional [all-calendar reads](docs/configuration.md#reading-all-calendars) combine calendars readable by the runtime account, and owners can [connect shared calendars through LINE](docs/configuration.md#connect-a-calendar-through-line). Conflict checks cover the configured write calendar. Creation does not support guests, recurrence, reminders or multi-day all-day ranges. [Saved-record changes](docs/saved-record-edits.md) use separate feature flags and reviewed workflows.
+The model chooses sources, query meaning and proposed fields. Python reads the
+configured sources, computes results with read-only SQL and checks changes.
+Checking execution does not prove that the model understood every condition;
+[semantic evaluation](benchmarks/intent-v2/README.md) is separate from code tests.
 
-The model groups appointments and interprets dates/times from their original owner quotations, including multi-line copied descriptions. Reviews show the target calendar, appointment details and confirmation controls. They surface actual conflicts or uncertain times; routine no-conflict notices and disclaimers about other calendars are omitted. [Language interpretation and execution checks](docs/semantic-boundaries.md) describes what the model selects and what the application verifies.
+## Try the local mock
 
-The built-in expense read supports a window of up to 10 years; one Calendar read supports up to 3 years. These are query capacity bounds, not evidence of how much data a source contains. Pagination, source size and the remaining turn budget can stop a read earlier. The assistant reports incomplete coverage or asks for a shorter period instead of claiming a complete total. Activity answers group repeated titles, ask about uncertain matches and retain the spending goal when joining expenses to activity dates. [Read queries](docs/read-queries.md) describes these contracts and activity memory.
-
-Additional guides cover:
-
-- [Pending-record patches](docs/pending-records.md) and [temporal plans/tool recovery](docs/temporal-plans.md).
-- [Capability and data coverage](docs/data-inventory.md), [read examples](docs/read-queries.md) and [behavior](docs/behavior.md).
-- [Performance and conversation quality](docs/performance.md): phase timings, batched reads, loading status, focused clarification and indexed Firestore reads.
-- Optional expense workflows: [provisional categories](docs/provisional-categories.md), [historical category review](docs/historical-categories.md) and [previous saved amounts](docs/previous-expense-prices.md). Proposed mappings remain distinct from confirmed records and final write consent.
-- [Owner record controls](docs/owner-record-controls.md): reviewed expense removal, explicitly confirmed catalog aliases, and amount/date/source buttons on saved expenses.
-
-This README describes the current source. Feature activation depends on configuration; a GitHub source push and a production deployment are separate actions.
-
-## Technology stack
-
-| Layer | Technology and role | Source |
-| --- | --- | --- |
-| Application | Python 3.11+, FastAPI, Uvicorn and Pydantic 2 serve the webhook and validate data/configuration. | [Dependencies](pyproject.toml), [app](src/line_assistant/main.py) |
-| LINE | Messaging API events and replies, with HMAC signature and configured-owner checks. | [LINE adapter](src/line_assistant/line_api.py), [ingress](src/line_assistant/main.py) |
-| Language model | OpenAI Responses API with `gpt-6-luna` uses `medium` reasoning for raw-history planning and tool/SQL proposals. Summaries and optional grounded wording keep `none`. A model response cannot authorize a write. | [Model API](src/line_assistant/model_api.py), [runtime flow](docs/system-flow.md) |
-| SQL analysis | Python's SQLite engine executes read-only queries over current-request snapshots, with decimal helpers and isolated connections. It is not the persistent business store. | [Relation schemas](src/line_assistant/relational.py), [SQL executor](src/line_assistant/relational_sql.py) |
-| Business data | Google Sheets and Firestore store metadata-defined tables; Google Calendar stores appointments. Existing expense/catalog adapters retain their workflow. | [Table adapters](src/line_assistant/table_storage.py), [expense backends](docs/storage-backends.md), [Calendar adapter](src/line_assistant/calendar_provider.py) |
-| HTTP and identity | `httpx` uses bounded provider REST clients and injectable test transports. Google access and version-pinned secrets use explicit configuration. | [HTTP boundary](src/line_assistant/pilot_http.py), [authentication](src/line_assistant/google_auth.py), [configuration](docs/configuration.md) |
-| Durable state | A Firestore owner document holds the lease and active context. Optional evidence records store receipts, actions and model accounting independently, with lazy reads and atomic checkpoints. Local adapters support mocks and restart tests. | [Evidence storage and migration](docs/state-records.md), [architecture](docs/architecture.md) |
-| Hosting and build | A non-root container runs on Cloud Run. Cloud Build verifies reviewed source and publishes to Artifact Registry; Cloud Logging holds diagnostics. | [Dockerfile](deploy/history-production.Dockerfile), [build template](deploy/cloudbuild.json), [deployment](docs/deployment.md) |
-| Tests and CI | pytest, signed synthetic webhooks, mock providers and temporary stores. GitHub Actions runs offline tests plus source/wheel/startup checks. | [Test guide](tests/README.md), [CI](.github/workflows/ci.yml) |
-
-The raw-history runtime has no fixed model-call count per owner turn. Reads and analysis can continue across sources; repeated plans stop and configured request/accounting gates remain. Verified direct controls can skip the model. Reply wording and optional workflows have explicit flags. The critic in the [benchmark work](benchmarks/PROTOCOL.md) is not a runtime phase; engineering models are separate from the bot's runtime model.
-
-The [database and field guide](docs/database-schema.md) distinguishes business schemas from internal state/history. [requirements.lock](requirements.lock) pins the installation snapshot; [requirements-ci.txt](requirements-ci.txt) adds wheel-build tools. A source push runs offline CI and does not build a cloud image or deploy the service.
-
-## Run the local mock
-
-Python 3.11 or newer is required. Run from the repository root:
+Use Python 3.11+ and run from the repository root:
 
 ```sh
 python3 -m venv .venv
@@ -79,50 +69,58 @@ python -m pip install --no-deps -e .
 python -m uvicorn line_assistant.main:app --host 127.0.0.1 --port 8000
 ```
 
-`GET /health` reports mock mode. This local entry point uses deterministic mock integrations, has no real credentials and does not call a model. The signed, history-enabled production factory is a separate opt-in described in [deployment](docs/deployment.md). The `.env.example` file documents local configuration; files are never loaded automatically.
+Open `http://127.0.0.1:8000/health` to check mock mode.
+This entry point uses deterministic mocks without real
+credentials or model calls. It demonstrates application plumbing; it does not
+exercise live LLM interpretation. The signed, history-enabled factory is a
+separate opt-in described in [deployment](docs/deployment.md).
 
-## Test
+To run offline tests, install the development dependencies first:
 
 ```sh
+python -m pip install -r requirements-ci.txt
 PYTHONDONTWRITEBYTECODE=1 python -m pytest tests -p no:cacheprovider
 ```
 
-The [test guide](tests/README.md) explains the test families, representative cases,
-setup commands, mocks, count interpretation and how to add a regression. The
-checked-in suite denies external sockets and needs no paid API access. Packaging
-checks also start the exact source archive in an isolated subprocess.
+The suite blocks external sockets. See the [test guide](tests/README.md) for
+focused checks, packaging and what each kind of evidence establishes.
 
-The [role benchmark protocol](benchmarks/PROTOCOL.md) separates development cases
-from frozen held-out evaluation. See the [Luna baseline scorecard](benchmarks/v1/results/README.md);
-human style ratings remain pending. The [inference validation protocol](docs/inference-validation.md)
-explains separate synthetic real-model validation. Private model traces and
-release-operation evidence are not part of this repository.
+## Architecture at a glance
 
-## Documentation
+[![A query enters the assistant, which uses metadata and read-only SQL to analyze structured records from Google Sheets, Firestore and Calendar. Changes are reviewed and confirmed before a write.](docs/assets/assistant-overview.svg)](docs/system-flow.md)
 
-| Guide | Purpose |
+Reads normally follow `act` / `intent=read` → configured source snapshots →
+read-only SQLite analysis → `act` / `intent=respond` with linked result facts.
+Exploration, clarification and repairs can require more calls. SQLite is a
+temporary calculation engine; business records stay in their configured store.
+
+Writes follow proposal → delivered review → new owner confirmation → provider
+effect and receipt. A read or model answer cannot authorize a write. Durable
+actions and reconciliation handle replay and uncertain acknowledgements.
+
+Built with Python, FastAPI, the OpenAI Responses API, SQLite and Google APIs;
+hosted deployments use Cloud Run and Firestore state. The [architecture guide](docs/architecture.md)
+contains the full stack and module map; [runtime diagrams](docs/system-flow.md)
+show the boundaries in detail.
+
+## Where to go next
+
+| Your goal | Reading path |
 | --- | --- |
-| [Architecture](docs/architecture.md) | Request flow, module boundaries and persisted contracts |
-| [Behavior](docs/behavior.md) | User examples and supported limits |
-| [Read answers](docs/answer-composition.md) | Model-selected prose/layout, linked facts and compact fallbacks |
-| [SQL analysis](docs/relational-queries.md) | Primary query layer, derived results, precision and read isolation |
-| [Tables](docs/tables.md) | Sheets/Firestore metadata, relationships and reviewed changes |
-| [Configuration](docs/configuration.md) | Explicit targets, feature flags and secret mounts |
-| [Database and fields](docs/database-schema.md) | Sheet setup, field types, Firestore state and retention |
-| [Development](docs/development.md) | Tests, source packaging and change review |
-| [Test guide](tests/README.md) | Test families, examples, commands and evidence limits |
-| [Deployment](docs/deployment.md) | Container startup, staging and compatible rollback |
-| [Security](SECURITY.md) | Data handling and private vulnerability reports |
+| Understand the project | [Behavior examples](docs/behavior.md) → [Architecture](docs/architecture.md) |
+| Change the code | [Development](docs/development.md) → [Module map](docs/architecture.md#module-map) → [Tests](tests/README.md) |
+| Configure or deploy | [Configuration](docs/configuration.md) → [Storage](docs/storage-backends.md) / [table setup](docs/tables.md) → [Deployment](docs/deployment.md) |
+| Understand reads | [Current read intents](docs/intents.md) → [SQL](docs/relational-queries.md) → [Source contracts](docs/read-queries.md) |
+| Debug a conversation | [Action traces](docs/action-traces.md) → [Performance](docs/performance.md) → [Answer composition](docs/answer-composition.md) |
 
-## Operational diagnostics
+The [documentation index](docs/index.md) lists workflow and reference guides.
+[Security](SECURITY.md) covers private data handling and vulnerability reports.
 
-Hosted turns emit redacted [action traces](docs/action-traces.md) for model/tool
-steps, validation codes and draft transitions. They use existing Cloud Run logs
-and preserve the current confirmation and replay rules.
-Failed expense preparation passes its actual validation diagnosis to reply
-generation. Known enrollment failures can be explained in natural Thai while
-retaining draft facts and asking only the missing category choice; an unknown
-cause is reported honestly instead of blamed on the owner's input.
+This README describes the source, not verified deployment status. The generic
+table registry starts empty; optional workflows require configuration. A source
+push runs offline CI and does not deploy the service. Scripted tests, fresh
+synthetic inference and live release checks establish different things; see
+[evidence boundaries](tests/README.md#offline-replay-and-fresh-model-evidence).
 
 ## License
 

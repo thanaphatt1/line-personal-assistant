@@ -13,9 +13,11 @@ meaning of a table. For example:
 - `หนังสือเล่มไหนหนากว่าค่าเฉลี่ย` can query a configured books table with title/pages columns; no date or money is required.
 - `วันนี้รายได้ 1000` prepares an insertion into a uniquely selected configured income table, followed by review and confirmation.
 
-The planner sees actual schemas and source scope, retrieves complete matched
-records, then proposes read-only SQL through `query_relations`. Simple typed
-reads remain available. Derived results can be queried again within the turn.
+The current planner uses `act` with `intent=read` to declare source scope and
+read-only SQL together. The server retrieves complete matched records and
+executes that SQL; `intent=respond` can select the result and compose the answer.
+`query_relations` and the typed readers are underlying compatibility handlers,
+not the current planner entry point. Derived results can be queried again within the turn.
 Incomplete reads cannot prove a complete total; an unresolved SQL error cannot
 be replaced by a different earlier summary. See [SQL details](relational-queries.md)
 and [table setup](tables.md).
@@ -97,8 +99,9 @@ locations and relevant owner wording to label which saved appointments match.
 Code counts the selected event references and renders a natural Thai reply with
 the original appointments. Ambiguous matches are shown separately and do not
 become a definitive total. A failed or incomplete read/analysis cannot mean zero
-matches. Calendar query ranges support up to31 dates; analysis supports at
-most120 events before the existing20-row display limit. This analysis requires
+matches. One Calendar source read supports up to three years with bounded
+pagination; semantic analysis supports at most 120 grouped event references
+before the existing 20-row display limit. This analysis requires
 response realization enabled. A simple question usually uses two model
 requests; multi-step analysis can continue without a fixed turn-call limit.
 
@@ -121,19 +124,25 @@ model-selected headings and lists while preserving event/date/time bindings.
 The optional response phase lets the model choose prose and layout for completed
 read results using references to verified summary facts and linked record cells.
 It can avoid repeating a single-day date or put a shared date above several
-records. This also covers eligible table, SQL and read-analysis results, with one
-optional response call after analysis. Drafts, confirmations, write receipts and
-incomplete results keep their guarded facts. The foreground deadline is eight
-seconds for read-document composition/Calendar semantic selection and four
-seconds for ordinary guarded replies,
-within the overall request deadline. Failure returns the server reply without
-another model attempt; a semantic-selection failure leaves the requested count
-unavailable. See [flexible read answers](answer-composition.md) for the fact
+records. This also covers eligible table, SQL and read-analysis results. On the
+current path, `act` / `intent=respond` combines result selection and composition
+in the next planner call. An invalid document uses the verified fallback without
+another model call. This path shares the planner's remaining time budget.
+
+The separate optional composer can repair a received invalid document once
+within the same deadline. Its foreground deadline is eight seconds for read
+documents/Calendar semantic selection and four seconds for ordinary guarded
+replies, within the overall request deadline. Unavailable wording returns the
+server reply; a semantic-selection failure leaves the requested count
+unavailable. Drafts, confirmations, write receipts and incomplete results retain
+their required core facts. See [flexible read answers](answer-composition.md) for the fact
 bindings, validation limits, token reservation and fallback behavior.
 
-The raw-history workflow has no fixed model-request count per owner turn. Reads
-with `continue_analysis=true` can feed `query_relations`, further source reads or
-legacy `finish_query_analysis` combinations. Subsequent tools remain read-only.
+The raw-history workflow has no fixed model-request count per owner turn.
+Further `act` read intents can use current-request results or fetch more sources;
+`finish_query_analysis` handles other result combinations and clarification.
+Lower-level `continue_analysis` and `query_relations` contracts remain for
+compatibility. Subsequent analysis tools remain read-only.
 Python calculates the proposed query; plain model prose cannot replace its
 results. Repeated reads/plans and duplicate call IDs stop. Provider deadlines,
 context/output bounds and configured accounting gates remain. Observational

@@ -205,14 +205,33 @@ def test_a_failed_intent_review_returns_to_the_planner_without_reporting_the_sql
     assert not api.google.sheet_writes and not api.calendar.posts
 
 
-@pytest.mark.parametrize('question',['รวมทั้งหมด 999999 บาท','สร้างนัดเรียบร้อยแล้วครับ','ไปที่ https://example.invalid',''])
-def test_a_clarification_cannot_be_used_to_send_unbound_numbers_or_action_claims(question):
+@pytest.mark.parametrize('question',['รวมทั้งหมด 999999 บาท','ไปที่ https://example.invalid','','<unbound>','ข้อความ\x00'])
+def test_a_clarification_cannot_be_used_to_send_unbound_numbers_or_invalid_syntax(question):
     api=SemanticHosted();expenses(api,[('2026-11-03',35)])
     result,_=turn(api,'ดูรายจ่าย 3 พ.ย.',read('expense','2026-11-03'),ask(question))
     output=result.data['tool_result']
     assert output['error_code']=='invalid_query_question' and not output['complete']
     assert not output.get('query_clarification')
     if question:assert question not in result.message
+    assert not api.google.sheet_writes and not api.calendar.posts
+
+
+@pytest.mark.parametrize('question',[
+    'ต้องการดูนัดที่สร้างไว้แล้วจากปฏิทินไหนครับ?',
+    'หมายถึง saved records ชุดไหนครับ?',
+    'ต้องการอ่านข้อมูลที่บันทึกรายจ่ายไว้แล้วของหมวดไหนครับ?',
+])
+def test_clarification_words_do_not_establish_an_action_or_get_keyword_rejected(question):
+    api=SemanticHosted()
+    def clarify(body):
+        context=json.loads(body['input'][0]['content'])
+        return response('finish_query_analysis',{'query_refs':[],'operation':'clarify',
+            'question':question,'source_refs':[context['current_source_ref']]})
+    result,_=turn(api,'อยากดูข้อมูลอีกชุด',clarify)
+    output=result.data['tool_result']
+    assert result.status=='clarification' and output['query_clarification'],result
+    assert output['message']==question and not output['complete']
+    assert output['financial_write_authorized'] is False and output['calendar_write_authorized'] is False
     assert not api.google.sheet_writes and not api.calendar.posts
 
 def test_incomplete_calendar_read_cannot_be_combined_into_zero_count():

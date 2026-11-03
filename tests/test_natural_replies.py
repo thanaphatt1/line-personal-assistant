@@ -121,7 +121,7 @@ def test_calendar_review_document_keeps_status_notice_values_and_instruction(mon
 
 
 @pytest.mark.parametrize('mutation',['drop_notice','success_claim','copied_time'])
-def test_calendar_review_document_cannot_hide_notices_or_claim_creation(mutation,monkeypatch):
+def test_calendar_review_keeps_required_facts_and_prose_never_creates_an_effect(mutation,monkeypatch):
     h=Harness()
     monkeypatch.setattr(h.app.calendar_flow.adapter,'conflicts',lambda *args:[{'id':'synthetic-conflict'}])
     r=complete(h);view=operation.for_result(r);ids={label:ref for ref,label in view['fact_labels'].items()}
@@ -131,7 +131,14 @@ def test_calendar_review_document_cannot_hide_notices_or_claim_creation(mutation
     if mutation=='drop_notice':del blocks[2]
     if mutation=='success_claim':blocks[1]['template']+=' สร้างนัดให้เรียบร้อยแล้ว'
     if mutation=='copied_time':blocks[1]['template']='{{c1}} {{c2}} 14:00'
-    with pytest.raises(AnswerError):render({'blocks':blocks},view)
+    if mutation=='success_claim':
+        # This sentence is semantically wrong. Rendering is deliberately not
+        # a semantic approval or a receipt of an actual Calendar operation.
+        text=render({'blocks':blocks},view)
+        assert 'สร้างนัดให้เรียบร้อยแล้ว' in text and view['facts'][ids['status']] in text
+        assert r.status=='preview' and h.provider.posts==0
+    else:
+        with pytest.raises(AnswerError):render({'blocks':blocks},view)
 
 
 def test_created_receipt_document_requires_a_recorded_event_identity():

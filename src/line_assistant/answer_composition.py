@@ -275,7 +275,7 @@ REPAIR_GUIDANCE={
     'answer_block_kind':'Use only text or rows blocks.',
     'answer_template':'Use string templates within the schema size limits.',
     'answer_placeholder':'Use exactly {{fact_id}}, {{cell_id}} or optional {{index}}; do not nest placeholders.',
-    'unsupported_answer_literal':'Use placeholders for business dates/numbers, even when copied correctly. No writes, consent requests or instructions. Numeric conditions absent from display facts need not be restated.',
+    'unsupported_answer_literal':'Use placeholders for business dates/numbers, even when copied correctly. Do not add URLs, markup or control characters. Numeric conditions absent from display facts need not be restated.',
     'unknown_answer_fact':'Use supplied facts or row/shared-heading cells. Text may use cells when exactly one record is offered; otherwise select rows. Check covered_by for omitted dates.',
     'unknown_answer_record':'Use only offered record_refs, each exactly once in their supplied order.',
     'answer_record_coverage_or_order':'Include every displayed record once in its original order. Do not duplicate, omit or reorder rows.',
@@ -369,12 +369,11 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
         if not isinstance(text, str) or len(text) > 1600: raise AnswerError('answer_template')
         refs = TOKEN.findall(text); literal = TOKEN.sub('', text); literal_size += len(literal)
         if '{{' in literal or '}}' in literal: raise AnswerError('answer_placeholder')
-        # Free prose is allowed, but business numbers/dates and obvious writes,
-        # consent requests or external instructions must never be generated.
+        # Validate bound data and transport syntax, not vocabulary or the
+        # meaning of arbitrary prose. Status/consent come from core facts and
+        # the effect workflow, never from a word found in this document.
         if any(c.isnumeric() for c in literal) or re.search(
-            r'https?://|[<>?？\x00-\x08\x0b-\x1f]|ไหม|หรือเปล่า|บันทึก|ยืนยัน|กรุณา|โปรด|คลิก|'
-            r'(?:เพิ่ม|แก้ไข|ลบ|ยกเลิก|สร้าง|เลื่อน).{0,20}(?:แล้ว|สำเร็จ|เรียบร้อย)|'
-            r'\b(?:saved|created|updated|deleted|confirm|execute)\b', literal, re.I):
+            r'https?://|[<>\x00-\x08\x0b-\x1f]', literal, re.I):
             raise AnswerError('unsupported_answer_literal')
         available = {**facts, **{k: v['display'] for k, v in (fields or {}).items()}}
         if index is not None: available['index'] = str(index)

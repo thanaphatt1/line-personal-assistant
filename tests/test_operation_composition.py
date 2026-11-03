@@ -113,14 +113,13 @@ def test_new_catalog_category_and_complete_note_are_reviewed_without_raw_source_
     assert 'internal' not in json.dumps(view,ensure_ascii=False)
 
 
-@pytest.mark.parametrize('mutation',['drop_status','drop_row','drop_cell','invent_amount','claim_saved'])
-def test_presentation_cannot_drop_review_facts_or_introduce_business_claims(mutation):
+@pytest.mark.parametrize('mutation',['drop_status','drop_row','drop_cell','invent_amount'])
+def test_presentation_cannot_drop_review_facts_or_invent_business_values(mutation):
     view=operation.for_result(expense_result());document=natural_document(view)
     if mutation=='drop_status':document['blocks'].pop(0)
     if mutation=='drop_row':document['blocks'].pop(1)
     if mutation=='drop_cell':document['blocks'][1]['template']='{{c2}}'
     if mutation=='invent_amount':document['blocks'].insert(0,{'kind':'text','template':'รวม 999 บาท'})
-    if mutation=='claim_saved':document['blocks'].insert(0,{'kind':'text','template':'บันทึกแล้วครับ'})
     with pytest.raises(AnswerError):render(document,view)
 
 

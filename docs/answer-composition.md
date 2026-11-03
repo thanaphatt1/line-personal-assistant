@@ -79,13 +79,27 @@ than a bare name whose surrounding prose could silently change its polarity.
 This does not prove that every SQL plan expresses the user's intent or that
 every free sentence is semantically correct.
 
-Free prose may connect these values and describe the result. Generated
-business numbers, unknown references, obvious write/consent claims and
-instructions are rejected. **These checks do not prove the semantics of all
-natural-language prose.** A model can still describe a comparison or a source
-incorrectly in words. Prompting, finite evaluations and retained traces are
-needed in addition to structural checks; schema adherence alone does not prove
-factual accuracy. See [OpenAI's Structured Outputs guidance](https://developers.openai.com/api/docs/guides/structured-outputs).
+Free prose may connect these values and describe the result. The linked
+renderer does not ban words such as บันทึก, ยืนยัน, กรุณา or ไหม, English action
+words, or question punctuation. References to saved records and negated status
+sentences must not fail merely because they contain those words. Literal
+business numbers/dates, unknown references, URLs, markup and unsafe control
+characters are still rejected; verified values must use placeholders.
+
+**These checks do not prove the semantics of natural-language prose.** A model
+can still describe a comparison, source or operation status incorrectly in
+words. Instructions require the actual server status and prohibit invented
+effects, but a rendered document is not an effect receipt. Operation documents
+still require their authoritative status, warnings and confirmation facts;
+rendering never changes the core status, review, consent, action or provider
+receipt. Semantic evaluation must assess misleading prose independently of
+structural acceptance. See [OpenAI's Structured Outputs guidance](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+Explicit `finish_query_analysis` clarification questions likewise use shape,
+length and literal-data checks rather than action-word detection. The operation
+remains an incomplete, read-only clarification with no write authorization.
+This does not change the separate completion-claim heuristics for tool-less
+planner replies or the older ordinary-reply vocabulary path.
 
 ## Scope and fallback
 

@@ -1,141 +1,22 @@
 # Test guide
 
-[Dialogue scope](test_dialogue_scope.py) checks that past and future read dates
-remain context, the planner can cite earlier owner facts across interruptions
-and midnight, and hints never assign dates or override destination write rules.
-Scripted selections verify these contracts; they do not establish live-model
-reference resolution. Separate synthetic inference evaluation covers that.
-
-[SQL result units](test_relational_result_units.py) check counts with misleading
-aliases, source units through projections/CTEs/windows/aggregates, ratios,
-conflicting units, repeated analysis and exact decimal display. These contracts
-cover generic structured records as well as expense data.
-
-[Create-then-reschedule regressions](test_calendar_created_reschedule.py) use a
-single synthetic Calendar through signed creation, cold restoration and ETag
-updates. They cover a day-only follow-up after 28 minutes, intervening replies,
-one-event batches, all-day events, repeated moves, unknown writes and foreign
-or altered creation proofs at the exact read boundary.
-
-[Owner record controls](test_owner_features.py) cover reviewed expense removal,
-delivered buttons and confirmed vocabulary across cold signed webhooks.
-[Provider/state boundaries](test_owner_feature_boundaries.py) exercise stable
-IDs, tombstones, atomic Firestore receipts, uncertain writes, scope/version
-validation, interrupted alias actions and paginated Unicode labels. These use
-synthetic providers; the optional official emulator separately verifies deletion.
-
-The [planner prompt contracts](test_planner_instructions.py) check guidance
-selection from offered tools, preserved dialogue and parameter documentation.
-The [planner semantic corpus](fixtures/planner_semantics.json) supplies synthetic
-cross-domain scenarios for separate real-model development comparisons; it is
-not executed as paid inference by pytest. See [prompt design](../docs/planning-prompts.md).
-
-The [additional-payment regressions](test_additional_expenses.py) cover
-recorded-fact reuse on another date, unrelated pending drafts, catalog item
-case variants, creation-only repair, cold signed restore/confirmation/replay,
-and safe planner failure diagnostics. Business providers are synthetic.
-
-The [natural reply contracts](test_natural_replies.py) check that approximate
-Calendar times are prepared and disclosed while alternatives at the date/time
-still ask, that unrelated wording does not block preparation, that Calendar
-reviews and receipts use readable dates through bound operation documents and
-fallbacks, that evidence mismatches return to the planner, and that failure copy
-states no effect without internal terms.
-
-The [entry checks](test_entry_checks.py) cover same-day duplicate notices,
-conditional `only_if_absent` preparation (present, absent and unreadable records),
-the previous-question date and its immediacy limit, visible default dates and
-the receipt's alias offer through the separate alias review.
-
-The [name matching contracts](test_name_matching.py) check enum-only candidate
-requests, strict parsing, fallback on low confidence/outage/invalid output, no
-request for known names or a disabled flag, replay without a second request, the
-signed production reservation gate, typed save confirmation and the false
-success-claim regression.
-
-The [calendar activity answers](test_calendar_activity_answers.py) check that a
-long activity question is one read with one decision per repeated title, that a
-zero-confirmed answer leads with grouped possible matches and one per-title
-question, that answering for a title settles every occurrence without a write,
-the multi-year window bound, month-split reads answered as one question, and
-that a paraphrased filter returns to the planner instead of ending the turn, and
-that a read stops before the turn's provider-call budget so the turn still saves
-and replies (`read_capacity`) instead of failing the webhook.
-The [answer units and periods](test_answer_units_and_periods.py) check the shared
-amount format, Latin-name spacing, named months/years, day counting (distinct
-dates, not appointments) in reads, confirmations and subtotals, the asked period
-on confirmed-date subtotals and the single polite zero-confirmed lead.
-
-The [read planning contracts](test_read_planning_contracts.py) cover server-computed
-relative days, next appointments without period words, a misquoted period returned
-to the planner, the typed single-label filter and balance guidance, SQL fallback
-amounts and Thai table-review dates.
-
-The [activity memory contracts](test_activity_memory.py) cover remembering a
-whole-title answer with a one-tap undo, applying and disclosing labels on the
-next read, skipping the classifier when every title is known, forgetting,
-owner-wording grounding, date-subset answers, the disabled flag, the optional
-snapshot key and its tamper check, the configuration dependency, labels outside
-the restore bounds, no memory after a failed expense read, disclosed hints for
-other activity wording, expense totals and count summaries that disclose the
-label, and `purpose=expense_dates` keeping the spending goal.
-
-The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
-missing-field questions, interruption, compound rename/category corrections,
-short continuations and one final save. [Batch reads](test_read_batch.py) compare
-identical computed answers against sequential planner/provider call counts.
-[Performance](test_performance.py) and [LINE loading](test_loading.py) check
-aggregate-only reporting, replay separation, signed owner scopes and failure
-isolation. [Filtered table reads](test_filtered_table_storage.py) check indexed
-scope completeness, decimal/null residual semantics, cursor failures and fresh
-requests; the official emulator also exercises a multi-page date-range query.
-These are scripted synthetic contracts; see the
-[performance guide](../docs/performance.md) for measurement boundaries.
-
-The [read-answer composer](test_answer_composition.py) checks flexible prose,
-shared date headings, complete linked cells, preserved ranking, invalid-document
-fallback and exact signed replay. Its model responses are scripted; fresh
-synthetic model evaluations are retained separately outside this checkout.
-
-The [SQL executor](test_relational_sql.py) and
-[relational workflow](test_relational_queries.py) suites cover joins, CTEs,
-CASE/window calculations, exact decimal helpers, complete inputs beyond display
-limits, schema-based repair and read isolation. They include people/income and
-unrelated nonfinancial schemas, not only expense records. These are scripted
-offline contracts, separate from any fresh model evaluation.
-
-Shared [pending patches](test_pending_records.py),
-[temporal plans](test_temporal_plans.py) and [adaptive recovery](test_tool_recovery.py)
-check current schema/evidence, retained values, restart and no-progress behavior.
-
-Metadata table suites use synthetic people, income and shopping schemas:
-[engine](test_tables.py), [dialogue](test_table_workflow.py),
-[REST adapters](test_table_storage.py), and [signed composition](test_table_factory.py).
-They cover nonfinancial records, complete-input calculations, generic CRUD
-reviews, restart/replay and positive-proof recovery. The
-[registration fixture](fixtures/table_registry.json) contains no real targets.
-
 The default pytest suite checks the assistant's code with synthetic data and
 scripted provider/model responses. It needs no LINE, Google or OpenAI credentials.
 Passing it shows that the tested contracts hold; it does not measure general
 language-model accuracy or prove a live owner workflow.
-Use the [database and field guide](../docs/database-schema.md) when constructing
-synthetic Sheet rows, persisted state or source/transaction references.
 
-The [activity-spending follow-up regression](test_activity_expense_followup.py)
-uses a [synthetic two-turn scenario](fixtures/activity_expense_followup.json): an
-uncertain exam-duty Calendar result followed by `มีวันที่ 14`. It checks both
-speakers and the verified month after a factory restart, reproduces the
-`date_required` repair, blocks an unconditional previous-month total, rejects
-stale Calendar refs and calculates the confirmed-date subtotal. Short selections
-use the delivered `pending_query` context and `resolve_activity_dates` tool;
-remaining candidates survive restart and can be confirmed later. Cases also
-cover changed/deleted events, access failures, expired/undelivered context,
-unrelated new queries, same-day deduplication and exclusive midnight ends. The
-former expected failures now pass. The malformed model calls are constructed
-reproductions, not captured production decisions; the scripted controls do not
-establish that the model understands the dialogue.
-Run with `pytest tests/test_activity_expense_followup.py -p no:cacheprovider`.
+Start by running a focused suite, then use the suite directory below to find
+related coverage. Historical counts are kept as dated evidence, not a current
+coverage score.
+
+On this page:
+
+- [Run from the repository root](#run-from-the-repository-root)
+- [Test layers and organization](#test-layers-and-organization)
+- [Add a regression](#add-a-regression)
+- [Find the relevant suite](#find-the-relevant-suite)
+- [What is tested: dated inventory](#what-is-tested)
+- [Offline, replay and fresh model evidence](#offline-replay-and-fresh-model-evidence)
 
 ## Run from the repository root
 
@@ -174,6 +55,211 @@ Do not supply production credentials or replace fixtures with real owner records
 `httpx.MockTransport`, fake owners, clocks, messages and provider results. Worker
 subprocesses use synthetic adapters and temporary storage as well.
 
+## Test layers and organization
+
+- **Unit and contract tests** check dates, Decimal amounts, schemas, reference
+  ownership, configuration and exact request/response formats. See
+  [Sheet dates](test_sheet_dates.py) and [history tool schemas](test_history_tool_schema.py).
+- **Workflow integration tests** send events through the assistant or a FastAPI
+  test client, often with a real HMAC signature. The app runs actual validation,
+  state and consent code, while LINE, Google and model responses are simulated.
+  They check both results and effects: no write on preview, exactly one write
+  after valid consent and no second write on replay.
+- **Crash/restart tests** use temporary SQLite stores and separate local Python
+  processes. They exercise real process exits with synthetic providers. A local
+  concurrency or modeled Firestore-lease test does not prove every live
+  Cloud Run/Firestore or outside-writer race is controlled.
+- **Packaging/startup tests** verify allowed source inputs, checksums, tampering,
+  isolated imports and signed startup with zero provider calls. See
+  [source packaging](test_build_source.py), [packaged history startup](test_history_packaged_startup.py)
+  and [the CI checker](../scripts/check_ci.py).
+
+Many files span more than one layer, so there is no unit-versus-integration
+percentage implied by the family table.
+
+Test files are `test_*.py`. Shared [behavior](behavior_support.py) and
+[language](language_support.py) helpers construct synthetic evidence and tool
+responses. [Persistent API mocks](persistent_api_mock.py) and worker scripts
+support restart tests; run them through their pytest callers. [`fixtures/`](fixtures/)
+holds synthetic corpora, including examples intended for separate inference
+validation. A corpus JSON file does not call a model by itself.
+
+Version suffixes in filenames preserve the history of regression stages and
+compatibility contracts. Older entry points and test-only adapters can have cases
+for behavior that the current owner-facing runtime does not expose. Use
+[supported behavior](../docs/behavior.md), not a helper name, as the feature list.
+
+## Add a regression
+
+1. Choose the suite closest to the observable behavior. Use a synthetic owner,
+   workbook, event and clock; keep private records and credentials out of fixtures.
+2. Reproduce the failure with a small case before changing code. Use malformed
+   or wrong scripted model output when checking that the server rejects it;
+   a correctly scripted answer is not evidence that Luna understood the request.
+3. Assert the user-visible result **and** relevant effects/state. For example,
+   edit a reviewed amount, submit the old confirmation and assert zero writes;
+   deliver the latest review, confirm it and assert one effect despite replay.
+4. Add boundary variants that exercise the same rule: stale/foreign references,
+   failed delivery, feature OFF or an uncertain acknowledgement. Parameterize
+   meaningful variants rather than copying an implementation into assertions.
+5. Run the focused file/test, then the appropriate related regressions. Before
+   publishing a runtime change, run the full offline suite and `scripts/check_ci.py`
+   and review persistence/bridge compatibility if state contracts changed.
+
+See [development](../docs/development.md) for source packaging and change boundaries.
+A source push and passing tests do not authorize paid model calls or deployment.
+
+## Find the relevant suite
+
+### Dialogue, references and prompts
+
+[Dialogue scope](test_dialogue_scope.py) checks that past and future read dates
+remain context, the planner can cite earlier owner facts across interruptions
+and midnight, and hints never assign dates or override destination write rules.
+Scripted selections verify these contracts; they do not establish live-model
+reference resolution. Separate synthetic inference evaluation covers that.
+
+The [planner prompt contracts](test_planner_instructions.py) check guidance
+selection from offered tools, preserved dialogue and parameter documentation.
+The [planner semantic corpus](fixtures/planner_semantics.json) supplies synthetic
+cross-domain scenarios for separate real-model development comparisons; it is
+not executed as paid inference by pytest. See [prompt design](../docs/planning-prompts.md).
+
+### Calendar and saved-record changes
+
+[Create-then-reschedule regressions](test_calendar_created_reschedule.py) use a
+single synthetic Calendar through signed creation, cold restoration and ETag
+updates. They cover a day-only follow-up after 28 minutes, intervening replies,
+one-event batches, all-day events, repeated moves, unknown writes and foreign
+or altered creation proofs at the exact read boundary.
+
+[Owner record controls](test_owner_features.py) cover reviewed expense removal,
+delivered buttons and confirmed vocabulary across cold signed webhooks.
+[Provider/state boundaries](test_owner_feature_boundaries.py) exercise stable
+IDs, tombstones, atomic Firestore receipts, uncertain writes, scope/version
+validation, interrupted alias actions and paginated Unicode labels. These use
+synthetic providers; the optional official emulator separately verifies deletion.
+
+### Expense preparation and reply contracts
+
+The [additional-payment regressions](test_additional_expenses.py) cover
+recorded-fact reuse on another date, unrelated pending drafts, catalog item
+case variants, creation-only repair, cold signed restore/confirmation/replay,
+and safe planner failure diagnostics. Business providers are synthetic.
+
+The [natural reply contracts](test_natural_replies.py) check that approximate
+Calendar times are prepared and disclosed while alternatives at the date/time
+still ask, that unrelated wording does not block preparation, that Calendar
+reviews and receipts use readable dates through bound operation documents and
+fallbacks, that evidence mismatches return to the planner, and that failure copy
+states no effect without internal terms.
+
+The [entry checks](test_entry_checks.py) cover same-day duplicate notices,
+conditional `only_if_absent` preparation (present, absent and unreadable records),
+the previous-question date and its immediacy limit, visible default dates and
+the receipt's alias offer through the separate alias review.
+
+The [name matching contracts](test_name_matching.py) check enum-only candidate
+requests, strict parsing, fallback on low confidence/outage/invalid output, no
+request for known names or a disabled flag, replay without a second request, the
+signed production reservation gate, typed save confirmation and the false
+success-claim regression.
+
+### Reads, activity selection and memory
+
+The [calendar activity answers](test_calendar_activity_answers.py) check that a
+long activity question is one read with one decision per repeated title, that a
+zero-confirmed answer leads with grouped possible matches and one per-title
+question, that answering for a title settles every occurrence without a write,
+the multi-year window bound, month-split reads answered as one question, and
+that a paraphrased filter returns to the planner instead of ending the turn, and
+that a read stops before the turn's provider-call budget so the turn still saves
+and replies (`read_capacity`) instead of failing the webhook.
+The [answer units and periods](test_answer_units_and_periods.py) check the shared
+amount format, Latin-name spacing, named months/years, day counting (distinct
+dates, not appointments) in reads, confirmations and subtotals, the asked period
+on confirmed-date subtotals and the single polite zero-confirmed lead.
+
+The [read planning contracts](test_read_planning_contracts.py) cover server-computed
+relative days, next appointments without period words, a misquoted period returned
+to the planner, the typed single-label filter and balance guidance, SQL fallback
+amounts and Thai table-review dates.
+
+The [activity memory contracts](test_activity_memory.py) cover remembering a
+whole-title answer with a one-tap undo, applying and disclosing labels on the
+next read, skipping the classifier when every title is known, forgetting,
+owner-wording grounding, date-subset answers, the disabled flag, the optional
+snapshot key and its tamper check, the configuration dependency, labels outside
+the restore bounds, no memory after a failed expense read, disclosed hints for
+other activity wording, expense totals and count summaries that disclose the
+label, and `purpose=expense_dates` keeping the spending goal.
+
+### Conversation quality and performance
+
+The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
+missing-field questions, interruption, compound rename/category corrections,
+short continuations and one final save. [Batch reads](test_read_batch.py) compare
+identical computed answers against sequential planner/provider call counts.
+[Performance](test_performance.py) and [LINE loading](test_loading.py) check
+aggregate-only reporting, replay separation, signed owner scopes and failure
+isolation. [Filtered table reads](test_filtered_table_storage.py) check indexed
+scope completeness, decimal/null residual semantics, cursor failures and fresh
+requests; the official emulator also exercises a multi-page date-range query.
+These are scripted synthetic contracts; see the
+[performance guide](../docs/performance.md) for measurement boundaries.
+
+### Answer composition and SQL
+
+[SQL result units](test_relational_result_units.py) check counts with misleading
+aliases, source units through projections/CTEs/windows/aggregates, ratios,
+conflicting units, repeated analysis and exact decimal display. These contracts
+cover generic structured records as well as expense data.
+
+The [read-answer composer](test_answer_composition.py) checks flexible prose,
+shared date headings, complete linked cells, preserved ranking, invalid-document
+fallback and exact signed replay. Its model responses are scripted; fresh
+synthetic model evaluations are retained separately outside this checkout.
+
+The [SQL executor](test_relational_sql.py) and
+[relational workflow](test_relational_queries.py) suites cover joins, CTEs,
+CASE/window calculations, exact decimal helpers, complete inputs beyond display
+limits, schema-based repair and read isolation. They include people/income and
+unrelated nonfinancial schemas, not only expense records. These are scripted
+offline contracts, separate from any fresh model evaluation.
+
+### Pending work and generic tables
+
+Shared [pending patches](test_pending_records.py),
+[temporal plans](test_temporal_plans.py) and [adaptive recovery](test_tool_recovery.py)
+check current schema/evidence, retained values, restart and no-progress behavior.
+
+Metadata table suites use synthetic people, income and shopping schemas:
+[engine](test_tables.py), [dialogue](test_table_workflow.py),
+[REST adapters](test_table_storage.py), and [signed composition](test_table_factory.py).
+They cover nonfinancial records, complete-input calculations, generic CRUD
+reviews, restart/replay and positive-proof recovery. The
+[registration fixture](fixtures/table_registry.json) contains no real targets.
+
+Use the [database and field guide](../docs/database-schema.md) when constructing
+synthetic Sheet rows, persisted state or source/transaction references.
+
+### Detailed follow-up reproduction
+
+The [activity-spending follow-up regression](test_activity_expense_followup.py)
+uses a [synthetic two-turn scenario](fixtures/activity_expense_followup.json): an
+uncertain exam-duty Calendar result followed by `มีวันที่ 14`. It checks both
+speakers and the verified month after a factory restart, reproduces the
+`date_required` repair, blocks an unconditional previous-month total, rejects
+stale Calendar refs and calculates the confirmed-date subtotal. Short selections
+use the delivered `pending_query` context and `resolve_activity_dates` tool;
+remaining candidates survive restart and can be confirmed later. Cases also
+cover changed/deleted events, access failures, expired/undelivered context,
+unrelated new queries, same-day deduplication and exclusive midnight ends. The
+former expected failures now pass. The malformed model calls are constructed
+reproductions, not captured production decisions; the scripted controls do not
+establish that the model understands the dialogue.
+Run with `pytest tests/test_activity_expense_followup.py -p no:cacheprovider`.
+
 ## What is tested
 
 The following count is a **dated snapshot**, not an expected count for every
@@ -208,40 +294,6 @@ expands combinations such as feature ON/OFF, stale/current timestamps, lost
 acknowledgement phases and malformed values. For example, an all-day date test
 can cover the end of a month, year and leap February as separate items. Counts
 are neither independent user conversations nor a measure of coverage percentage.
-
-## Test layers and organization
-
-- **Unit and contract tests** check dates, Decimal amounts, schemas, reference
-  ownership, configuration and exact request/response formats. See
-  [Sheet dates](test_sheet_dates.py) and [history tool schemas](test_history_tool_schema.py).
-- **Workflow integration tests** send events through the assistant or a FastAPI
-  test client, often with a real HMAC signature. The app runs actual validation,
-  state and consent code, while LINE, Google and model responses are simulated.
-  They check both results and effects: no write on preview, exactly one write
-  after valid consent and no second write on replay.
-- **Crash/restart tests** use temporary SQLite stores and separate local Python
-  processes. They exercise real process exits with synthetic providers. A local
-  concurrency or modeled Firestore-lease test does not prove every live
-  Cloud Run/Firestore or outside-writer race is controlled.
-- **Packaging/startup tests** verify allowed source inputs, checksums, tampering,
-  isolated imports and signed startup with zero provider calls. See
-  [source packaging](test_build_source.py), [packaged history startup](test_history_packaged_startup.py)
-  and [the CI checker](../scripts/check_ci.py).
-
-Many files span more than one layer, so there is no unit-versus-integration
-percentage implied by the family table.
-
-Test files are `test_*.py`. Shared [behavior](behavior_support.py) and
-[language](language_support.py) helpers construct synthetic evidence and tool
-responses. [Persistent API mocks](persistent_api_mock.py) and worker scripts
-support restart tests; run them through their pytest callers. [`fixtures/`](fixtures/)
-holds synthetic corpora, including examples intended for separate inference
-validation. A corpus JSON file does not call a model by itself.
-
-Version suffixes in filenames preserve the history of regression stages and
-compatibility contracts. Older entry points and test-only adapters can have cases
-for behavior that the current owner-facing runtime does not expose. Use
-[supported behavior](../docs/behavior.md), not a helper name, as the feature list.
 
 ## Offline, replay and fresh model evidence
 
@@ -283,23 +335,3 @@ rollback or atomic protection against outside Sheet writers. The latter remains
 an operating constraint: the app lease does not provide Sheets compare-and-swap
 or lock external editors. See [saved-record limits](../docs/saved-record-edits.md)
 and [deployment/recovery](../docs/deployment.md).
-
-## Add a regression
-
-1. Choose the suite closest to the observable behavior. Use a synthetic owner,
-   workbook, event and clock; keep private records and credentials out of fixtures.
-2. Reproduce the failure with a small case before changing code. Use malformed
-   or wrong scripted model output when checking that the server rejects it;
-   a correctly scripted answer is not evidence that Luna understood the request.
-3. Assert the user-visible result **and** relevant effects/state. For example,
-   edit a reviewed amount, submit the old confirmation and assert zero writes;
-   deliver the latest review, confirm it and assert one effect despite replay.
-4. Add boundary variants that exercise the same rule: stale/foreign references,
-   failed delivery, feature OFF or an uncertain acknowledgement. Parameterize
-   meaningful variants rather than copying an implementation into assertions.
-5. Run the focused file/test, then the appropriate related regressions. Before
-   publishing a runtime change, run the full offline suite and `scripts/check_ci.py`
-   and review persistence/bridge compatibility if state contracts changed.
-
-See [development](../docs/development.md) for source packaging and change boundaries.
-A source push and passing tests do not authorize paid model calls or deployment.

@@ -8,9 +8,11 @@ internal compatibility handlers. Broader questions
 can compose SELECT, CTEs, joins, EXISTS, CASE, HAVING, UNION, subqueries and
 window functions without adding a handler for each question or table.
 
-Filtering uses SQL, including a single named item or category: read the full
-requested period with `filter=null`, `view=list`, `continue_analysis=true`, then
-express the conditions in `WHERE`. Resolve the requested label using catalog
+Filtering uses SQL, including a single named item or category: declare the full
+requested period and express conditions in `WHERE`. The executor normalizes
+internal expense reads to `filter=null`, `view=list`, `continue_analysis=true`;
+these are reader controls, not additional planner actions. Resolve the requested
+label using catalog
 meanings and categorical choices in source metadata. Unresolved closed-choice
 labels need clarification rather than guessed predicates and empty-total claims.
 The retained typed filter supports positive equality for compatible direct
@@ -116,11 +118,12 @@ cannot cause supporting inputs to be automatically reported as the answer.
 Source snapshots marked `analysis_input_only` require a SQL projection or
 calculation before `report`; premature selection returns schema feedback to
 the planner. The model still chooses all predicates and result columns.
-Planner SQL calls continue into a review of the executed selection, output
-shape and unresolved requested conditions before reporting. A failed review
-returns to the same read-only repair loop. This adds a planner call for SQL
-answers; it is model-based intent checking, not a proof that arbitrary SQL
-captures every natural-language request.
+After SQL execution, the planner checks the selection, output shape and
+unresolved owner conditions. On the current path, `act` / `intent=respond`
+combines that selection and answer composition in the next planner call;
+there is no separate self-review object. The model can instead repair its
+read plan when the result is wrong. This is model-based intent checking,
+not a proof that arbitrary SQL captures every natural-language request.
 
 Resource bounds on VM work/time, expression size and result bytes return a
 failure instead of a partial total. A failed query can be repaired against
