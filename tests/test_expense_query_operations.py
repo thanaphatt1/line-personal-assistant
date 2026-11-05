@@ -123,9 +123,10 @@ def test_unverified_delivery_never_supplies_previous_period():
 
 @pytest.mark.parametrize('claim',['ผมเรียงให้ใหม่ได้ครับ ต้องการเรียงจากมากไปน้อยใช่ไหมครับ',
     'ผมจัดอันดับให้แล้วครับ','เรียงรายจ่ายเสร็จแล้วครับ'])
-def test_free_model_prose_cannot_promise_or_claim_query_execution_without_a_read(claim):
+def test_free_model_prose_does_not_establish_a_query_result_or_effect(claim):
     api=SemanticHosted();result,_=turn(api,'sort max ไม่ได้หรอ',response(text=claim))
-    assert result.status=='clarification' and result.message=='รอบนี้ยังไม่ได้ค้นหรือจัดเรียงข้อมูลใหม่ครับ'
+    assert result.status=='answer' and result.message==claim
+    assert not result.data.get('tool_result') and not api.google.sheet_writes and not api.calendar.posts
 
 def test_honest_unsupported_operation_reply_is_preserved():
     api=SemanticHosted();text='ผมคำนวณค่ามัธยฐานให้ไม่ได้ครับ ยังไม่รองรับการคำนวณนี้'

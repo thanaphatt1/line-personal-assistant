@@ -104,23 +104,19 @@ def test_a_period_split_into_month_reads_is_still_answered_as_one_question(empty
     assert len(result.data['read_followup']['candidates'])==count and result.data['line_message']['contents']['footer']['contents']
 
 
-def test_a_paraphrased_activity_filter_goes_back_to_the_planner_to_quote_the_owner():
+def test_a_paraphrased_activity_filter_runs_without_a_word_repair_roundtrip():
     api=SemanticHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}
-    seen=[]
-    def quoted(body):
-        seen.append(body);return plan('calendar','2026-10-24','2026-12-31',filter_text='คุมสอบ')(body)
-    result,_=turn(api,'มีวันไหนที่ต้องไปคุมสอบบ้างจนถึงธันวา',plan('calendar','2026-10-24','2026-12-31',filter_text='วันที่ต้องไปคุมสอบ'),quoted)
-    returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
-    assert returned[-1]['repair_feedback']['error_code']=='filter_text_not_quoted' and returned[-1]['repair_feedback']['invalid_fields']==['filter_text']
-    assert result.message.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มี 4 นัดที่อาจเป็นคุมสอบครับ') and len(result.data['read_followup']['candidates'])==4
-
+    result,_=turn(api,'มีวันไหนที่ต้องไปคุมสอบบ้างจนถึงธันวา',plan('calendar','2026-10-24','2026-12-31',filter_text='วันที่ต้องไปคุมสอบ'))
+    assert result.message.startswith('24 ต.ค. 2026 ถึง 31 ธ.ค. 2026 มี 4 นัดที่อาจเป็นวันที่ต้องไปคุมสอบครับ')
+    assert len(result.data['read_followup']['candidates'])==4
+    assert len([b for b in api.model_bodies if b['tools']])==1
 
 def test_planner_context_and_tool_description_state_the_real_window():
     from line_assistant import read_queries
     from line_assistant.data_inventory import context
     calendar=next(t for t in read_queries.definitions() if t['name']=='query_calendar')
     assert '31' not in calendar['description'] and 'ONE read' in calendar['description']
-    assert 'character-for-character' in calendar['parameters']['properties']['filter_text']['description']
+    assert 'Normalize typos' in calendar['parameters']['properties']['filter_text']['description']
     class Host:
         _data_inventory={}
         class calendar_flow:enabled=True

@@ -97,7 +97,7 @@ def test_partial_qualifiers_and_all_diagnostic_rows_are_immutable_style_facts():
     h,add=setup();add('Unlisted Token','7.00');r=query(h);h._active_event_id='synthetic-style'
     body=body_for(h,r);payload=json.loads(body['input'][0]['content'])
     assert 'mapping_partial' in payload['facts'] and payload['locked_rows']
-    parts={k:{'before':v['properties']['before']['enum'][0],'after':v['properties']['after']['enum'][0]} for k,v in body['text']['format']['schema']['properties']['parts']['properties'].items()}
+    parts={k:{'before':'','after':''} for k in payload['facts']}
     def reply(document):
         return {'status':'completed','model':body['model'],'usage':{'input_tokens':1,'output_tokens':1},'output':[{'type':'message','status':'completed','content':[{'type':'output_text','text':json.dumps(document,ensure_ascii=False)}]}]}
     text=parse(reply({'opening':'','parts':parts}),body)

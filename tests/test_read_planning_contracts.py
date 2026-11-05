@@ -35,15 +35,12 @@ def test_next_appointments_need_no_period_words():
     assert output['complete'] and output['scope']['upcoming'] and output['scope']['start']=='2026-10-16'
 
 
-def test_a_misquoted_period_goes_back_to_the_planner_instead_of_asking_the_owner():
-    api=VoiceHosted();seen=[]
-    def quoted(body):
-        seen.append(body);return edited(plan(start='2026-10-01',end='2026-10-31'),period_text='ต.ค. นี้')(body)
-    result,_=turn(api,'ต.ค. นี้หมดไปกี่บาทแล้ว',edited(plan(start='2026-10-01',end='2026-10-31'),period_text='ต.ค. นี้หมดไปแล้ว'),quoted)
-    returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
-    assert returned[-1]['repair_feedback']['error_code']=='period_text_not_quoted'
+def test_a_normalized_period_is_context_not_a_literal_quote_requirement():
+    api=VoiceHosted()
+    result,_=turn(api,'ต.ค. นี้หมดไปกี่บาทแล้ว',edited(plan(start='2026-10-01',end='2026-10-31'),period_text='ตุลาคมนี้'))
     assert result.data['tool_result']['complete'] and 'ต้องการดูช่วงวันไหน' not in result.message
-
+    assert len([b for b in api.model_bodies if b['tools']])==1
+    assert not api.google.sheet_writes and not api.calendar.posts
 
 def test_read_tool_guidance_consistently_uses_sql_for_filters_and_names_balance():
     from line_assistant import read_queries,relational

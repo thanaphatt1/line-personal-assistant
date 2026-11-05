@@ -17,14 +17,6 @@ from .state import Claim,Result
 
 READ_TOOLS={'act','query','query_sources','lookup_catalog','query_expenses','query_calendar','inspect_data_sources','finish_query_analysis','resolve_activity_dates','resolve_temporal','query_relations','list_tables','describe_table','query_table','check_table_change'}
 
-def unverified_claim(text):
-    # Output-claim check only, never an owner intent/date/keyword router.
-    if re.search(r'ไม่ได้|ไม่รองรับ|ยังไม่สามารถ',text):return False
-    verbs=r'(?:เรียง|จัดอันดับ|จัดกลุ่ม|รวมยอด|คำนวณ|จับคู่)'
-    return bool(re.search(r'ผม(?:จะ|สามารถ|ช่วย)?'+verbs+r'.{0,80}(?:ให้|ได้|แล้ว)',text)
-                or re.search(verbs+r'.{0,60}(?:เรียบร้อยแล้ว|เสร็จแล้ว)',text))
-
-
 class IntentReview(BaseModel):
     """Legacy proposal compatibility; not an offered self-attestation step."""
     model_config=ConfigDict(extra='forbid',strict=True)

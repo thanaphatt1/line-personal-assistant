@@ -83,16 +83,13 @@ def test_invalid_relative_offsets_cannot_expand_query(offset):
     assert r.data['tool_result']['error_code']=='query_invalid_arguments'
 
 
-@pytest.mark.parametrize('again',['repeat','ask'])
-def test_calendar_filter_must_come_from_cited_owner_wording(again):
-    api=VoiceHosted();seen=[]
-    def second(body):
-        seen.append(body);return plan('calendar',filter_text='TA')(body) if again=='repeat' else response(text='อยากดูนัดประเภทไหนครับ?')
-    r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='TA'),second)
-    returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
-    assert returned[-1]['repair_feedback']['error_code']=='filter_text_not_quoted'
-    assert r.status=='clarification' and not api.calendar_requests and not api.calendar.posts
-
+def test_calendar_filter_semantics_are_model_selected_not_proved_by_substring():
+    api=VoiceHosted()
+    r,_=turn(api,'เฉพาะนัดกีฬา',plan('calendar',filter_text='TA'))
+    # Even a semantically wrong interpretation is not a word-policy failure.
+    # Outcome quality needs its own oracle; source/permission/effect checks remain.
+    assert r.status!='clarification' and api.calendar_requests
+    assert not api.calendar.posts and not api.google.sheet_writes
 
 def test_referenced_records_preserve_every_appointment_without_copying_its_values():
     from test_read_queries import event
@@ -142,13 +139,13 @@ def test_previous_period_without_a_verified_scope_never_defaults():
 
 
 
-def test_current_clock_is_not_evidence_for_an_omitted_owner_period():
+def test_period_description_is_optional_when_the_model_supplies_typed_dates():
     api=VoiceHosted()
     def choose(body):
         v=plan()(body);args=json.loads(v['output'][0]['arguments']);args['period_text']=None
         v['output'][0]['arguments']=json.dumps(args);return v
     r,_=turn(api,'สรุปรายจ่ายหน่อย',choose)
-    assert r.status=='clarification' and r.data['tool_result']['error_code']=='date_required'
+    assert r.status=='summary' and r.data['tool_result']['complete']
 
 
 def test_model_selected_upcoming_mode_computes_the_bounded_window():

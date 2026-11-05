@@ -110,7 +110,7 @@ review.
 
 ### Filters and saved item identity
 
-A new explicit expense question starts with all items unless it supplies a filter. Date-only follow-ups retain the preceding filter; `ทั้งหมด` clears it. Calendar subjects/types/conditions are copied literally from cited owner wording into `filter_text`; a paraphrased filter (`filter_text_not_quoted`) is returned once to the planner as an assistant-argument repair, never read, and a repeated mistake stops with a clarification. The second model request classifies the complete fetched event set semantically; there is no keyword filter, Calendar `q` search, or model-generated provider query.
+A new explicit expense question starts with all items unless it supplies a filter. Date-only follow-ups retain the preceding filter; `ทั้งหมด` clears it. Calendar subjects/types/conditions in `filter_text` are interpreted by the model from cited owner context. Normalized spelling and paraphrases do not fail a substring check; selecting the intended meaning remains a model responsibility. The second model request classifies the complete fetched event set semantically; there is no keyword filter, Calendar `q` search, or model-generated provider query.
 
 The model resolves wording and typos to exact existing item/category/subcategory labels
 supplied by the catalog; an unknown or ambiguous label requires clarification. No
@@ -149,7 +149,7 @@ fuzzy-merge unfamiliar names.
 
 Dates use Asia/Bangkok. Weeks run Monday–Sunday; relative dates are anchored to the current owner message timestamp. The model interprets Thai month names and abbreviations, Buddhist years, ISO dates and day/month/year dates into typed calendar frames or explicit inclusive dates.
 
-Relative day/week/month/year offsets (`calendar_day` for วันนี้/เมื่อวาน/พรุ่งนี้) are selected by the model and expanded using calendar arithmetic on the authoritative Bangkok date. New periods carry a literal owner `period_text` citation; the current clock alone cannot fill an omitted period. A cited span that is not a literal quote (`period_text_not_quoted`) returns to the planner as an assistant-argument repair instead of asking the owner for a period they already gave. The `upcoming` mode needs no period words.
+Relative day/week/month/year offsets (`calendar_day` for วันนี้/เมื่อวาน/พรุ่งนี้) are selected by the model and expanded using calendar arithmetic on the authoritative Bangkok date. `period_text` is optional descriptive context and may normalize spelling. The model selects the typed frame/offset or absolute anchors from owner context; code validates those values rather than requiring a copied period phrase. The `upcoming` mode needs no period words.
 
 For filter/view-only follow-ups, `date_mode=previous` explicitly selects dates from the latest verified query receipt; it cannot invent a default when that receipt is absent. An unqualified month uses its first through last day; an explicit “จนถึงวันนี้” clips the end to today. Missing or conflicting periods require clarification.
 
@@ -177,7 +177,7 @@ displayed top rows. Grounded row facts cannot be reordered by the wording model.
 
 `count_unit=days` answers how many days (distinct Bangkok dates inside the window, exclusive ends) and also states the appointment count when it differs; other questions count appointments. A follow-up confirmation and `calendar_count` keep that unit.
 
-In the compatibility reader sequence for activity-conditioned spending, first call `query_calendar` with the literal activity in `filter_text`, `purpose=expense_dates` and `continue_analysis=true`, then call `query_expenses` with its current-request `calendar_query_refs`. `date_mode=previous` can derive the interval directly from these Calendar reads.
+In the compatibility reader sequence for activity-conditioned spending, first call `query_calendar` with the interpreted activity in `filter_text`, `purpose=expense_dates` and `continue_analysis=true`, then call `query_expenses` with its current-request `calendar_query_refs`. `date_mode=previous` can derive the interval directly from these Calendar reads.
 
 Code requires complete Calendar coverage of the expense interval, complete classifications and occurrence references. It unions matching Bangkok dates, includes each payment once even with several same-day events, clips spanning events to verified windows and treats event end times/dates as exclusive. All-day/timed events ending at midnight do not add the next day. Unknown, duplicate, stale, incomplete, uncertain or insufficient-coverage refs fail without an unconditional total or false zero. A complete empty Calendar result can establish zero matching dates. This join can compose with exact expense filters, grouping and ranking.
 
@@ -193,9 +193,7 @@ before applying that condition on a new turn. Reusing `previous` without fresh C
 refs cannot silently broaden the answer to every date. Planner instructions and
 `query_capabilities` describe supported operations, distinguish activity conditions from
 expense category filters, require executing supported requests instead of promising a
-future sort, and require honest statements for unsupported operations. An output-claim
-guard also rejects recognized narration of query execution when no read ran; it is not a
-universal language classifier or proof of planner accuracy.
+future sort, and require honest statements for unsupported operations. Tool-less prose is not scanned for execution words and does not create a query result, business action or receipt. Actual query results still require configured-source execution.
 
 ## Calendar completeness and semantic analysis
 
@@ -262,11 +260,11 @@ replaces this read focus; plain chat and failed reads can preserve it.
 ### Confirming or excluding candidates
 
 For a spending follow-up such as `มีวันที่ 14`, the planner selects candidate references
-with `resolve_activity_dates`, citing a literal selection from the current owner
-message. The model interprets the language; the server checks reference ownership and
+with `resolve_activity_dates`, describing the selection from the current owner
+message; spelling normalization is allowed. The model interprets the language; the server checks reference ownership and
 delivery, re-reads Calendar, rejects changed/deleted occurrences and calculates the
 expense subtotal on the confirmed Bangkok dates. The selected event must also agree with
-any unambiguous explicit date in that literal evidence. `decision=exclude` records a
+any unambiguous explicit date in that current owner message. `decision=exclude` records a
 rejected candidate without confirming another candidate or creating an expense total.
 For example, `วันที่ 14 ไม่ใช่คุมสอบ` excludes day 14 and leaves day 29 unconfirmed; it
 cannot authorize a day-29 subtotal. Exclusions survive restart alongside the remaining
@@ -311,7 +309,7 @@ not use a vocabulary whitelist or prove arbitrary prose semantically correct.
 Native `act` responses use a verified fallback directly after a rejected document,
 without another model call.
 
-The retained ordinary fact-slot reply path composes natural Thai by selecting phrases around separate immutable period, filter, total and count slots. Verified row details are appended by the server; the model need not repeat or enumerate them. Partial-result qualifiers and resolution instructions are also required immutable facts, and unresolved names are appended as locked rows. Amounts/counts include their units, preventing unit swaps; required schema fields retain every header fact exactly once, and per-slot phrase enums cannot invent dates, quantities, names, success or change units. A model failure returns a natural server fallback.
+The retained ordinary fact-slot reply path composes natural Thai with free before/after text around separate immutable period, filter, total and count slots. Verified row details are appended by the server; the model need not repeat or enumerate them. Partial-result qualifiers and resolution instructions are also required immutable facts, and unresolved names are appended as locked rows. Amounts/counts include their units, preventing unit swaps; required schema fields retain every header fact exactly once, while bounded before/after prose is unrestricted by word or phrase lists. Literal business numbers still require bound facts. Prose can be semantically wrong; acceptance does not prove names, status or units were described correctly. A model failure returns a natural server fallback.
 
 Distinct non-sensitive reason codes distinguish invalid arguments, unknown filters, incomplete mappings, schema errors, provider failures and unfinished reads. They do not establish the cause of any earlier live incident. A terse dated title such as `พรุ่งนี้ Workshop` asks whether to add an appointment or view saved events, and creates no draft. This also applies after a previous query.
 

@@ -98,8 +98,11 @@ structural acceptance. See [OpenAI's Structured Outputs guidance](https://develo
 Explicit `finish_query_analysis` clarification questions likewise use shape,
 length and literal-data checks rather than action-word detection. The operation
 remains an incomplete, read-only clarification with no write authorization.
-This does not change the separate completion-claim heuristics for tool-less
-planner replies or the older ordinary-reply vocabulary path.
+The ordinary fact-slot path and diagnosed explanations now also use bounded
+free prose with immutable fact IDs/reason codes. Their schemas have no word
+patterns or before/after phrase enums. Tool-less planner text is not scanned
+for completion words: it stays an answer without any verified operation effect.
+See [language policy and typed checks](semantic-boundaries.md#language-policy-and-typed-checks).
 
 ## Scope and fallback
 

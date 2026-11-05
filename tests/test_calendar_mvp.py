@@ -196,9 +196,9 @@ def test_feature_off_retains_v11_tools_and_cannot_claim_calendar_success():
     assert not any(t['name'] in h.app.calendar_flow.tool_names for t in body['tools'])
     assert 'calendar_v1' not in history_snapshot(h.state)
 
-def test_feature_on_rejects_model_text_claim_without_a_server_creation():
+def test_feature_on_keeps_toolless_claim_as_answer_without_server_creation():
     h=Harness();r=h.send('นัดตรวจฟัน',response(text='สร้างนัดตรวจฟันแล้ว'))
-    assert r.status=='clarification' and not h.provider.events
+    assert r.status=='answer' and r.message=='สร้างนัดตรวจฟันแล้ว' and not h.provider.events and not h.state.calendar_drafts
 
 @pytest.mark.parametrize('word,clock',[('2pm','14:00'),('12am','00:00'),('12pm','12:00')])
 def test_explicit_meridiem(word,clock):assert event_time(word).strftime('%H:%M')==clock

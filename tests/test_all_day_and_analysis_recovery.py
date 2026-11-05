@@ -105,25 +105,17 @@ def test_unchanged_bad_selection_still_stops_without_new_verified_evidence():
     assert not api.google.sheet_writes and not api.calendar.posts
 
 
-def test_an_unverified_completion_goes_back_to_the_planner_without_asking_the_owner_to_repeat():
-    h=Harness()
-    def repaired(body):
-        c=json.loads(body['input'][0]['content'])
-        assert c['repair_feedback']['error_code']=='unverified_completion_claim'
-        assert c['message']==LAYOUTS[0].format(title=TITLE)
-        assert h.provider.posts==0
-        return proposed(body)
-    r=h.send(LAYOUTS[0].format(title=TITLE),response(text='เพิ่มนัดเรียบร้อยแล้วครับ'),repaired)
-    assert r.status=='preview' and h.provider.posts==0 and len(h.model.requests)==2
-    assert h.send(r.data['confirm_command']).status=='created' and h.provider.posts==1
+def test_completion_wording_is_not_a_second_planner_or_a_verified_effect():
+    h=Harness();wording='เพิ่มนัดเรียบร้อยแล้วครับ'
+    r=h.send(LAYOUTS[0].format(title=TITLE),response(text=wording))
+    assert r.status=='answer' and r.message==wording and len(h.model.requests)==1
+    assert not h.state.calendar_drafts and h.provider.posts==0 and 'confirm_command' not in r.data
 
-
-def test_a_repeated_unverified_completion_stops_without_a_tool_or_write():
-    h=Harness();bad=response(text='เพิ่มนัดเรียบร้อยแล้วครับ')
-    r=h.send(LAYOUTS[0].format(title=TITLE),bad,bad)
-    assert r.status=='clarification' and len(h.model.requests)==2 and h.provider.posts==0
-    assert not h.state.calendar_drafts and 'confirm_command' not in r.data
-
+def test_discussing_completion_does_not_trigger_a_word_based_repair():
+    h=Harness();wording='ถ้าขึ้นว่าเพิ่มนัดเรียบร้อยแล้วก็ตรวจรายการในปฏิทินได้ครับ'
+    r=h.send('คำตอบนี้หมายถึงอะไร',response(text=wording))
+    assert r.status=='answer' and r.message==wording and len(h.model.requests)==1
+    assert not h.state.calendar_drafts and h.provider.posts==0
 
 def test_an_ordinary_clarification_does_not_trigger_response_repair():
     h=Harness();r=h.send('อยากเพิ่มนัดครับ',response(text='นัดเรื่องอะไรครับ?'))

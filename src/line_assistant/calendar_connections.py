@@ -87,9 +87,6 @@ def literal_id(identifier,text):
         if parsed.hostname=='calendar.google.com' and parsed.path=='/calendar/embed' and parse_qs(parsed.query).get('src')==[identifier]:return True
     return False
 
-def claims_connected(text):
-    return bool(re.search(r'(?:เชื่อม(?:ต่อ)?|เพิ่ม).*?ปฏิทิน.*?(?:แล้ว|สำเร็จ|เรียบร้อย)|\bcalendar\s+(?:(?:has\s+been|is|was)\s+)?(?:now\s+)?(?:connected|added)\b|\b(?:successfully|I\s+have|I\x27ve)\s+(?:connected|added)\b.*?\bcalendar\b',text,re.I))
-
 def execute(host,args):
     output={'calendar_connection':True,'domain':'calendar','calendar_write_authorized':False,'financial_write_authorized':False}
     def failed(code):return {**output,'ok':False,'status':'connection_error','error_code':code}

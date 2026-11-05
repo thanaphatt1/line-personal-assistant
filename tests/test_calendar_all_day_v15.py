@@ -364,7 +364,7 @@ def test_reconciliation_rejects_midnight_timed_equivalent_and_wrong_exclusive_en
     with pytest.raises(ValueError):parse_payload({'title':'นิทรรศการทดสอบ','all_day':True,'start':'2026-12-31T00:00:00+07:00','end':'2027-01-01'})
 
 @pytest.mark.parametrize('outcome',['clarification','partial','uncertain','stale'])
-def test_generic_positive_acknowledgement_is_rejected_for_non_success(outcome):
+def test_positive_opening_does_not_replace_authoritative_non_success_fact(outcome):
     from line_assistant.response_realization import body_for,parse
     from line_assistant.state import Result
     class Host:
@@ -372,4 +372,5 @@ def test_generic_positive_acknowledgement_is_rejected_for_non_success(outcome):
         class state:history=[];receipts={}
     body=body_for(Host(),Result(outcome,'ยังไม่ได้สร้างนัด',{}));value=generated(body)
     value['output'][0]['content'][0]['text']=value['output'][0]['content'][0]['text'].replace('"opening": ""','"opening": "ได้เลยครับ"')
-    with pytest.raises(ValueError):parse(value,body)
+    rendered=parse(value,body)
+    assert 'ได้เลยครับ' in rendered and 'ยังไม่ได้สร้างนัด' in rendered

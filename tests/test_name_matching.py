@@ -109,7 +109,7 @@ def test_typed_save_label_confirms_the_reviewed_choice_and_a_false_success_claim
     from test_entry_checks import existing
     review,_=turn(api,'ใช่',existing('Spotify'));assert review.status=='preview' and api.expense_writes==0
     claimed,_=turn(api,'ตกลงตามนั้น',response(text='บันทึกรายการ Spotify 88 บาทเรียบร้อยแล้วครับ'))
-    assert claimed.status=='clarification' and 'ยังไม่ได้บันทึก' in claimed.message and api.expense_writes==0
+    assert claimed.status=='answer' and claimed.message=='บันทึกรายการ Spotify 88 บาทเรียบร้อยแล้วครับ' and api.expense_writes==0
     again,_=turn(api,'ขอดูอีกครั้ง',response(name='prepare_expense_review',args={'draft_ref':review.data['tool_result']['draft_ref'],
         'draft_version':review.data['tool_result']['draft_version']}))
     saved,_=turn(api,'บันทึก')

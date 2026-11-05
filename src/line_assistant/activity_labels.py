@@ -2,7 +2,8 @@
 
 A decision is remembered only from an owner answer covering every shown
 occurrence of a title, or from an explicit remember/correct/forget request that
-names both the title and the activity. Labels apply by exact normalized title
+identifies the title and activity through model interpretation of current owner
+context. Labels apply by exact normalized title
 and activity, are disclosed in every answer that uses them and never touch
 Calendar. Runtimes before this key ignore it: a rollback forgets the labels and
 the next read asks again instead of rejecting the owner state.
@@ -124,14 +125,14 @@ def execute(host, args):
     try:
         p = Update.model_validate(args)
         host._owner_sources(p.source_refs)
-        text = normalized(host._current['text'])
         if host._current['source_ref'] not in p.source_refs:
             raise ValueError('activity_label_source')
-        # Both names come from the owner's own words; a model cannot invent a label.
-        if any(not normalized(v) or normalized(v) not in text for v in (p.title, p.activity)):
-            raise ValueError('activity_label_not_quoted')
+        # Interpretation may normalize spelling; keep current owner binding
+        # and nonempty typed labels without comparing natural-language words.
+        if any(not normalized(v) for v in (p.title, p.activity)):
+            raise ValueError('activity_label_invalid')
     except (ValueError, TypeError, KeyError) as error:
-        code = str(error) if str(error) in {'activity_label_source', 'activity_label_not_quoted'} else 'activity_label_invalid'
+        code = str(error) if str(error) in {'activity_label_source', 'activity_label_invalid'} else 'activity_label_invalid'
         return {**base, 'ok': False, 'error_code': code,
                 'recovery': recovery(kind='assistant_arguments', fields=['title', 'activity'], tools=[NAME])}
     ref = key(p.activity, p.title)

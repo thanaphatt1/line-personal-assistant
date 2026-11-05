@@ -98,12 +98,12 @@ def test_repair_planner_finishes_a_checked_reply_without_third_model_request(tex
 
 
 @pytest.mark.parametrize('damage',['missing_fact','success','foreign_ref'])
-def test_bad_repair_exit_is_rejected_then_the_same_planner_can_correct_it(damage):
+def test_repair_exit_checks_facts_and_refs_without_word_filtering(damage):
     api=RecordsHosted()
     with TestClient(api.app()) as client:
         result,_=api.turn(client,'วันนั้น กาแฟ 61',call(bad_date()),finish_reply(damage=damage),finish_reply())
     assert result.status=='clarification' and result.data['response_realization']['status']=='planner'
-    assert len(api.model_bodies)==3 and not api.google.sheet_writes
+    assert len(api.model_bodies)==(2 if damage=='success' else 3) and not api.google.sheet_writes
 
 
 def test_unstructured_repair_answer_uses_core_fallback_without_an_extra_composer():

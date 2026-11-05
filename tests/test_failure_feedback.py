@@ -180,19 +180,29 @@ def test_reply_model_sees_diagnosis_and_can_paraphrase_it_with_locked_status_fac
 
 @pytest.mark.parametrize('change',[
     {'reason_codes':['tool_unavailable']},
-    {'explanation':'บันทึกแล้ว เลือกหมวดแล้วครับ'},
-    {'explanation':'คุณพิมพ์หมวดผิดครับ'},
-    {'explanation':'ไม่มีสิทธิ์เข้าถึงหมวดในฐานข้อมูลครับ'},
     {'explanation':'หมวดนี้ยอดเงินต้องเป็น 100 บาทครับ'},
-    {'explanation':'ส่งชื่อหมวดมาใหม่ครับ'},
-    {'explanation':'ผมเลือกหมวด Food ให้ครับ'},
-    {'explanation':'เลือกหมวดไหนครับ?'},
-    {'explanation':'ผมจะซ่อมระบบให้ครับ'},
+    {'explanation':'<script>หมวด</script>'},
+    {'explanation':'https://example.invalid'},
+    {'explanation':'หมวด\x00'},
 ])
-def test_unsupported_diagnostic_prose_is_rejected_without_changing_facts_or_status(change):
+def test_diagnostic_code_and_literal_data_checks_preserve_core_status(change):
     h,r,b=body();value=generated(b);doc=json.loads(value['output'][0]['content'][0]['text']);doc.update(change)
     value['output'][0]['content'][0]['text']=json.dumps(doc,ensure_ascii=False)
     with pytest.raises(ValueError):voice.parse(value,b)
+    assert h.draft()['version']==1 and not h.sheets.entries
+
+
+@pytest.mark.parametrize('wording',[
+    'บันทึกแล้ว เลือกหมวดแล้วครับ', 'คุณพิมพ์หมวดผิดครับ',
+    'ไม่มีสิทธิ์เข้าถึงหมวดในฐานข้อมูลครับ', 'ส่งชื่อหมวดมาใหม่ครับ',
+    'ผมเลือกหมวด Food ให้ครับ', 'เลือกหมวดไหนครับ?', 'ผมจะซ่อมระบบให้ครับ',
+    'ยังไม่ได้ดำเนินการ กรุณาทบทวนรายละเอียดได้ไหมครับ',
+])
+def test_diagnostic_prose_has_no_word_policy_or_semantic_approval(wording):
+    h,r,b=body();value=generated(b);doc=json.loads(value['output'][0]['content'][0]['text']);doc['explanation']=wording
+    value['output'][0]['content'][0]['text']=json.dumps(doc,ensure_ascii=False)
+    rendered=voice.parse(value,b);payload=json.loads(b['input'][0]['content'])
+    assert wording in rendered and payload['facts']['status'] in rendered
     assert h.draft()['version']==1 and not h.sheets.entries
 
 
@@ -224,7 +234,7 @@ def test_hosted_diagnostic_generation_failure_returns_actionable_fallback_and_re
             p=next(v['reply_context'] for v in replies if v)
             assert p['validation_reply']
             return response(text=json.dumps({'reason_codes':p['validation_feedback']['codes'],
-                'explanation':'ไม่มีสิทธิ์เลือกหมวดในฐานข้อมูลครับ'},ensure_ascii=False))
+                'explanation':'ยอดหมวด 100 บาทครับ'},ensure_ascii=False))
         d=json.loads(b['input'][0]['content'])['available_drafts'][0]
         return response(name='prepare_item_enrollment',args={'draft_ref':d['draft_ref'],'draft_version':d['version'],
             'entry_ref':d['entries'][0]['entry_ref'],'resolution_step':'begin_new_item',

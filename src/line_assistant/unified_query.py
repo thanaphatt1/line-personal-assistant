@@ -208,9 +208,21 @@ def execute(host, args):
                     'complete': all(v.get('complete') for v in outputs), 'results': results,
                     'read_only': True, 'financial_write_authorized': False, 'calendar_write_authorized': False}
         if len(relations) != len(plans):
+            failed=[(i,v) for i,v in enumerate(outputs) if not v.get('ok') or not v.get('complete')]
+            diagnostics=[{'source_index':i,'error_code':v.get('error_code'),
+                'recovery':deepcopy(v.get('recovery',{}))} for i,v in failed]
+            if failed and all(v.get('recovery',{}).get('kind')=='assistant_arguments' for _,v in failed):
+                fields=list(dict.fromkeys(f for _,v in failed for f in v['recovery'].get('invalid_fields',[])))
+                return {**base,'ok':False,'complete':False,'status':'clarification',
+                    'query_refs':[v['query_ref'] for _,v in failed],
+                    'error_code':failed[0][1].get('error_code') or 'query_source_arguments',
+                    'source_errors':diagnostics,
+                    'message':'พารามิเตอร์อ่านข้อมูลยังใช้ไม่ได้ครับ',
+                    'recovery':recovery(kind='assistant_arguments',fields=fields,tools=['act'])}
             return {**base, 'ok': False, 'complete': False, 'status': 'clarification',
                     'query_refs': [v['query_ref'] for v in outputs if not v.get('ok') or not v.get('complete')],
                     'error_code': 'query_incomplete_source',
+                    'source_errors':diagnostics,
                     'message': 'ข้อมูลต้นทางยังไม่ครบหรือยังมีเงื่อนไขที่ต้องยืนยัน จึงยังคำนวณผลทั้งหมดไม่ได้ครับ',
                     'recovery': recovery(kind='unavailable', tools=[NAME, 'finish_query_analysis'])}
         with span('query_sql'):

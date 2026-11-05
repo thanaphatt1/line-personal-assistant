@@ -357,9 +357,9 @@ def test_fake_model_saved_claim_never_becomes_business_success():
     port = Port(); a, p = setup(port=port)
     port.values = [response(text='บันทึกรายจ่ายให้แล้ว')]
     r = a.handle(event('BTS 228 บาท', 'create'))
-    assert r.status == 'clarification' and not p.sheet_writes and not a.state.actions
+    assert r.status == 'answer' and r.message=='บันทึกรายจ่ายให้แล้ว' and not p.sheet_writes and not a.state.actions
     saved = persisted(p)
-    assert saved['core']['receipts']['create']['result']['status'] == 'clarification'
+    assert saved['core']['receipts']['create']['result']['status'] == 'answer'
 
 
 @pytest.mark.parametrize('drift', ['catalog', 'metadata', 'payload'])

@@ -36,13 +36,39 @@ state, review delivery and fresh explicit confirmation. Tools prepare data;
 they cannot commit a write or confirm themselves. Unknown write outcomes are
 reconciled without blindly repeating the request.
 
-Received assistant replies that claim an operation without a verified result
-receive structured feedback in the same turn, using the original owner facts
-and offered tools. An unchanged invalid reply stops; provider failures and
-unknown operations are not retried. Read-analysis feedback lists actual input
-and reportable result references without selecting one for the model. A new
-successful query result permits another selection repair; repeating the same
-failure against unchanged evidence still stops.
+## Language policy and typed checks
+
+Read periods, Calendar conditions and follow-up selection descriptions are model
+interpretations of owner context. They may normalize spelling, spacing or wording;
+no substring match proves their meaning. `period_text` is optional context, while
+typed date frames, offsets and anchors determine the actual bounded read. A
+missing typed date or invalid interval still fails. Current owner references,
+delivered candidate bindings and fresh source checks still apply. Explicit date
+components in an activity selection are checked against the current owner message
+and candidate dates, independently of the model's selection description. Activity
+labels likewise accept normalized wording with the current owner reference.
+
+Assistant prose has no word whitelist, status-word blacklist, question-word
+filter or per-field phrase enum. Ordinary fact replies and diagnosed explanations
+accept bounded free text while requiring their original fact IDs/reason codes.
+Literal business numbers, URLs, markup, unsafe control characters, omitted facts
+and invalid references still fail. These checks constrain data/transport, not
+natural-language meaning. Words such as “saved” never update structured status,
+create an action or replace a provider receipt. A misleading sentence can be
+shown; semantic evaluation and owner review must assess that separately.
+
+Source readers can declare an argument failure repairable. The unified executor
+preserves that diagnosis and offers the native schema to the same planner when
+all failed sources declare `assistant_arguments`. Mixed unavailable sources stop;
+provider failures are not retried. Complete valid snapshots can be reused within
+the turn. A new successful result permits another selection repair; repeated
+plans or unchanged diagnostics still stop.
+
+This policy removes language acceptance/rejection heuristics. It retains explicit
+protocol controls (buttons, nonces and reference IDs), catalog identity, numeric
+and calendar parsers, exact spans binding proposed writes to original owner
+records, and compatibility readers for stored legacy proposals. Those mechanisms
+check the data/protocol being executed; they do not certify arbitrary prose.
 
 Quoted evidence and a valid schema do not prove that the model understood the
 language correctly. Semantic omissions, a wrong date interpretation or the

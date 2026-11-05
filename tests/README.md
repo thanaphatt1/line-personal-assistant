@@ -210,6 +210,13 @@ These are scripted synthetic contracts; see the
 
 ### Answer composition and SQL
 
+[Language policy regressions](test_word_policy_removal.py) cover a misspelled
+month, free ordinary/query prose, retained fact/number/transport checks and
+source-owned argument repair. Tool-less completion sentences are explicit
+semantic counterexamples: they may render, but cannot create a verified effect.
+The [follow-up suite](test_activity_expense_followup.py) also accepts normalized
+selection descriptions while retaining current references and fresh event checks.
+
 [SQL result units](test_relational_result_units.py) check counts with misleading
 aliases, source units through projections/CTEs/windows/aggregates, ratios,
 conflicting units, repeated analysis and exact decimal display. These contracts

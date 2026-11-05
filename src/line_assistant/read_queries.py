@@ -59,7 +59,7 @@ class Calendar(Query):
 
 
 def definitions():
-    common = {'period_text':{'type':['string','null'],'description':'Exact contiguous date/period span from a cited original owner message. Null if no period was stated; the clock alone is not owner evidence. A filter/view-only follow-up uses date_mode=previous. Preserve coordinated wording rather than joining separated spans.'},'relative_offset':{'type':['integer','null'],'description':'TODAY/TOMORROW/YESTERDAY (วันนี้/พรุ่งนี้/เมื่อวาน) and THIS/NEXT/LAST week/month/year use 0/+1/-1 with the matching calendar_day/week/month/year mode; the server computes from Bangkok now. Null for named/absolute frames or range.'},'date_mode':{'type':'string','enum':['calendar_day','calendar_month','calendar_week','calendar_year','previous','upcoming','range'],'description':'calendar_day is one day (relative_offset, or start_date for a named day). calendar_month/week/year expands to the WHOLE frame, including dates after today; week is Monday-Sunday. previous retains the verified prior scope for a follow-up. upcoming uses now through next6dates for next-appointment intent. range is one day, an explicit span, or explicitly to-date. Interpret stated Thai/Buddhist years against the owner time context.'},
+    common = {'period_text':{'type':['string','null'],'description':'Model-interpreted period description from cited owner context; normalize typos or paraphrase when useful. Null if no period was stated; the clock alone is not owner evidence. A filter/view-only follow-up uses date_mode=previous.'},'relative_offset':{'type':['integer','null'],'description':'TODAY/TOMORROW/YESTERDAY (วันนี้/พรุ่งนี้/เมื่อวาน) and THIS/NEXT/LAST week/month/year use 0/+1/-1 with the matching calendar_day/week/month/year mode; the server computes from Bangkok now. Null for named/absolute frames or range.'},'date_mode':{'type':'string','enum':['calendar_day','calendar_month','calendar_week','calendar_year','previous','upcoming','range'],'description':'calendar_day is one day (relative_offset, or start_date for a named day). calendar_month/week/year expands to the WHOLE frame, including dates after today; week is Monday-Sunday. previous retains the verified prior scope for a follow-up. upcoming uses now through next6dates for next-appointment intent. range is one day, an explicit span, or explicitly to-date. Interpret stated Thai/Buddhist years against the owner time context.'},
               'start_date': {'type':['string','null'], 'description':'Bangkok ISO anchor date, required for a named/absolute frame with relative_offset=null. Null for a relative-offset frame, previous/upcoming, or genuinely missing period. period_text is evidence, not a parsed anchor.'},
               'end_date': {'type':['string','null'], 'description':'Inclusive Bangkok ISO end; weeks Monday-Sunday. Choose the whole period the owner asks about in ONE read; it may span months or years (Expense up to 10 years, Calendar up to 3). Do not split one requested period into months.'},
               'continue_analysis':{'type':'boolean','description':'True when this read is part of multi-step analysis, comparison or combining Expense/Calendar; inspect its query_ref and continue with read tools, then finish_query_analysis. False for a simple standalone answer.'},
@@ -78,7 +78,7 @@ def definitions():
              'calendar_query_refs':{'type':'array','items':{'type':'string'},'maxItems':16,'description':'Current-request complete Calendar query refs whose matching events define the Bangkok DATES to include. Empty for ordinary expenses. Server unions dates, clips spans and never double-counts same-day expenses. date_mode=previous can use these Calendar periods directly. Re-read Calendar on a new turn; refs cannot be reused across turns.'}})},
         {'type':'function','name':'query_calendar','strict':True,
          'description':'Read saved appointments from all server-selected readable calendars for the whole requested period in ONE read (up to 3 years), including all-day/transparent. Reads the full requested period and semantically classifies events by the requested condition, preserving uncertainty. Next-appointment intent uses upcoming; an explicit calendar frame uses its own date_mode. Never creates or edits.',
-         'parameters':object_schema({**common,'upcoming':{'type':'boolean','description':'True only for next/upcoming appointment intent; false for an explicit day, week, month or year scope.'},'filter_text':{'type':['string','null'],'description':'Appointment subject/type/condition copied character-for-character as one contiguous span of a cited owner message; do not rephrase or add words. Copy only the words naming the activity itself, without surrounding verbs or particles such as go/attend/day (ไป, ที่, วันที่). The server classifies fetched events semantically. Null only when no filter requested.'},
+         'parameters':object_schema({**common,'upcoming':{'type':'boolean','description':'True only for next/upcoming appointment intent; false for an explicit day, week, month or year scope.'},'filter_text':{'type':['string','null'],'description':'Model-interpreted appointment subject/type/condition from cited owner context. Normalize typos and paraphrase to express the intended activity without adding conditions. The server classifies fetched events semantically. Null only when no filter requested.'},
               'purpose':{'type':'string','enum':['appointments','expense_dates'],'description':'expense_dates when this read finds the dates for a spending/cost question (then query_expenses with calendar_query_refs); appointments when the owner asks about the appointments themselves.'},
               'count_unit':{'type':'string','enum':['events','days'],'description':'days when the owner asks how many days/dates (for example กี่วัน); events when asking how many appointments or times. The server counts distinct Bangkok dates.'}})}]
 
@@ -216,7 +216,7 @@ def execute(host, name, args):
               'scope':{'domain':domain,'workbook':storage_scope(host.sheets),'calendar':host.calendar_flow.calendar_id}}
     try:
         p = (Expenses if domain=='expense' else Calendar).model_validate(args)
-        sources=host._owner_sources(p.source_refs)
+        host._owner_sources(p.source_refs)
     except (ValueError,TypeError,KeyError):return error(output,'invalid_arguments','clarification')
     if domain=='expense' and p.measure!='expense':return error(output,'income_unconfigured','income_unconfigured')
     if p.date_mode=='previous':
@@ -236,14 +236,6 @@ def execute(host, name, args):
         p=p.model_copy(update={'start_date':previous['start'],'end_date':previous['end'],'date_mode':'range'})
     if domain=='calendar' and p.filter_text is not None:
         if not p.filter_text.strip():return error(output,'invalid_arguments','clarification')
-        # A paraphrased filter is the assistant's quoting slip, not missing
-        # owner input: return it to the planner to copy the owner's words.
-        if not any(p.filter_text in row['text'] for row in sources):
-            return {**error(output,'filter_text_not_quoted','clarification'),'recovery':recovery(kind='assistant_arguments',fields=['filter_text'],tools=[name])}
-    # Next-appointment intent is its own evidence; a stated span must be quoted.
-    if p.period_text and not any(p.period_text in row['text'] for row in sources) and args.get('date_mode')!='previous':
-        return {**error(output,'period_text_not_quoted','clarification'),'recovery':recovery(kind='assistant_arguments',fields=['period_text'],tools=[name])}
-    if args.get('date_mode') not in ('previous','upcoming') and not p.period_text:return error(output,'date_required','clarification')
     if p.date_mode=='upcoming':
         if domain!='calendar':return error(output,'invalid_arguments','clarification')
         today=datetime.fromisoformat(host._current['at']).astimezone(BANGKOK).date()
@@ -446,10 +438,8 @@ def count_text(output, scope):
 ERRORS = {
  'activity_selection_required':'ยังมีนัดที่รอยืนยันสำหรับคำถามรายจ่ายเดิมครับ โปรดเลือกนัดก่อนรวมรายจ่ายของวันนั้น',
  'invalid_arguments':'ข้อมูลที่ใช้ค้นหายังไม่ชัดเจนครับ ช่วยระบุช่วงวันหรือสิ่งที่ต้องการดูอีกครั้ง',
- 'filter_text_not_quoted':'ยังจับประเภทนัดที่ต้องการจากข้อความไม่ได้ครับ ช่วยพิมพ์ประเภทนัดที่อยากดูอีกครั้ง',
  'date_required':'ต้องการดูช่วงวันไหนครับ?',
  'expense_view_conflict':'ยังจัดรูปแบบผลลัพธ์ที่ขอไม่ได้ครับ ลองบอกอีกครั้งว่าอยากเห็นยอดรวมหรือรายการ',
- 'period_text_not_quoted':'ยังจับช่วงวันที่จากข้อความไม่ได้ครับ ช่วยบอกช่วงวันที่อยากดูอีกครั้ง',
  'date_bounds':'ช่วงวันที่ไม่ถูกต้องหรือยาวเกินขอบเขตครับ รายจ่ายดูได้ไม่เกิน 10 ปี และปฏิทินไม่เกิน 3 ปี',
  'income_unconfigured':'ยังไม่มีข้อมูลรายรับที่รองรับครับ จึงสรุปรายรับหรือยอดคงเหลือไม่ได้',
  'filter_unknown':'ยังจับคู่ชื่อหรือหมวดที่ต้องการกับฐานข้อมูลไม่ได้ครับ ช่วยระบุให้ชัดอีกนิด',

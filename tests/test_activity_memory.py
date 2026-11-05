@@ -88,16 +88,11 @@ def test_forgetting_a_label_brings_the_question_back():
     assert result.message.rstrip().endswith('DSDE Exam เป็นคุมสอบไหมครับ?')
 
 
-def test_a_label_must_come_from_the_owner_wording():
+def test_a_label_can_normalize_owner_spelling_without_literal_word_matching():
     api=MemoryHosted();exams(api)
-    seen=[]
-    def asks(body):
-        seen.append(body);return response(text='อยากให้จำนัดชื่ออะไรครับ?')
-    result,_=turn(api,'จำไว้ว่าอันนั้นเป็นคุมสอบ',label('DSDE Exam','คุมสอบ','match'),asks)
-    returned=[json.loads(i['output']) for i in seen[0]['input'] if i.get('type')=='function_call_output']
-    assert returned[-1]['repair_feedback']['error_code']=='activity_label_not_quoted' and not labels(api)
-    assert result.status=='clarification'
-
+    result,_=turn(api,'จำไว้ว่า DSDE Exma เป็นคุมสอบ',label('DSDE Exam','คุมสอบ','match'))
+    assert labels(api) and result.status=='answer'
+    assert not api.calendar.posts and not api.google.sheet_writes
 
 def test_choosing_some_dates_of_a_title_is_not_remembered_for_the_title():
     api=MemoryHosted();exams(api);api.labels={'e1':'uncertain','e2':'exclude'}

@@ -193,7 +193,7 @@ def test_remaining_candidate_can_be_confirmed_after_restart_and_dates_are_unione
     assert_read_only(api)
 
 
-@pytest.mark.parametrize('fault', ['unknown_candidate', 'old_clarification', 'duplicate', 'invented_quote', 'old_source_only'])
+@pytest.mark.parametrize('fault', ['unknown_candidate', 'old_clarification', 'duplicate', 'empty_selection', 'old_source_only'])
 def test_invalid_selections_never_read_calendar_or_expenses(uncertain_report, fault):
     api, _, _ = uncertain_report
     before = (len(api.calendar_requests), len(api.extra_requests))
@@ -206,7 +206,7 @@ def test_invalid_selections_never_read_calendar_or_expenses(uncertain_report, fa
         if fault == 'unknown_candidate': args['candidate_refs'] = ['candidate_invented']
         elif fault == 'old_clarification': args['clarification_ref'] = 'follow_expired'
         elif fault == 'duplicate': args['candidate_refs'] *= 2
-        elif fault == 'invented_quote': args['selection_text'] = 'วันที่ 29'
+        elif fault == 'empty_selection': args['selection_text'] = '  '
         else: args['source_refs'] = [context['history'][0]['source_ref']]
         call['arguments'] = json.dumps(args)
         return value
@@ -496,4 +496,15 @@ def test_followup_cannot_reuse_old_calendar_query_refs_as_current_evidence(uncer
         return resolve(body)
     result, _ = turn(api, 'มีวันที่ 14', stale_join, repair)
     assert_selected_day(result)
+    assert_read_only(api)
+
+
+def test_selection_description_can_normalize_spelling_with_real_current_refs(uncertain_report):
+    api,_,_=uncertain_report
+    def interpreted(body):
+        value=resolve(body);call=value['output'][0];args=json.loads(call['arguments'])
+        args['selection_text']='เลือกวันที่สิบสี่';call['arguments']=json.dumps(args,ensure_ascii=False)
+        return value
+    result,_=turn(api,'มีวันที่ 14',interpreted)
+    assert result.data['read_query']['calendar_basis']['dates']==['2026-11-14']
     assert_read_only(api)

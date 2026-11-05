@@ -107,7 +107,7 @@ def test_tool_narration_cannot_claim_success_or_authorize_a_write():
  r=h.send('ค่ากระดาษ 228 บาท',call)
  assert r.status=='preview' and 'saved' not in r.message and not h.sheets.entries
  r=h.send('ขอบคุณ',response(text='บันทึกรายจ่ายเรียบร้อยแล้ว'))
- assert r.status=='clarification' and not h.sheets.entries
+ assert r.status=='answer' and r.message=='บันทึกรายจ่ายเรียบร้อยแล้ว' and not h.sheets.entries
 
 def test_auth_owner_is_checked_before_history_model_or_effects():
  h=Harness();event=h.event('ค่ากระดาษ 228');event['source']['userId']='somebody_else'

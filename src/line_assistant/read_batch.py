@@ -14,7 +14,7 @@ def definition(offered):
             'tool':{'type':'string','enum':[tool['name']]},'arguments':deepcopy(tool['parameters'])},
             'required':['tool','arguments']})
     return {'type':'function','name':NAME,'strict':True,'description':
-        'Batch independent saved-data reads in one planning step, with continue_analysis=true. No writes or dependent refs. Each member retains its own completeness and query_ref; repair failed members before finishing. period_text copies a contiguous original owner span; a coordinated phrase may be cited in full for each member, never reconstructed from separated words.',
+        'Batch independent saved-data reads in one planning step, with continue_analysis=true. No writes or dependent refs. Each member retains its own completeness and query_ref; repair failed members before finishing. period_text describes the owner period; normalize typos or paraphrase from cited owner context when useful.',
         'parameters':{'type':'object','additionalProperties':False,'properties':{
             'reads':{'type':'array','minItems':1,'maxItems':8,'items':{'anyOf':variants}}},'required':['reads']}}
 

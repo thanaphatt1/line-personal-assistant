@@ -36,7 +36,7 @@ def definitions(host):
     if pending is None or not pending['candidates']:
         return []
     return [{'type': 'function', 'name': NAME, 'strict': True,
-             'description': 'Resolve the current owner affirmative or negative selection among pending_query appointments in its original period. confirm affirms only selected candidate_refs; exclude rejects only those refs. Other candidates remain unconfirmed. Copy literal CURRENT selection_text identifying the selection. Re-reads Calendar and computes expenses on confirmed dates. No business writes. Questions and unrelated new queries do not select candidates.',
+             'description': 'Resolve the current owner affirmative or negative selection among pending_query appointments in its original period. confirm affirms only selected candidate_refs; exclude rejects only those refs. Other candidates remain unconfirmed. Describe the current owner selection in selection_text; normalize spelling if needed. Re-reads Calendar and computes expenses on confirmed dates. No business writes. Questions and unrelated new queries do not select candidates.',
              'parameters': object_schema({
                  'clarification_ref': {'type': 'string'},
                  'candidate_refs': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 20},
@@ -188,8 +188,7 @@ def execute(host, args):
         host._owner_sources(p.source_refs)
         if (not pending or p.clarification_ref != pending['ref']
                 or host._current['source_ref'] not in p.source_refs
-                or p.selection_text.strip() != p.selection_text
-                or p.selection_text not in host._current['text']
+                or not p.selection_text.strip()
                 or len(set(p.candidate_refs)) != len(p.candidate_refs)):
             raise ValueError()
         by_ref = {e['candidate_ref']: e for e in pending['candidates']}
@@ -198,7 +197,8 @@ def execute(host, args):
         # validates a model-selected reference; it does not route owner intent.
         from .history_dates import cues, answer_text
         stamp = datetime.fromisoformat(host._current['at'])
-        parts, _, issue = cues(answer_text(p.selection_text) or p.selection_text, stamp)
+        owner_text=host._current['text']
+        parts, _, issue = cues(answer_text(owner_text) or owner_text, stamp)
         if parts.get('day') and not issue:
             for item in chosen:
                 first = date.fromisoformat(item['start']) if item['all_day'] else datetime.fromisoformat(item['start']).astimezone(BANGKOK).date()

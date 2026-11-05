@@ -40,7 +40,7 @@ def generated(body,parts=None):
                 'reason_codes':payload['validation_feedback']['codes'],
                 'explanation':'ผมส่งหมวดที่คุณยังไม่ได้เลือกไป จึงหยุดก่อนใช้หมวดนั้นครับ'},ensure_ascii=False)}]}]}
     if parts is None and payload.get('query_reply'):
-        parts={key:{'before':voice.query_options(key,payload['fact_order'])[0][0],'after':voice.query_options(key,payload['fact_order'])[1][0]} for key in payload['fact_order']}
+        parts={key:{'before':'','after':''} for key in payload['fact_order']}
     if parts is None:
         parts=[]
         for ref in payload['fact_order']:

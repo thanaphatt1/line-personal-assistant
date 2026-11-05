@@ -75,11 +75,11 @@ def test_line_flow_shares_configured_email_verifies_only_role_and_persists_for_w
 
 
 @pytest.mark.parametrize('claim',['เชื่อมปฏิทินให้เรียบร้อยแล้วครับ','Your calendar is now connected.'])
-def test_model_prose_cannot_claim_connection_without_verified_tool_result(claim):
+def test_model_prose_does_not_register_a_calendar_or_change_structured_status(claim):
     api=ConnectionsHosted()
     result,_=turn(api,'เพิ่มปฏิทินใหม่',response(text=claim))
-    assert result.status=='clarification' and api.registration() is None and not api.probe_requests
-
+    assert result.status=='answer' and result.message==claim
+    assert api.registration() is None and not api.probe_requests and not api.calendar.posts
 
 def test_embed_link_can_supply_literal_calendar_id():
     api=ConnectionsHosted();begin(api)
