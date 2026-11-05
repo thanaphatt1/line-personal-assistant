@@ -97,7 +97,7 @@ def score_turn(fixtures, gold, observation):
                     result_rows.extend([{k:calendar_date(r) if k=='date' else r.get(k) for k in gold['fields']} for r in result['events']])
         outcome=bool(execution and rows_key(result_rows,ordered=gold.get('ordered',False))==rows_key(wanted,ordered=gold.get('ordered',False)))
         realization=data.get('response_realization',{})
-        grounding=bool(execution and observation.get('grounded_document') is True and observation.get('delivered') is True) if realization.get('mode')=='planner_intent' else None
+        grounding=bool(execution and observation.get('grounded_document') is True and observation.get('delivered') is True) if realization.get('mode')=='planner_intent' and realization.get('format')!='plain_read' else None
     elif kind in {'clarification','unavailable'}:
         execution=bool(status=='clarification' and output.get('complete') is not True)
         if kind=='clarification':execution=execution and output.get('query_clarification') is True

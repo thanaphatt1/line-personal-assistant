@@ -1,9 +1,9 @@
 """Model-selected read-reply layout over verified facts and linked record cells.
 
 The model writes prose and templates, not copied business values. Rendering
-checks coverage, record order, cell bindings and shared-heading context. This
-does not prove the meaning of arbitrary prose; instructions and conservative
-claim checks complement the structural checks. Operation presentation reuses
+checks mandatory context, cell bindings and shared-heading context. Read
+answers can select supporting cells; operation reviews retain full coverage.
+This does not prove the meaning of arbitrary prose. Operation presentation reuses
 the renderer; effect execution and consent never use this path.
 """
 from datetime import date, datetime
@@ -21,8 +21,12 @@ INSTRUCTIONS = (
     'Choose the layout and write concise natural Thai prose yourself: paragraphs, headings, inline answers or lists. '
     'There is no prescribed header or per-row wording and no allowed-word vocabulary. '
     'Insert business values ONLY through {{fact_id}} or {{cell_id}} placeholders, never copy, calculate or invent them. '
-    'Text blocks can reference summary facts and, when exactly one record is offered, its cells. Rows blocks select record_refs in their supplied order and use one template per group. '
-    'Every displayed record must appear exactly once, every required cell and summary fact must be covered. '
+    'Text blocks can reference summary facts and, when exactly one record is offered, its cells. Rows blocks use local cell IDs for each selected record. '
+    'When record_policy=select, compose a direct answer and a short interpretation from the relevant computed cells, not a dump of every row/column. '
+    'Use qualified cell placeholders such as {{r1_c2}} and {{r2_c3}} in prose to cite different records unambiguously. '
+    'You may omit irrelevant read records/cells; keep every required summary fact, source caveat and unit. Never infer that the displayed subset is the whole total. '
+    'A scalar result should normally be one sentence; avoid repeating its column label on a separate line. '
+    'Without record_policy=select, every displayed record and required cell must appear exactly once in original order. '
     'A rows heading can reference a cell only when its group_key is identical across ALL selected records. '
     'Headings are templates too: use heading="{{c1}}:" for a shared date cell, never copy its date digits into the heading. '
     'Cells in covered_by can be omitted when their covering summary fact is used. '
@@ -89,13 +93,18 @@ def display(value, kind=None, unit=None):
     if value is None or isinstance(value,str) and not value.strip(): return 'ว่าง'
     if type(value) is bool: return 'ใช่' if value else 'ไม่ใช่'
     if kind == 'date': value = day_label(value)
+    if kind == 'month':
+        from .language import MONTHS
+        at=date.fromisoformat(value+'-01');value=MONTHS[at.month-1][0]+' '+str(at.year)
     text = re.sub(r'[\x00-\x1f]', ' ', str(value))
     text = text[:300] + ('…' if len(text) > 300 else '')
     return text + (' ' + unit if unit else '')
 
 
 class View:
-    def __init__(self): self.facts = {}; self.fact_labels = {}; self.records = []
+    def __init__(self, *, selective=False):
+        self.facts = {}; self.fact_labels = {}; self.records = []
+        self.selective=selective; self._groups={}
 
     def fact(self, value, label='verified fact'):
         key = 'f' + str(len(self.facts) + 1); self.facts[key] = value; self.fact_labels[key] = label; return key
@@ -103,8 +112,13 @@ class View:
     def row(self, cells, covered_by=None, *, omit_empty=()):
         # Stable local cell IDs allow arbitrary provider column names, including
         # names that look like template syntax, without interpreting those names.
+        def group(label,value,kind,unit):
+            identity=digest([label,value,kind,unit])
+            # Full identities remain internal. Equal fields share a short
+            # view-local token; distinct/clipped values cannot be merged.
+            return self._groups.setdefault(identity,'g'+str(len(self._groups)+1))
         fields = {'c' + str(i): {'label': label, 'display': display(value, kind, unit),
-                               'group_key': digest([label, value, kind, unit])}
+                               'group_key': group(label,value,kind,unit)}
                   for i, (label, value, kind, unit) in enumerate(cells, 1)
                   if i not in omit_empty}
         if not fields: raise ValueError('empty_record')
@@ -112,7 +126,8 @@ class View:
                              'required_fields': list(fields), 'covered_by': covered_by or {}})
 
     def data(self):
-        return {'facts': self.facts, 'fact_labels': self.fact_labels, 'required_facts': list(self.facts), 'records': self.records}
+        return {'facts': self.facts, 'fact_labels': self.fact_labels, 'required_facts': list(self.facts), 'records': self.records,
+                **({'record_policy':'select'} if self.selective else {})}
 
 
 def evidence(output):
@@ -182,7 +197,8 @@ def add_read(view, output, at):
         for row in output['rows']:
             # Money columns use the shared amount format; dates stay typed.
             cells=[(k,quantity_text(v,units.get(k)) if v is not None else v,
-                    'date' if isinstance(v,str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',v) and valid_date(v) else None,units.get(k))
+                    'date' if isinstance(v,str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',v) and valid_date(v) else
+                    'month' if isinstance(v,str) and re.fullmatch(r'\d{4}-\d{2}',v) and valid_date(v+'-01') and not units.get(k) else None,units.get(k))
                    for k,v in row.items()]
             # A computed date can share an actual same-day source heading only
             # when its entire value agrees. Other dates remain required cells.
@@ -192,7 +208,8 @@ def add_read(view, output, at):
             view.row(cells,cover,omit_empty={i for i,k in enumerate(row,1) if k not in selected})
         if not output['count']: view.fact('ไม่พบแถวที่ตรงเงื่อนไข')
         if output['count'] > output['shown']:
-            view.fact(f"แสดง {output['shown']} จาก {output['count']} แถวของผลลัพธ์ที่คำนวณครบแล้ว")
+            view.fact("สรุปจากผลลัพธ์ที่คำนวณครบแล้ว โดยยกข้อมูลบางส่วน" if view.selective
+                      else f"แสดง {output['shown']} จาก {output['count']} แถวของผลลัพธ์ที่คำนวณครบแล้ว")
         return
     if domain == 'table' and output.get('table_query'):
         view.fact(f"{output['label']}: พบ {output['count']} รายการ")
@@ -200,7 +217,8 @@ def add_read(view, output, at):
         for row in output['rows']:
             view.row([(labels.get(k, k), v, None, None) for k, v in row.items() if k != 'id'])
         if output['truncated']:
-            view.fact(f"แสดง {output['shown']} จาก {output['result_count']} แถวผลลัพธ์ การนับและคำนวณใช้ข้อมูลที่ตรงเงื่อนไขทั้งหมด")
+            view.fact("สรุปจากผลลัพธ์ที่คำนวณครบแล้ว โดยยกข้อมูลบางส่วน" if view.selective
+                      else f"แสดง {output['shown']} จาก {output['result_count']} แถวผลลัพธ์ การนับและคำนวณใช้ข้อมูลที่ตรงเงื่อนไขทั้งหมด")
         return
     raise ValueError('unsupported_read')
 
@@ -220,7 +238,7 @@ def for_result(host, result):
     # the follow-up renderer, outside ordinary query facts.
     if data.get('read_followup') or output.get('query_followup_result'): return None
     try:
-        view = View(); at = datetime.fromisoformat(host._current['at'])
+        view = View(selective=True); at = datetime.fromisoformat(host._current['at'])
         if output.get('query_analysis') and not output.get('relational_query'):
             if not output.get('complete'): return None
             if output.get('operation') != 'report':
@@ -239,7 +257,9 @@ def valid_view(value):
     try:
         if not isinstance(value,dict): return False
         facts = value['facts']; rows = value['records']
-        if set(value) != {'facts', 'fact_labels', 'required_facts', 'records'} or not isinstance(facts, dict) or not isinstance(rows, list): return False
+        expected={'facts','fact_labels','required_facts','records'}
+        if set(value) not in (expected,expected|{'record_policy'}) or not isinstance(facts,dict) or not isinstance(rows,list):return False
+        if 'record_policy' in value and value['record_policy']!='select':return False
         if not isinstance(value['fact_labels'],dict): return False
         if set(value['fact_labels']) != set(facts) or any(not isinstance(v,str) for v in value['fact_labels'].values()): return False
         if value['required_facts'] != list(facts) or len(rows) > 100: return False
@@ -276,11 +296,11 @@ REPAIR_GUIDANCE={
     'answer_template':'Use string templates within the schema size limits.',
     'answer_placeholder':'Use exactly {{fact_id}}, {{cell_id}} or optional {{index}}; do not nest placeholders.',
     'unsupported_answer_literal':'Use placeholders for business dates/numbers, even when copied correctly. Do not add URLs, markup or control characters. Numeric conditions absent from display facts need not be restated.',
-    'unknown_answer_fact':'Use supplied facts or row/shared-heading cells. Text may use cells when exactly one record is offered; otherwise select rows. Check covered_by for omitted dates.',
+    'unknown_answer_fact':'Use actual supplied facts/cells. For selective reads use qualified cells such as {{r1_c2}} in text, or local cells inside a rows block. Check covered_by for omitted dates.',
     'unknown_answer_record':'Use only offered record_refs, each exactly once in their supplied order.',
     'answer_record_coverage_or_order':'Include every displayed record once in its original order. Do not duplicate, omit or reorder rows.',
     'answer_fact_coverage':'Include every required summary fact through its placeholder.',
-    'answer_cell_coverage':'Include each required row cell, unless its covering fact/shared heading is actually used. Empty cells still require coverage.',
+    'answer_cell_coverage':'For selective reads cite an actual result cell. Strict views require each row cell unless its covering fact/shared heading is used; empty required cells still count.',
     'reply_size':'Shorten connecting prose and layout while retaining all required facts and cells.',
 }
 
@@ -363,6 +383,9 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
     heading_scope={}
     inline_record=next(iter(records.values())) if len(records)==1 else None
     inline_seen=False
+    selective=view.get('record_policy')=='select'
+    qualified={row['id']+'_'+key:(row['id'],key,field['display'])
+               for row in records.values() for key,field in row['fields'].items()} if selective else {}
 
     def template(text, fields=None, index=None):
         nonlocal literal_size
@@ -375,10 +398,13 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
         if any(c.isnumeric() for c in literal) or re.search(
             r'https?://|[<>\x00-\x08\x0b-\x1f]', literal, re.I):
             raise AnswerError('unsupported_answer_literal')
-        available = {**facts, **{k: v['display'] for k, v in (fields or {}).items()}}
+        available = {**facts,**{k:v[2] for k,v in qualified.items()}, **{k: v['display'] for k, v in (fields or {}).items()}}
         if index is not None: available['index'] = str(index)
         if any(ref not in available for ref in refs): raise AnswerError('unknown_answer_fact')
         seen_facts.update(ref for ref in refs if ref in facts)
+        for ref in refs:
+            if ref in qualified:
+                row,key,_=qualified[ref];row_cells.setdefault(row,set()).add(key)
         # Substitute only the original template: source values that contain
         # placeholder-like text are never recursively interpreted.
         return joined(text, available), set(refs)
@@ -426,12 +452,16 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
                 row_cells[row['id']] = cells | covered
                 seen_rows.append(row['id']); chunks.append(text)
         else: raise AnswerError('answer_block_kind')
-    if seen_rows != list(records): raise AnswerError('answer_record_coverage_or_order',
+    expected_rows=[ref for ref in records if ref in seen_rows]
+    if (len(seen_rows)!=len(set(seen_rows)) or seen_rows!=expected_rows or not selective and seen_rows!=list(records)
+            or selective and records and not row_cells and not seen_rows): raise AnswerError('answer_record_coverage_or_order',
         expected_record_order=list(records),received_record_order=seen_rows[:100])
     missing_facts=[k for k in view['required_facts'] if k not in seen_facts]
     if missing_facts: raise AnswerError('answer_fact_coverage',missing_facts=missing_facts[:100])
+    if selective and records and not any(cells & records[ref]['fields'].keys() for ref,cells in row_cells.items()):
+        raise AnswerError('answer_cell_coverage')
     missing_cells=[]
-    for ref, row in records.items():
+    for ref, row in (records.items() if not selective else []):
         for field in row['required_fields']:
             if field not in row_cells[ref] and not (row['covered_by'].get(field) and set(row['covered_by'][field]) <= seen_facts):
                 missing_cells.append({'record_ref':ref,'field':field})

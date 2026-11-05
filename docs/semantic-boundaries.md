@@ -48,10 +48,22 @@ components in an activity selection are checked against the current owner messag
 and candidate dates, independently of the model's selection description. Activity
 labels likewise accept normalized wording with the current owner reference.
 
+The optional natural-read experiment writes an `answer` string directly from
+computed results, without placeholder or literal-number validation. Its current
+result reference proves evidence identity, not prose or numeric correctness.
+The model may copy a wrong number or omit a qualifier; structural grounding is
+not applicable in evaluation. See [natural text experiment](answer-composition.md#natural-text-experiment).
+
+Default document-based read presentation can select supporting cells and omit unrelated
+rows. Mandatory scope/provenance/coverage facts and bound values remain checked;
+write review coverage stays complete. SQL computes analytical totals, shares and
+comparisons before prose. Selecting a useful explanation remains the model's
+job; a valid selection is not proof of relevance or a causal explanation.
+
 Assistant prose has no word whitelist, status-word blacklist, question-word
 filter or per-field phrase enum. Ordinary fact replies and diagnosed explanations
 accept bounded free text while requiring their original fact IDs/reason codes.
-Literal business numbers, URLs, markup, unsafe control characters, omitted facts
+On these fact/document paths, literal business numbers, URLs, markup, unsafe control characters, omitted facts
 and invalid references still fail. These checks constrain data/transport, not
 natural-language meaning. Words such as “saved” never update structured status,
 create an action or replace a provider receipt. A misleading sentence can be

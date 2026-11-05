@@ -168,8 +168,8 @@ def test_reply_sees_executed_sql_and_legacy_inclusion_is_a_complete_required_fac
     assert any(view['facts'][k] == 'เฉพาะ Tablet Aurora' for k in view['required_facts'])
 
 
-@pytest.mark.parametrize('output_date, accepts', [("date", True), ("'2026-09-02'", False)])
-def test_sql_list_date_can_be_omitted_only_when_equal_to_verified_same_day_scope(output_date, accepts):
+@pytest.mark.parametrize('output_date, display_date', [("date", '1 ก.ย. 2026'), ("'2026-09-02'", '2 ก.ย. 2026')])
+def test_read_summary_can_omit_a_projection_column_without_changing_source_scope(output_date, display_date):
     api = sample()
     def natural(body):
         payload = json.loads(body['input'][0]['content'])
@@ -183,11 +183,10 @@ def test_sql_list_date_can_be_omitted_only_when_equal_to_verified_same_day_scope
                 f"FROM {rs[0]['sql_table']} WHERE item != 'Tablet Aurora'")
     result, _ = turn(api, 'วันที่ 1 ก.ย. ไม่รวม Tablet Aurora',
                      expense('2026-09-01', '2026-09-01', continue_analysis=True), query)
-    if accepts:
-        assert result.data['response_realization']['status'] == 'llm'
-        assert result.message.count('1 ก.ย. 2026') == 1
-    else:
-        assert result.data['response_realization']['validation_code'] == 'answer_cell_coverage'
+    assert result.data['response_realization']['status'] == 'llm'
+    assert result.message.count('1 ก.ย. 2026') == 1
+    actual=json.loads(api.voice_bodies[-1]['input'][0]['content'])['answer_facts']
+    assert all(row['fields']['c1']['display']==display_date for row in actual['records'])
 
 
 def test_derived_sql_reply_keeps_original_period_and_executed_source_evidence():

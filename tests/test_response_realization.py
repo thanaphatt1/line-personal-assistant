@@ -57,7 +57,7 @@ class VoiceHosted(Hosted):
     def handle(self,request):
         if request.url.host=='api.openai.com':
             body=json.loads(request.content)
-            if body.get('instructions')==voice.INSTRUCTIONS:
+            if body.get('instructions') in (voice.INSTRUCTIONS,voice.plain_read_answers.INSTRUCTIONS):
                 self.model_bodies.append(deepcopy(body));self.voice_bodies.append(deepcopy(body))
                 return httpx.Response(200,json=self.voice(body))
         return super().handle(request)

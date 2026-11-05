@@ -1756,7 +1756,11 @@ class HistoryFirstAssistant(Assistant):
         if result.data.get('domain')=='table' or result.data.get('query_analysis'):
             # Completed reads share the optional answer composer. Table
             # mutations and incomplete analysis retain their full core reply.
-            from .answer_composition import for_result
+            from .plain_read_answers import enabled
+            if enabled(self):
+                from .plain_read_answers import for_result
+            else:
+                from .answer_composition import for_result
             if for_result(self,result) is None:return result
         if result.data.get('data_inventory'):return result
         if (result.data.get('tool_result') or {}).get('calendar_connection'):return result

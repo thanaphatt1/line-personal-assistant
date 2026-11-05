@@ -236,11 +236,17 @@ def test_observed_formatter_failures_render_all_verified_values_without_repair(d
     r=h.send('เดือนตุลาคมแยกยอดตามรายการ',
         read('SELECT item,SUM(amount) AS total FROM e GROUP BY item ORDER BY total DESC'),respond(mutate=bad))
     assert r.status=='answer' and len(h.model.requests)==2,r
-    assert r.data['response_realization']['status']=='fallback'
-    assert r.message.index('Coffee')<r.message.index('BTS')
-    assert '99 บาท' in r.message and '0.30 บาท' in r.message and 'เดือนตุลาคม 2026' in r.message
+    if damage=='missing_record':
+        assert r.data['response_realization']['status']=='llm'
+        assert 'Coffee' in r.message and 'BTS' not in r.message
+        raw=next(v for v in h.app._query_reads.values() if v.get('relational_query'))
+        assert len(raw['rows'])==2 and not any(row['phase']=='reply_fallback' for row in trace)
+    else:
+        assert r.data['response_realization']['status']=='fallback'
+        assert r.message.index('Coffee')<r.message.index('BTS')
+        assert '99 บาท' in r.message and '0.30 บาท' in r.message and 'เดือนตุลาคม 2026' in r.message
+        assert any(row['phase']=='reply_fallback' and row['reason']=='invalid_answer_document' for row in trace)
     assert '{{' not in r.message
-    assert any(row['phase']=='reply_fallback' and row['reason']=='invalid_answer_document' for row in trace)
     assert not h.sheets.write_log and not h.state.actions and not h.provider.posts
 
 

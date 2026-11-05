@@ -70,6 +70,7 @@ class SyntheticRuntime(RecordsProtocol,AllCalendarsHosted):
 def grounded_document(api,result,first_call):
     """Re-render the accepted document from the actual offered runtime facts."""
     realization=result.data.get('response_realization',{})
+    if realization.get('format')=='plain_read':return None
     wanted=realization.get('response_ref')
     if not wanted:return None
     for body,value in zip(api.model_bodies[first_call:],api.model_outputs[first_call:]):

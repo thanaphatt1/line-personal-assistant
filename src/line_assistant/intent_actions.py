@@ -9,7 +9,7 @@ import json
 
 from pydantic import Field
 
-from . import answer_composition, unified_query
+from . import answer_composition, plain_read_answers, unified_query
 from .history_context import digest
 from .model_api import object_schema
 from .query_analysis import IntentReview
@@ -29,6 +29,11 @@ class Respond(Strict):
     # self-attest correctness or repeat evidence already bound by response_ref.
     review: IntentReview | None = None
     source_refs: list[str] | None = Field(default=None, min_length=1, max_length=16)
+
+
+class PlainRespond(Strict):
+    response_ref: str = Field(min_length=1, max_length=64)
+    answer: str = Field(min_length=1, max_length=4500)
 
 
 def _answer_context(host, query_ref):
@@ -52,11 +57,12 @@ def _response(host, query_ref):
     from .query_analysis import finish, render
     from .response_realization import identity
     output = finish(host, {'query_refs': [query_ref], 'operation': 'report',
-                          'source_refs': [host._current['source_ref']]})
+                            'source_refs': [host._current['source_ref']]})
     if not output.get('ok') or not output.get('complete'):
         return None
     core = render(output)
-    facts = answer_composition.for_result(host, core)
+    plain = plain_read_answers.enabled(host)
+    facts = plain_read_answers.for_result(host, core) if plain else answer_composition.for_result(host, core)
     if facts is None:
         return None
     if core.data.get('read_query'):
@@ -65,7 +71,7 @@ def _response(host, query_ref):
     evidence=answer_composition.evidence(output)
     response_ref = 'answer_' + digest([host.settings.owner_id,host._active_event_id,query_ref,identity(core),facts,evidence])[:24]
     value={'response_ref': response_ref, 'query_ref': query_ref,
-           'facts': facts, 'evidence': evidence}
+           ('read_result' if plain else 'facts'): facts, 'evidence': evidence}
     if len(json.dumps(value,ensure_ascii=False,separators=(',',':')).encode())>MAX_RESPONSE_BYTES:
         return None
     return {**value,'core':core}
@@ -103,10 +109,11 @@ def definitions(host):
         variants.append(object_schema({
             'intent': {'type': 'string', 'enum': ['respond']},
             'response_ref': {'type': 'string', 'enum': list(responses)},
-            'document': answer_composition.schema(),
+            **({'answer': plain_read_answers.schema()['properties']['answer']} if plain_read_answers.enabled(host)
+               else {'document': answer_composition.schema()}),
         }))
     return [{'type': 'function', 'name': NAME, 'strict': True,
-        'description': 'Submit a read-only intent. read declares configured sources and SQL; the server handles fetching and computation. inspect discovers available source capabilities. respond checks actual selection/output against the owner request and composes a grounded answer from an offered read_responses view in this same planning call. Use facts/cells for business values. No writes, confirmations or new access.',
+        'description': 'Submit a read-only intent. read declares configured sources and SQL; the server handles fetching and computation. inspect discovers available source capabilities. respond selects an offered current read_responses result and composes the final answer in this same planning call. Use its read_result for a natural answer when offered, otherwise use facts/cells. No writes, confirmations or new access.',
         'parameters': object_schema({'request': {'anyOf': variants}})}]
 
 
@@ -138,13 +145,14 @@ def execute(host, args):
         from .data_inventory import execute as inspect
         return inspect(host, request)
     try:
-        plan = Respond.model_validate(request)
-        if plan.source_refs is not None:
+        plain = plain_read_answers.enabled(host)
+        plan = PlainRespond.model_validate(request) if plain else Respond.model_validate(request)
+        if not plain and plan.source_refs is not None:
             try:
                 host._owner_sources(plan.source_refs)
             except ValueError:
                 return _failure('response_owner_source_required', required=[
-                    'Omit source_refs when responding; response_ref already binds the current owner and executed result.'])
+                      'Omit source_refs when responding; response_ref already binds the current owner and executed result.'])
             if host._current['source_ref'] not in plan.source_refs:
                 return _failure('response_owner_source_required')
         offered = getattr(host, '_intent_responses', {}).get(plan.response_ref)
@@ -155,26 +163,30 @@ def execute(host, args):
         actual = _response(host, offered['query_ref'])
         if actual is None or actual['response_ref'] != plan.response_ref:
             return _failure('response_reference_unavailable')
-        if plan.review is not None and (
+        if not plain and plan.review is not None and (
                 not plan.review.selection_matches or not plan.review.output_matches or plan.review.unresolved_conditions):
             return _failure('analysis_intent_mismatch', required=[
                 'Correct the read plan to preserve all owner conditions and presentation, or use finish_query_analysis clarify for genuinely unresolved conditions.'])
         metadata={'status':'llm','mode':'planner_intent'}
         with span('intent_reply_render'):
-            try:
-                text = answer_composition.render(plan.document, actual['facts'])
-            except answer_composition.AnswerError as error:
-                # Owner evidence and the current result proof have passed.
-                # Discard all rejected prose and render the same facts;
-                # a wording failure must not erase a complete selected answer.
-                text=answer_composition.render(answer_composition.fallback_document(actual['facts']),actual['facts'])
-                metadata.update(status='fallback',reason='invalid_answer_document',validation_code=str(error))
-                emit('reply_validation',validation_code=str(error),status='fallback')
-                emit('reply_fallback',reason='invalid_answer_document',validation_code=str(error))
+            if plain:
+                text = plain_read_answers.text(plan.answer)
+                metadata['format'] = 'plain_read'
+            else:
+                try:
+                    text = answer_composition.render(plan.document, actual['facts'])
+                except answer_composition.AnswerError as error:
+                    # Owner evidence and the current result proof have passed.
+                    # Discard all rejected prose and render the same facts;
+                    # a wording failure must not erase a complete selected answer.
+                    text=answer_composition.render(answer_composition.fallback_document(actual['facts']),actual['facts'])
+                    metadata.update(status='fallback',reason='invalid_answer_document',validation_code=str(error))
+                    emit('reply_validation',validation_code=str(error),status='fallback')
+                    emit('reply_fallback',reason='invalid_answer_document',validation_code=str(error))
         from .response_realization import identity, apply
         result = apply(actual['core'], text, {**metadata,
             'core_hash': identity(actual['core']), 'response_ref': plan.response_ref})
-        emit('intent_response', status='verified' if metadata['status']=='llm' else 'fallback', response_ref=ref(plan.response_ref), query_ref=ref(offered['query_ref']))
+        emit('intent_response', status='composed' if plain else 'verified' if metadata['status']=='llm' else 'fallback', response_ref=ref(plan.response_ref), query_ref=ref(offered['query_ref']))
         return {'ok': True, 'read_only': True, 'prepared_reply_result': asdict(result)}
     except answer_composition.AnswerError as error:
         emit('reply_validation', validation_code=str(error), status='repair_requested')

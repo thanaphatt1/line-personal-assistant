@@ -44,11 +44,20 @@ over fact/cell placeholders. Result selection and presentation happen together;
 there is no model-supplied self-review flag or duplicate owner-source argument.
 No nested planning model or auxiliary reply-model call is introduced.
 
+With the optional [natural text experiment](answer-composition.md#natural-text-experiment),
+`read_responses` instead offers `read_result` with actual computed values and
+units. `respond` takes `{"intent":"respond","response_ref":"...","answer":"..."}`.
+There is no document or placeholder substitution on that path. The reference
+proves result identity, not the factual correctness of the model-written answer.
+
 The server rebuilds the selected core result and binds its response reference to
 the owner, active event, query result, rendered facts and execution evidence.
-Previous-turn, foreign or changed response references fail. Documents cannot
-copy amounts, invent facts, drop required cells, reorder ranked rows or change
-units. The existing answer renderer and repeat/deadline/repair guards remain.
+Previous-turn, foreign or changed response references fail. Documents cannot copy amounts, invent references or change bound units.
+Read views permit a concise selection of supporting cells through qualified
+placeholders such as `{{r1_c2}}`, while source facts/qualifiers remain required.
+Detailed row blocks preserve the result's relative order. The complete computed
+result remains available as evidence; presentation selection does not rerun SQL.
+Operation review/receipt views retain their full coverage contract. The existing answer renderer and repeat/deadline/repair guards remain.
 An invalid received document uses a complete placeholder-only fallback through
 the same renderer, without another model call or source read.
 
@@ -65,6 +74,13 @@ existing finishing path. `finish_query_analysis` remains available for other
 result combinations and clarification; its existing optional composer remains
 a compatibility path. Generalizing read intents does not change write review,
 confirmation, saved-record versioning, recovery or connection workflows.
+
+Read planning should match the requested answer: select a winning entity/value
+and relevant ties for a maximum, and compute contributions/comparisons for an
+analytical explanation. Respond with the conclusion and a few supporting facts,
+using full details when requested. Observed contributors do not establish an
+unrecorded cause. This guidance is general; no question-word router chooses a
+query or summary template.
 
 For a complete result, the intended normal path is one read-planning call,
 server execution, then one review-and-response call. Semantic Calendar

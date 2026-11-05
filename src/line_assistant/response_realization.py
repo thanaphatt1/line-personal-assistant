@@ -1,7 +1,9 @@
 """Optional, budgeted Luna realization of immutable server facts.
 
 The model composes speech and fact references, never tools or business values.
-Completed reads and supported operation reviews/results use free prose/layout
+The optional plain-read experiment composes natural text directly from computed
+results; its prose and copied numbers are not fact-verified. Default completed
+reads and supported operation reviews/results use free prose/layout
 over linked display cells. Other replies use bounded free prose outside facts. Diagnosed enrollment
 failures permit a short explanatory sentence; status and the
 next question are still inserted by the server, never rewritten by the model.
@@ -19,7 +21,7 @@ import hashlib,json,re
 from .state import Claim,Result
 from .model_api import MODEL_ID,BudgetBlocked
 from .language import BANGKOK
-from . import answer_composition, operation_composition
+from . import answer_composition, operation_composition, plain_read_answers
 from .reply_display import day_or, day
 
 MAX_OUTPUT=768
@@ -202,8 +204,9 @@ def facts_for(host,result):
 
 def body_for(host,result):
     if selection.pending(result):return selection.body_for(host,result,INSTRUCTIONS)
-    facts=facts_for(host,result)
-    if not facts:return None
+    plain = plain_read_answers.for_result(host,result) if plain_read_answers.enabled(host) else None
+    facts = {} if plain is not None else facts_for(host,result)
+    if not facts and plain is None:return None
     current=getattr(host,'_current',{});history=getattr(host.state,'history',[])
     domain=result.data.get('domain')
     def relevant(row):
@@ -215,9 +218,12 @@ def body_for(host,result):
     query=bool(result.data.get('query_facts'))
     payload={'outcome':result.status,'query_reply':query,'locked_rows':[v for k,v in result.data.get('query_facts',{}).items() if k.startswith('row')],'fact_order':list(facts),'facts':facts,'current_owner_text':context_text(owner_text)[:240],
         'relevant_context':context}
-    answer=answer_composition.for_result(host,result)
+    answer=None if plain_read_answers.enabled(host) else answer_composition.for_result(host,result)
     operation=operation_composition.for_result(result)
-    if answer:
+    if plain is not None:
+        payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
+        payload.update(read_answer=True,read_result=plain)
+    elif answer:
         # The old rendered rows are fallback only. They are not supplied as
         # fixed strings or automatically appended to a composed read answer.
         payload={k:payload[k] for k in ('outcome','current_owner_text','relevant_context')}
@@ -241,7 +247,11 @@ def body_for(host,result):
         'store':False,'service_tier':'default','truncation':'disabled','text':{'format':{'type':'json_schema','name':'grounded_reply_parts','strict':True,'schema':schema(list(facts),result.status,query)}}}
     if payload.get('validation_reply'):
         body['text']['format'].update(name='grounded_validation_reply',schema=validation_schema(feedback['codes']))
-    if answer:
+    if plain is not None:
+        body['instructions']=plain_read_answers.INSTRUCTIONS
+        body['max_output_tokens']=plain_read_answers.MAX_OUTPUT
+        body['text']['format'].update(name='plain_read_answer',schema=plain_read_answers.schema())
+    elif answer:
         body['max_output_tokens']=answer_composition.MAX_OUTPUT
         body['text']['format'].update(name='grounded_answer_document',schema=answer_composition.schema())
     elif operation:
@@ -251,16 +261,27 @@ def body_for(host,result):
     return body
 
 def validate_body(body):
-    if not isinstance(body,dict) or body.get('instructions')!=INSTRUCTIONS:return False
+    if not isinstance(body,dict) or body.get('instructions') not in (INSTRUCTIONS,plain_read_answers.INSTRUCTIONS):return False
     keys={'model','instructions','input','tools','tool_choice','parallel_tool_calls','reasoning','max_output_tokens','store','service_tier','truncation','text'}
     try:
         p=json.loads(body['input'][0]['content'])
+        if p.get('read_answer'):
+            return (set(body)==keys and set(p)=={'outcome','current_owner_text','relevant_context','read_answer','read_result'}
+                and p['read_answer'] is True and p['outcome'] in {'answer','summary'}
+                and isinstance(p['read_result'],dict) and p['read_result'].get('complete') is True
+                and body['instructions']==plain_read_answers.INSTRUCTIONS and body['model']==MODEL_ID
+                and body['tools']==[] and body['tool_choice']=='none' and body['parallel_tool_calls'] is False
+                and body['reasoning']=={'effort':'none'} and body['max_output_tokens']==plain_read_answers.MAX_OUTPUT
+                and body['store'] is False and body['service_tier']=='default' and body['truncation']=='disabled'
+                and body['text']=={'format':{'type':'json_schema','name':'plain_read_answer','strict':True,'schema':plain_read_answers.schema()}}
+                and len(encoded(body))<=MAX_BODY_BYTES)
+        if body['instructions']!=INSTRUCTIONS:return False
         if p.get('calendar_selection'):return selection.validate_body(body,INSTRUCTIONS)
         if p.get('operation_document'):
             expected={'outcome','current_owner_text','relevant_context','operation_document','operation_facts'}
             return (set(body)==keys and set(p) in (expected,expected|{'answer_repair'})
                 and p['operation_document'] is True and p['outcome'] in {'preview','updated','recorded','created'}
-                and answer_composition.valid_view(p['operation_facts'])
+                and answer_composition.valid_view(p['operation_facts']) and 'record_policy' not in p['operation_facts']
                 and ('answer_repair' not in p or answer_composition.valid_repair(p['answer_repair'],p['operation_facts']))
                 and body['model']==MODEL_ID and body['tools']==[] and body['tool_choice']=='none'
                 and body['parallel_tool_calls'] is False and body['reasoning']=={'effort':'none'}
@@ -325,6 +346,9 @@ def render_document(text,body):
         if len(dict(values))!=len(values):raise ValueError('duplicate_keys')
         return dict(values)
     document=json.loads(text,object_pairs_hook=pairs);payload=json.loads(body['input'][0]['content'])
+    if payload.get('read_answer'):
+        if not isinstance(document,dict) or set(document)!={'answer'}:raise ValueError('read_answer_schema')
+        return plain_read_answers.text(document['answer'])
     if payload.get('calendar_selection'):return selection.parse(document,payload)
     if payload.get('validation_reply'):return parse_validation(document,payload)
     if payload.get('answer_document') or payload.get('operation_document'):
@@ -519,7 +543,7 @@ def realize(host,event,result):
     if body is None:return fallback('body_bound')
     from .pilot_http import remaining_model_seconds
     deadline=(selection.TIMEOUT_SECONDS if selection.pending(result) else
-              answer_composition.TIMEOUT_SECONDS if body['text']['format']['name'] in {'grounded_answer_document','grounded_operation_document'} else TIMEOUT_SECONDS)
+              answer_composition.TIMEOUT_SECONDS if body['text']['format']['name'] in {'grounded_answer_document','grounded_operation_document','plain_read_answer'} else TIMEOUT_SECONDS)
     finish_by=started+deadline
     for number in range(2):
         remaining=remaining_model_seconds();timeout=finish_by-monotonic()
@@ -530,6 +554,7 @@ def realize(host,event,result):
         if number and reserved:repair_count+=1
         if cached.get('status')=='llm':
             metadata={'status':'llm','core_hash':core_hash,'run_key':key,'elapsed_ms':round((monotonic()-started)*1000)}
+            if body['text']['format']['name']=='plain_read_answer':metadata['format']='plain_read'
             if repair_from:metadata.update(repair_count=repair_count,repair_from=repair_from)
             try:return apply(result,cached['text'],metadata)
             except Exception:return fallback('render_bound')

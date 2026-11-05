@@ -48,18 +48,14 @@ EXPENSE = (
 )
 
 READS = (
-    'Saved reads: choose sources by their purpose and relationships, not by a fixed vocabulary. '
-    'Use previous_query and dialogue as evidence for scope and conditions; current owner intent selects what to retain or change. '
-    'Retain the last answer presentation when only selection changes; SQL input controls describe retrieval. '
-    'If an expense read has no stated period or recoverable prior scope, ask for the period. '
-    'Distinguish totals by entity from individual transactions when grouping or ranking; execute supported analysis now. '
-    'Read all data needed for the requested coverage and respect completeness and uncertainty in the results. '
-    'One requested period is one read, even when it spans months or years; batch only genuinely different periods or sources. '
-    'Declare independent sources in one query; the server reads them before running the SQL plan. '
-    'For spending on activity dates declare both Calendar and expense sources, then select payments with EXISTS over the matching dates. '
-    'This measures spending on those dates, not proven costs caused by an event. '
-    'Select the result that answers the current question, not merely its supporting read. '
-    'Finish when final verified results are available; multi-result analysis can use finish_query_analysis.'
+    'Saved reads: choose sources by purpose/relationships, not keywords. Owner intent and dialogue select retained scope/conditions; '
+    'preserve presentation when only selection changes. Ask for a missing period if verified prior scope cannot supply it. '
+    'Distinguish entity totals from individual transactions. Read complete inputs and preserve uncertainty. '
+    'Use one read for a requested period across months/years; batch only independent distinct scopes. Declare sources and SQL in one call. '
+    'Activity-date spending needs Calendar plus expenses and EXISTS to avoid duplicate payments; shared dates do not prove causation. '
+    'Select the result answering the question, not a supporting read. For a maximum return winning entities/values with relevant ties, not unsolicited rankings. '
+    'For explanation compute totals/shares/comparisons in SQL, then state the conclusion and a few observed contributors without invented causes. '
+    'Use a sentence for scalars, readable labels, and detailed rows when asked. Finish verified results; finish_query_analysis handles combinations.'
 )
 
 RELATIONS = (
@@ -156,16 +152,21 @@ def build(definitions):
             'Read intents: call act with intent=read to declare sources and SQL; the server executes the plan. '
             'intent=inspect discovers configured source capabilities. When read_responses offers a result answering the owner, '
             'prefer intent=respond to inspect its actual selection/output AND compose the final answer in this same call. '
-            'Select the current response_ref and use its facts/evidence; it already binds the owner and executed result. '
+            'Select the current response_ref; it already binds the owner and executed result. '
+            'When read_result is offered, write answer as complete natural Thai text directly from those actual computed values and units. '
+            'Start with the conclusion; select useful evidence, preserve material scope/caveats and avoid raw column dumps or invented causes. '
+            'No templates, placeholders or separate renderer are used for that answer. '
+            'The following document rules apply ONLY when facts is offered instead of read_result: '
             'Use {{fact_id}} and {{cell_id}} placeholders for business values in document templates. '
-            'Cover every required fact and record cell once, preserve record order and units; omit cells only as covered_by allows. '
-            'Text blocks use global facts such as {{f1}}; with exactly one record they can also use its cells. '
+            'When record_policy=select, cite only the computed cells relevant to the answer, preserving every required fact/caveat and the bound units. '
+            'Text can use qualified cells such as {{r1_c1}} and {{r2_c3}} across records; these are actual record/cell IDs, not copied numbers. '
+            'For other views retain all required records/cells and their order. Text blocks also use global facts such as {{f1}}; with one record they can use local cells. '
             'Even dates/years already present in the owner question must use their offered fact placeholder. '
             'Rows blocks select record IDs and use their local cells, for example record_refs=["r1"] with template="{{c1}}". '
             'When present, previous_query.answer_context contains the last verified delivered result, including selected labels/groups. '
             'For a follow-up preserve the referenced subject as well as its period; an explicit new subject replaces it. '
             'This snapshot requires a fresh source read/calculation and is never a current result reference or write consent. '
-            'Never copy values into prose, calculate totals or claim a write. If results do not match, correct the read plan '
+            'Use the read intent to calculate any missing totals/shares/comparison instead of calculating in prose; copy values accurately and never claim a write. If results do not match, correct the read plan '
             'or clarify a genuinely unresolved condition. finish_query_analysis remains available for other result combinations '
             'and clarification; a complete offered response does not need a separate finish or reply-model call.')),
         ({'finish_preparation_reply'},REPAIR_REPLY),

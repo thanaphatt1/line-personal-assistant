@@ -5,6 +5,12 @@ scripted provider/model responses. It needs no LINE, Google or OpenAI credential
 Passing it shows that the tested contracts hold; it does not measure general
 language-model accuracy or prove a live owner workflow.
 
+`test_plain_read_answers.py` covers the optional natural-read experiment:
+actual result binding, bounded complete SQL rows, replay, switching off,
+unchanged write reviews and auxiliary failures without retries. It deliberately
+includes an incorrect model-written amount that passes transport validation;
+this demonstrates why these tests cannot certify free-text answer accuracy.
+
 Start by running a focused suite, then use the suite directory below to find
 related coverage. Historical counts are kept as dated evidence, not a current
 coverage score.
@@ -209,6 +215,12 @@ These are scripted synthetic contracts; see the
 [performance guide](../docs/performance.md) for measurement boundaries.
 
 ### Answer composition and SQL
+
+[Analytical read summaries](test_read_summaries.py) cover a maximum month and
+ties, a fresh-read explanatory follow-up with independently checked totals and
+shares, selective cross-record citations, mandatory context, detailed lists,
+unchanged operation coverage, receipt replay and context size with 39 synthetic
+groups. Model decisions are scripted; this does not establish fresh model quality.
 
 [Language policy regressions](test_word_policy_removal.py) cover a misspelled
 month, free ordinary/query prose, retained fact/number/transport checks and

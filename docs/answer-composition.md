@@ -1,5 +1,41 @@
 # Flexible read answers
 
+## Natural text experiment
+
+`PILOT_PLAIN_READ_ANSWERS_ENABLED=true` (default `false`, requires response
+realization) bypasses the fact/placeholder renderer for completed read answers.
+The planner receives actual computed rows, column units, logical source scopes,
+counts and provenance in `read_result`. It submits `response_ref` and a natural
+`answer` string. The auxiliary read composer uses the same data and a simple
+`{"answer": "..."}` response schema. Neither path has word/number whitelists,
+cell coverage checks or a presentation repair call.
+
+Small SQL results use the complete computed rows when their JSON fits 12,000
+bytes, including rows beyond the ordinary 20-row display. Larger results retain
+the displayed subset with explicit provided/full counts and `rows_complete=false`.
+The existing 24,000-byte body/response budgets still apply.
+
+The reference still binds the owner, current turn and unchanged executed result.
+SQL completeness, typed queries, deadlines, reservations, replay and LINE text
+bounds remain. This **does not verify the model's prose or numbers**: a model
+can copy a wrong amount or omit a relevant qualifier. Evaluate the delivered
+answer against the actual results; a valid JSON schema proves only its shape.
+The semantic harness reports structural grounding as not applicable for this
+format, rather than awarding a successful placeholder check.
+
+Write reviews, receipts, pending Calendar classification and incomplete reads
+retain their existing paths. A failed auxiliary call keeps the original core
+reply without another read or model retry. Large contexts still have bounds;
+this mode does not expand source access or guarantee every read can be summarized.
+
+Set the flag to `false` to restore document-based read composition. Existing
+receipts replay their already delivered text; changing presentation does not
+undo writes or reset history. Deployment and configuration changes require
+their own release authorization. The remaining sections describe the default
+document path and the renderer still used by operation reviews.
+
+## Document path
+
 Completed read results can use an optional model-composed document. The model
 chooses paragraphs, headings, inline answers and lists from verified facts and
 record cells. There is no fixed result sentence, automatic row suffix or
@@ -58,18 +94,40 @@ resolved to that verified cell without another model call. Numeric substrings
 and a value present in only some members cannot establish that context. A
 verified single-day summary can cover redundant row dates.
 
-The renderer requires all summary facts, all displayed records and their
-required cells. Duplicate, missing, foreign or reordered records fail
-validation. Filters, ordering notes, same-day spending caveats and truncation
-notices remain required evidence. Source text resembling template syntax is
-inserted literally and is never evaluated again.
+Read views carry the server-owned `record_policy=select`. The model may select
+supporting records/cells for a concise answer while retaining every required
+summary fact, source qualifier and limitation. At least one result cell is
+required when records exist. Listed rows remain unique and in their original
+relative order; they need not include every computed record. Omitting read
+rows does not change the complete SQL result, counts or follow-up observations.
+For truncated detail, a required fact says that the response uses only part of
+the complete computed result; it does not claim every available row was shown.
 
-When exactly one record is offered, text blocks may also reference that
-record's cells directly. They can form one sentence or several paragraphs
-without an artificial rows block. Its required cells must still be covered,
-and combining an inline record with another rows rendering of the same record
-is rejected as a duplicate. Multi-record cell references still need explicit
-rows blocks, preserving membership and ranking order.
+Operation reviews/receipts and strict views retain full record/cell coverage.
+They reject the read selection policy. A model document cannot set that policy
+or change the verified view. Source text resembling template syntax is inserted
+literally and never evaluated again.
+
+For selective read views, text can use qualified references such as
+`{{r1_c1}}` and `{{r2_c3}}` to compose an explanation across records. Each resolves
+to an actual cell in that exact current result; unknown references still fail.
+A scalar answer can be one sentence, without repeating its column name.
+Single-record local references (`{{c1}}`) remain available. Strict multi-record
+views still require row blocks and full coverage.
+
+For example, an analytical read can cite a verified total and the leading
+contributors in prose instead of listing payment counts and every small item.
+The read plan must compute any totals, shares or comparisons with SQL first;
+the composer cannot calculate or invent business values. Requests for full
+detail still use row blocks. Whether a selected subset or explanation answers
+the owner remains a model/evaluation responsibility, not a renderer proof.
+
+View-local shared-context tokens keep equivalent values bound without exposing
+long duplicate hashes to the model. Their full identities distinguish values,
+labels, types and units, including clipped names. This reduces input bytes
+without dropping records, fields or values or raising the existing body bound.
+ISO year-month result cells display readable Thai month/year values; raw query
+values remain unchanged.
 
 The composer also receives the executed logical scope and SQL, excluding
 physical bindings and raw source rows. It must describe the actual calculation

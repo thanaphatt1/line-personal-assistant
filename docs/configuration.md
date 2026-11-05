@@ -135,6 +135,7 @@ required versus generated fields, catalog relationships and Firestore storage.
 | `PILOT_CALENDAR_READ_ALL_ENABLED` | `false` | Calendar/history enabled; read all event-readable calendars on the runtime account's list |
 | `PILOT_CALENDAR_CONNECTIONS_ENABLED` | `false` | Calendar/history enabled; owner can connect shared read sources through LINE |
 | `PILOT_RESPONSE_REALIZATION_ENABLED` | `false` | History/state |
+| `PILOT_PLAIN_READ_ANSWERS_ENABLED` | `false` | Response realization; experimental natural read text without placeholder validation; [details and rollback](answer-composition.md#natural-text-experiment) |
 | `PILOT_MODEL_USAGE_GATES_ENABLED` | `true` | `false` requires explicit history state; counting remains |
 | `PILOT_PROVISIONAL_CATEGORIES_ENABLED` | `false` | History/state; proposals do not grant mapping consent |
 | `PILOT_PROVISIONAL_MAPPING_ENABLED` | `false` | Proposals and reviewed Database writer policy |

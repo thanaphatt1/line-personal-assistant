@@ -149,6 +149,7 @@ def for_result(result):
 
 
 def render(document,view):
+    if 'record_policy' in view:raise ValueError('invalid_operation_facts')
     return render_answer(document,view,paragraphs=True,inherit_headings=True)
 
 
