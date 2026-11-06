@@ -188,9 +188,9 @@ def test_remaining_evidence_mismatches_return_to_the_planner_before_asking_the_o
 
 
 @pytest.mark.parametrize('kind',['timeout','transport','rate_limited','provider_error','invalid_response','response_too_large','output_limit','usage_bound','unknown'])
-def test_planner_failure_copy_states_no_effect_without_internal_terms(kind):
+def test_planner_failure_copy_omits_unrelated_action_status_without_internal_terms(kind):
     message=planner_failure_message({'kind':kind})
-    assert 'ยังไม่ได้บันทึกหรือสร้างอะไร' in message
+    assert message.strip() and 'ยังไม่ได้บันทึกหรือสร้างอะไร' not in message
     assert not re.search(r'โมเดล|ระบบ|ผ่านการตรวจ',message)
 
 

@@ -185,4 +185,17 @@ def build(definitions):
         ({'propose_expense_categories','review_provisional_categories','scan_historical_categories','propose_historical_categories','review_historical_categories'},CATEGORIES),
     )
     sections.extend(text for tools,text in groups if names&tools)
+    if 'finish_query_analysis' in names and names <= {'act','finish_query_analysis'}:
+        act=next((t for t in definitions if t['name']=='act'),None)
+        if act is None or all(v['properties']['intent']['enum']==['respond']
+                for v in act['parameters']['properties']['request']['anyOf']):
+            sections.append(
+                'Completion recovery: the earlier response was rejected, so no final result has been selected. '
+                'The available query results are candidate evidence, not proof that the whole owner request is complete. '
+                'Check every requested output and condition against the actual columns, scope and source coverage. '
+                'If ANY requested part needs an unread source, another calculation or unresolved selection, '
+                'call finish_query_analysis with operation=clarify and explain the outstanding part. '
+                'Do not silently answer only the available part or report a supporting result as the final answer. '
+                'Do not ask the owner to repeat information already given. '
+                'Use respond or report only when the existing computed results answer the entire request.')
     return '\n\n'.join(sections)

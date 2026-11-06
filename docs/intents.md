@@ -44,6 +44,20 @@ over fact/cell placeholders. Result selection and presentation happen together;
 there is no model-supplied self-review flag or duplicate owner-source argument.
 No nested planning model or auxiliary reply-model call is introduced.
 
+If the model's final-selection response fails protocol validation after a
+complete SQL read, the server permits one bounded completion repair using the
+same request-local results. That request offers only `act/respond` and
+`finish_query_analysis`; it cannot read sources, prepare changes or write.
+The model must select results that answer the owner or explicitly clarify a
+remaining limitation. A successful intermediate query is never auto-selected.
+Incomplete evidence, refusals, quota/usage failures and unknown transport
+outcomes do not start this repair. Normal successful turns add no extra call;
+repair uses the existing reservations and deadline and stops after one attempt.
+On this repair request, the finish tool offers only current query references;
+the server supplies the authenticated current-owner intent reference instead
+of asking the model to copy it. Foreign query refs remain invalid. Ordinary
+finish calls retain their existing interface.
+
 With the optional [natural text experiment](answer-composition.md#natural-text-experiment),
 `read_responses` instead offers `read_result` with actual computed values and
 units. `respond` takes `{"intent":"respond","response_ref":"...","answer":"..."}`.

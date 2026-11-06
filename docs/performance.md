@@ -23,6 +23,16 @@ Paired model/tool records also have `duration_ms`. Provider timings are aggregat
 without filling the bounded action log with successful journal/lease RPCs.
 Labels contain no provider paths, owner text, record values or credentials.
 
+Rejected planner responses retain a fixed `validation_code` and bounded
+`response_summary`: provider status/incomplete reason, output-type counts,
+refusal count and text/argument byte counts. Raw messages, tool arguments,
+tool-name values and reasoning contents are excluded. `invalid_response` is
+therefore distinguishable from its specific causes such as `missing_answer`,
+`unknown_tool` or `invalid_arguments_json`. `planner_invalid_response` fallback
+is separate from an unavailable transport. One eligible final-selection repair
+emits `planning_repair` with `tool=planner_response`; successful recovered
+results carry `query_completion_recovery` metadata.
+
 `turn_finished` measures the assistant. For signed hosted webhooks,
 `webhook_finished` includes reply delivery and has the same attempt reference.
 Abrupt process termination can leave an attempt without a terminal record; it is

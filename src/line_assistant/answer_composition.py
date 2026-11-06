@@ -387,10 +387,15 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
     qualified={row['id']+'_'+key:(row['id'],key,field['display'])
                for row in records.values() for key,field in row['fields'].items()} if selective else {}
 
-    def template(text, fields=None, index=None):
+    def template(text, fields=None, index=None, record_ref=None):
         nonlocal literal_size
         if not isinstance(text, str) or len(text) > 1600: raise AnswerError('answer_template')
         refs = TOKEN.findall(text); literal = TOKEN.sub('', text); literal_size += len(literal)
+        # A rows template executes once per row. Cross-row qualified cells
+        # would repeat the whole group in every iteration. They belong in a
+        # text block; each row iteration can reference only its own cells.
+        if record_ref is not None and any(ref in qualified and qualified[ref][0]!=record_ref for ref in refs):
+            raise AnswerError('unknown_answer_fact')
         if '{{' in literal or '}}' in literal: raise AnswerError('answer_placeholder')
         # Validate bound data and transport syntax, not vocabulary or the
         # meaning of arbitrary prose. Status/consent come from core facts and
@@ -448,8 +453,8 @@ def render(document, view,*,paragraphs=False,inherit_headings=False):
                 heading_scope={k:v for k,v in heading_scope.items() if shared.get(k,{}).get('group_key')==v}
                 covered|=set(heading_scope)
             for i, row in enumerate(rows, 1):
-                text, cells = template(block['template'], row['fields'], i)
-                row_cells[row['id']] = cells | covered
+                text, cells = template(block['template'], row['fields'], i, row['id'])
+                row_cells.setdefault(row['id'],set()).update(cells | covered)
                 seen_rows.append(row['id']); chunks.append(text)
         else: raise AnswerError('answer_block_kind')
     expected_rows=[ref for ref in records if ref in seen_rows]

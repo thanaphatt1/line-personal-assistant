@@ -538,7 +538,8 @@ def realize(host,event,result):
             try:return apply(result,operation_composition.fallback(operation),metadata)
             except (ValueError,KeyError,TypeError):pass
         return Result(result.status,result.message,{**deepcopy(result.data),'response_realization':metadata})
-    if result.status in {'model_budget_exhausted','model_unavailable'}:return fallback('upstream_unavailable')
+    if result.status in {'model_budget_exhausted','model_unavailable'}:
+        return fallback('planner_invalid_response' if result.data.get('model_failure',{}).get('kind')=='invalid_response' else 'upstream_unavailable')
     body=body_for(host,result)
     if body is None:return fallback('body_bound')
     from .pilot_http import remaining_model_seconds

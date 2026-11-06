@@ -1,7 +1,7 @@
 """Default-off history-first prototype. Direct tools, local effects only."""
 
 from .action_trace import observed
-from .planner_failures import PlannerOutputLimit,planner_failure,planner_failure_message
+from .planner_failures import PlannerOutputLimit,PlannerResponseError,response_summary,planner_failure,planner_failure_message
 from .reply_display import money, named
 from .expense_storage import storage_scope
 from copy import deepcopy
@@ -142,37 +142,46 @@ def tools(*,enrollment=False,semantic=False,controls=False):
 
 def parse_response(value,*,max_input_tokens=MAX_INPUT_TOKENS_BOUND,allowed_tools=None,max_output_tokens=MAX_OUTPUT_TOKENS):
     from .raw_history import PLANNER_MAX_OUTPUT_TOKENS
+    def reject(code):raise PlannerResponseError(code,response_summary(value))
     if max_output_tokens not in {MAX_OUTPUT_TOKENS,4096,PLANNER_MAX_OUTPUT_TOKENS}:raise ValueError('output_configuration')
-    if value.get('model')!=MODEL_ID:raise ValueError('incomplete_response')
-    if value.get('status')=='incomplete' and value.get('incomplete_details',{}).get('reason')=='max_output_tokens':raise PlannerOutputLimit('output_limit')
-    if value.get('status')!='completed':raise ValueError('incomplete_response')
+    if not isinstance(value,dict):reject('invalid_response_object')
+    if value.get('model')!=MODEL_ID:reject('model_mismatch')
+    details=value.get('incomplete_details')
+    if value.get('status')=='incomplete' and isinstance(details,dict) and details.get('reason')=='max_output_tokens':raise PlannerOutputLimit('output_limit')
+    if value.get('status')!='completed':reject('incomplete_response')
     usage=value.get('usage',{})
-    if any(type(usage.get(k)) is not int or not 0<=usage[k]<=bound for k,bound in [('input_tokens',max_input_tokens),('output_tokens',max_output_tokens)]):raise OverflowError('usage_bound')
+    if not isinstance(usage,dict) or any(type(usage.get(k)) is not int or not 0<=usage[k]<=bound for k,bound in [('input_tokens',max_input_tokens),('output_tokens',max_output_tokens)]):raise OverflowError('usage_bound')
     output=value.get('output')
-    if not isinstance(output,list) or len(output)>8:raise ValueError('output_bound')
+    if not isinstance(output,list) or len(output)>8:reject('output_bound')
     calls=[];messages=[]
     for item in output:
-        if not isinstance(item,dict) or item.get('type') not in {'reasoning','message','function_call'}:raise ValueError('unknown_output')
+        if not isinstance(item,dict) or item.get('type') not in ('reasoning','message','function_call'):reject('unknown_output')
         if item['type']=='reasoning':continue
-        if item.get('status')!='completed':raise ValueError('incomplete_output')
+        if item.get('status')!='completed':reject('incomplete_output')
         if item['type']=='function_call':
             names=allowed_tools if allowed_tools is not None else {t['name'] for t in tools(enrollment=True,semantic=True,controls=True)}
-            if item.get('name') not in names or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',item.get('call_id','')):raise ValueError('unknown_tool')
+            if not isinstance(item.get('name'),str) or item['name'] not in names:reject('unknown_tool')
+            if not isinstance(item.get('call_id'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',item['call_id']):reject('invalid_call_id')
             raw=item.get('arguments')
-            if not isinstance(raw,str) or len(raw.encode())>8192:raise ValueError('arguments_bound')
+            if not isinstance(raw,str):reject('arguments_bound')
+            try:argument_bytes=len(raw.encode())
+            except UnicodeError:reject('invalid_arguments_encoding')
+            if argument_bytes>8192:reject('arguments_bound')
             def pairs(rows):
-                if len(dict(rows))!=len(rows):raise ValueError('duplicate_json_keys')
+                if len(dict(rows))!=len(rows):reject('duplicate_json_keys')
                 return dict(rows)
-            args=json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda v:(_ for _ in ()).throw(ValueError('not_json')))
-            if not isinstance(args,dict):raise ValueError('object_arguments')
+            try:args=json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda v:reject('not_json'))
+            except json.JSONDecodeError:reject('invalid_arguments_json')
+            if not isinstance(args,dict):reject('object_arguments')
             calls.append({k:item[k] for k in ['type','call_id','name','arguments']})
         else:
             content=item.get('content',[])
-            if not isinstance(content,list) or any(c.get('type')!='output_text' or not isinstance(c.get('text'),str) for c in content):raise ValueError('invalid_message')
+            if not isinstance(content,list) or any(not isinstance(c,dict) or c.get('type')!='output_text' or not isinstance(c.get('text'),str) for c in content):reject('invalid_message')
             messages.extend(c['text'] for c in content)
-    if len(calls)>1:raise ValueError('one_serial_tool')
+    if len(calls)>1:reject('one_serial_tool')
     text='\n'.join(messages)
-    if len(text)>3000 or (not calls and not text.strip()):raise ValueError('missing_answer')
+    if len(text)>3000:reject('text_bound')
+    if not calls and not text.strip():reject('missing_answer')
     return {'call':calls[0] if calls else None,'text':text}
 
 
@@ -1861,7 +1870,7 @@ class HistoryFirstAssistant(Assistant):
             targets=named or active if len(active)==1 and (editing or date_only) else named
             if (len(targets)==1 and (editing or found or problem)
                 and at>datetime.fromisoformat(targets[0]['updated_at'])):targets[0]['review']=None
-        previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set()
+        previous=None;last=None;summary_attempted=False;refresh_attempted=False;exchanges=[];seen_reads=set();response_repair=None
         from .tool_repair import RepairLoop
         repairs=RepairLoop(self);repair_allowed=None
         self._query_reads={};self._query_source_results={};self._intent_responses={};self._query_analysis_active=False;self._name_matches={};self._data_inventory={};self._last_inventory=None
@@ -1895,7 +1904,7 @@ class HistoryFirstAssistant(Assistant):
                     try:
                         request,self.visible,stats=build_raw_request(self,at,event,exchanges,
                             base_tools=tools,enrollment=enrollment,controls=controls,
-                            repair_allowed=repair_allowed)
+                            repair_allowed=repair_allowed,response_feedback=response_repair)
                     except raw.ContextOverflow:
                         if summary_attempted or step!=0:return self._finish(event,at,Result('history_context_overflow','บริบท 24 ชั่วโมงยังเกินความจุโมเดลหลังสรุป จึงยังตอบรอบนี้ไม่ได้ครับ'))
                         summary_attempted=True
@@ -1938,6 +1947,7 @@ class HistoryFirstAssistant(Assistant):
                     self.guard.complete(key,saved)
                 emit('model_result',role='planner',run_ref=ref(key),status=code(saved.get('failure','completed')),
                      **({'failure_kind':code(saved['diagnostic']['kind']),**({'http_status':saved['diagnostic']['http_status']} if 'http_status' in saved['diagnostic'] else {})} if saved.get('diagnostic') else {}),
+                     **{k:deepcopy(saved['diagnostic'][k]) for k in ('validation_code','response_summary') if k in saved.get('diagnostic',{})},
                      call_ref=ref((saved.get('call') or {}).get('call_id')),
                      tool=code((saved.get('call') or {}).get('name')) if saved.get('call') else None)
                 if saved.get('failure'):
@@ -1946,12 +1956,30 @@ class HistoryFirstAssistant(Assistant):
                     if finished:return self._finish(event,at,finished)
                     if previous and previous[1].get('repair_feedback'):return self._finish(event,at,self._result(last))
                     detail=saved.get('diagnostic',{'kind':'unavailable'})
+                    if response_repair is None:
+                        from .query_completion import feedback
+                        response_repair=feedback(self,last,detail)
+                        if response_repair:
+                            repair_allowed=set(response_repair['allowed_tools'])
+                            emit('planning_transition',reason='planner_response_repair',step=step,
+                                 validation_code=detail['validation_code'])
+                            emit('planning_repair',tool='planner_response',error=detail['validation_code'],attempt=1)
+                            continue
                     return self._finish(event,at,Result('model_unavailable',planner_failure_message(detail),{'model_failure':deepcopy(detail)}))
                 call=saved['call']
                 if call:
                     from .action_trace import arguments as trace_arguments
                     emit('tool_proposed',step=step,tool=code(call['name']),call_ref=ref(call.get('call_id')),
                          arguments=trace_arguments(call))
+                    if response_repair:
+                        from .query_completion import permits
+                        if not permits(call):
+                            emit('planning_stopped',reason='response_repair_tool_not_allowed',step=step)
+                            return self._finish(event,at,Result('clarification','อ่านข้อมูลได้แล้ว แต่ยังเลือกผลที่ตอบคำถามนี้ไม่สำเร็จครับ',
+                                {'domain':'query_analysis','query_analysis':True,'read_only':True,
+                                 'query_completion_recovery':{'status':'rejected','validation_code':response_repair['validation_code']}}))
+                        from .query_completion import bind_owner
+                        call=bind_owner(self,call)
                 if call is None:
                     from .response_realization import finish_repair_text
                     finished=finish_repair_text(self,saved['text'])
@@ -1998,6 +2026,12 @@ class HistoryFirstAssistant(Assistant):
                 emit('tool_result',tool=code(call['name']),call_ref=ref(call.get('call_id')),result=outcome(last),state=snapshot(self))
                 self.trace.append({'call':deepcopy(call),'result':deepcopy(last)})
                 self.state.append('tool',event,at,tool=call['name'],result=last)
+                if response_repair:
+                    result=Result(**last['prepared_reply_result']) if last.get('prepared_reply_result') else self._result(last)
+                    result.data['query_completion_recovery']={'status':'completed' if last.get('ok') else 'rejected',
+                        'validation_code':response_repair['validation_code']}
+                    emit('planning_transition',reason='response_repair_finished',step=step,status=code(result.status))
+                    return self._finish(event,at,result)
                 if last.get('prepared_reply_result'):
                     return self._finish(event,at,Result(**last['prepared_reply_result']))
                 if last.get('ok'):repair_allowed=None;self._repair_reply=None

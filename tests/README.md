@@ -158,7 +158,14 @@ Calendar times are prepared and disclosed while alternatives at the date/time
 still ask, that unrelated wording does not block preparation, that Calendar
 reviews and receipts use readable dates through bound operation documents and
 fallbacks, that evidence mismatches return to the planner, and that failure copy
-states no effect without internal terms.
+omits unrelated action-status disclaimers and internal terms.
+
+The [query completion recovery cases](test_query_completion_recovery.py) inject
+received parser failures after complete reads, including a TA dates-to-times
+follow-up. They check restricted final-selection tools, one source read, one
+repair attempt, both answer formats, signed cold replay, quota/deadline stops,
+incomplete evidence, refusals and privacy of parser diagnostics. Model choices
+are scripted here; these tests do not establish general language accuracy.
 
 The [entry checks](test_entry_checks.py) cover same-day duplicate notices,
 conditional `only_if_absent` preparation (present, absent and unreadable records),

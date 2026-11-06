@@ -105,6 +105,9 @@ def build_raw_request(
         definitions_for_request = [
             t for t in definitions_for_request if t["name"] in READ_TOOLS
         ]
+    if response_feedback and response_feedback.get('kind') == 'planner_response':
+        from .query_completion import tools as completion_tools
+        definitions_for_request = completion_tools(definitions_for_request, host._query_reads)
     host.state.raw_tool_definitions = deepcopy(definitions_for_request)
     return raw.request(
         host.state,

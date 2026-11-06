@@ -86,7 +86,10 @@ data, run calculations or grant write authority.
 The model returns a document with text and record-group blocks. Templates use
 fact/cell references such as `{{f1}}` and `{{c2}}`; the server substitutes the
 original values. A group template is evaluated separately for each referenced
-record, keeping names, amounts and other cells bound to that record. It can
+record, keeping names, amounts and other cells bound to that record. Qualified
+cells in a rows template must belong to the current row; cross-record prose
+belongs in a text block. This prevents repeating a whole group for every row.
+It can
 place a shared cell in a heading only when that cell's original value, label,
 type and unit agree for every member. Clipped display text alone cannot prove
 a shared value. A heading equal to an entire shared display value can also be
