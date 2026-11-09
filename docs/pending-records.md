@@ -22,6 +22,15 @@ The adapter derives ordinary table fields from the registered table metadata;
 it does not assume that a record contains a date or monetary amount. Disabled
 capabilities are omitted. Storage identifiers and credentials are excluded.
 
+Native expense enrollment offers every category and subcategory in the current
+catalog, including an empty subcategory when that pair exists. Category prompts,
+pending-field choices, compatibility enrollment schemas and validation feedback
+use the same complete set. The historical eight-choice display bound does not
+restrict which stored category the owner may select on this path. Legacy
+small-context interfaces retain their bounded views. Existing request/context
+capacity limits still apply; this does not allow inventing a category or changing
+the catalog without the normal reviewed confirmation.
+
 Each changed field supplies `field`, `value`, `source_text` and `source_ref`.
 Evidence must be a literal span in a verified visible owner message. The current
 request supplies intent and selects the facts; cited owner history may supply

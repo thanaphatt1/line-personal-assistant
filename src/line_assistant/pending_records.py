@@ -55,7 +55,7 @@ def views(h):
             if h.previous_prices.enabled and offer.get('state')=='offered':
                 fields.append(field('previous_price_ref','ใช้ยอดที่เสนอ','enum',choices=[offer['ref']],interpretation='choice'))
             resolution=next((r for r in view['item_resolutions'] if r['entry_ref']==e['entry_ref']),None)
-            categories=resolution['category_choices'] if resolution else tax.choices(e['item'] or '')['categories']
+            categories=resolution['category_choices'] if resolution else tax.choices(e['item'] or '',complete=True)['categories']
             if categories and h.item_enrollment_enabled:
                 fields += [field('catalog_action','เตรียมชื่อใหม่','enum',choices=['new'],interpretation='choice',implied_by={'category':'new'}),
                     field('category','หมวด','enum',choices=[c['label'] for c in categories],interpretation='choice')]

@@ -127,8 +127,8 @@ def enrich(h,call,output):
   if len(targets)!=1 or args.get('entry_ref') not in {None,targets[0]['entry_ref']}:return result
   e=targets[0];category=(e.get('enrollment') or {}).get('category_id')
   field='subcategory' if category else 'category'
-  choices=([{'id':k,'label':v} for k,v in list(tax.pairs[category].items())[:8]] if category else
-           [{'id':c['id'],'label':c['label']} for c in tax.choices(e['item'])['categories']])
+  choices=(tax.subcategory_choices(category,complete=h.raw_history_enabled) if category else
+           [{'id':c['id'],'label':c['label']} for c in tax.choices(e['item'],complete=h.raw_history_enabled)['categories']])
   if not choices:return result
   index=d['entries'].index(e)
   feedback.update(required_fields=[f'entries[{index}].{field}'],next_action='ask_'+field,

@@ -335,8 +335,8 @@ class HistoryFirstAssistant(Assistant):
         if entry_ref and any(f.endswith(('.category','.subcategory')) for f in d['missing_fields']):
             e=next(e for e in d['entries'] if e['entry_ref']==entry_ref);tax=self._taxonomy()
             selection=e.get('enrollment',{});category=selection.get('category_id')
-            choices=([{'id':k,'label':v} for k,v in list(tax.pairs[category].items())[:8]] if category
-                     else [{'id':v['id'],'label':v['label']} for v in tax.choices(e['item'])['categories']])
+            choices=(tax.subcategory_choices(category,complete=self.raw_history_enabled) if category
+                     else [{'id':v['id'],'label':v['label']} for v in tax.choices(e['item'],complete=self.raw_history_enabled)['categories']])
             result['item_enrollment']={'entry_ref':entry_ref,'item':e['item'],'field':'subcategory' if category else 'category','choices':choices}
         return result
 
@@ -1433,7 +1433,7 @@ class HistoryFirstAssistant(Assistant):
             if name=='lookup_catalog':
                 p=Lookup.model_validate(args);tax=self._taxonomy()
                 if self.raw_history_enabled and p.kind=='category':
-                    return {'ok':True,'status':'taxonomy_choices','query':p.query,'category_choices':tax.choices('')['categories'],
+                    return {'ok':True,'status':'taxonomy_choices','query':p.query,'category_choices':tax.choices('',complete=self.raw_history_enabled)['categories'],
                         'query_is_selection':False,'available_drafts':self._workflow(),'financial_write_authorized':False}
                 if p.kind=='item':matches=[{'item':r.item,'category':r.category,'subcategory':r.subcategory} for r in tax.rows if normalized(p.query) in normalized(r.item)][:5]
                 elif p.kind=='category':matches=[{'category':v} for v in tax.categories.values() if normalized(p.query) in normalized(v)][:8]

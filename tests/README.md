@@ -209,6 +209,11 @@ label, and `purpose=expense_dates` keeping the spending goal.
 
 ### Conversation quality and performance
 
+The [complete taxonomy choices cases](test_complete_taxonomy_choices.py) cover
+native categories and subcategories beyond the eighth slot, late empty choices,
+semantic choice proposals, read-only lookup, confirmation/replay and removed or
+cross-category choices. They use synthetic catalogs and scripted model choices.
+
 The [conversation acceptance scenarios](test_experience_scenarios.py) exercise
 missing-field questions, interruption, compound rename/category corrections,
 short continuations and one final save. [Batch reads](test_read_batch.py) compare

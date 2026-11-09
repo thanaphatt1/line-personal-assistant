@@ -31,12 +31,12 @@ def views(h):
             rows={r.item:r for r in tax.rows}
             choices=[{'item':name,'category':rows[name].category,'subcategory':rows[name].subcategory} for name in names[:5]]
             step='choose_existing_or_new' if selected is None else 'choose_category' if category is None else 'choose_subcategory' if subcategory is None else 'resolved'
-            categories=tax.choices(e['item'])['categories']
+            categories=tax.choices(e['item'],complete=h.raw_history_enabled)['categories']
             view['item_resolutions'].append({'entry_ref':e['entry_ref'],'item':e['item'],'step':step,
                 'question_focus':focused_choice(h,d,e) is True,
                 'existing_item_choices':choices,'category_choices':categories,
                 'selected_category':{'id':category,'label':tax.categories[category]} if category else None,
-                'subcategory_choices':[{'id':k,'label':v} for k,v in tax.pairs.get(category,{}).items()][:8],
+                'subcategory_choices':tax.subcategory_choices(category,complete=h.raw_history_enabled),
                 'available_operations':['show_choices',*(['begin_new_item','use_existing_item','choose_category'] if selected is None else ['choose_category','choose_subcategory'])],
                 'classification_status':'proposal_requires_owner_review' if category else 'unresolved',
                 'financial_write_authorized':False})
