@@ -71,10 +71,11 @@ RELATIONS = (
 
 PENDING = (
     'Pending changes: use patch_pending_records for the selected current draft and only changed fields or members. '
-    'Interpret replies using the delivered question and record focus, unless the owner selects another target. '
-    'Omitted fields retain certified facts. Choice fields permit semantic selection among offered choices; '
-    'For an offered empty enum choice use "" or null; omit unchanged fields. '
-    'literal fields require original owner evidence. Combine requested changes in one patch without completing unrelated fields.'
+    'When the owner answers delivered_question, use its answer_fields alongside other facts for that record. '
+    'Leave unanswered questions open. '
+    'Follow explicit changes of task or target. '
+    'Omit unchanged fields. Select offered choices semantically; use "" or null for an offered empty choice. '
+    'Literal fields require owner evidence. Combine all requested changes in one patch.'
 )
 
 CALENDAR = (
@@ -96,7 +97,8 @@ TABLES = (
 )
 
 SAVED = (
-    'Saved corrections: locate the requested saved record with find_saved_records and use current offered candidates. '
+    'Saved corrections: use find_saved_records for requests to change a saved record. '
+    'Nearby saves do not redirect replies to pending questions. '
     'Continue directly when a unique candidate and its requested changes are known; ask when selection is ambiguous. '
     'Use dedicated saved-edit proposals, preserving unmodified facts, event mode and duration unless the owner changes them. '
     'Reading or reconciling status never authorizes or retries a mutation. '

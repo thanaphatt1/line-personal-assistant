@@ -340,7 +340,7 @@ class HistoryFirstAssistant(Assistant):
             result['item_enrollment']={'entry_ref':entry_ref,'item':e['item'],'field':'subcategory' if category else 'category','choices':choices}
         return result
 
-    def _enroll_item(self,args,*,interpreted_patch=False):
+    def _enroll_item(self,args,*,interpreted_patch=False,catalog_offer_version=None):
         if not self.item_enrollment_enabled:return {'ok':False,'error':'enrollment_not_enabled','clarification_required':True}
         blocked_intent=intent_guard(self._current['text']) if not self.raw_history_enabled else None
         if blocked_intent and blocked_intent!='non_action':return {'ok':False,'error':'owner_no_write','clarification_required':True}
@@ -441,6 +441,7 @@ class HistoryFirstAssistant(Assistant):
             return output
         if p.existing_item is not None:
             if not self.semantic_enabled:raise ValueError('existing_choice_disabled')
+            offer_version=d['version'] if catalog_offer_version is None else catalog_offer_version
             offers=[]
             for row in reversed(self.state.history):
                 if row['role']!='assistant':continue
@@ -449,7 +450,7 @@ class HistoryFirstAssistant(Assistant):
                 candidate=receipt.result.data.get('tool_result',{})
                 query=normalized(candidate.get('catalog_query',''))
                 if not query or query not in normalized(e['item']):continue
-                if candidate.get('draft_ref') not in {None,d['draft_ref']} or candidate.get('draft_version') not in {None,d['version']}:continue
+                if candidate.get('draft_ref') not in {None,d['draft_ref']} or candidate.get('draft_version') not in {None,offer_version}:continue
                 if candidate.get('catalog_entry_ref') not in {None,e['entry_ref']}:continue
                 if getattr(self,'production',False):
                     reply=self.state.replies.get(row['event'])

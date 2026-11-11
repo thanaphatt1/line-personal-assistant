@@ -137,6 +137,92 @@ def test_expense_patch_uses_resolved_original_owner_date_without_future_bypass()
     assert next(iter(state.drafts.values()))['entries'][0]['date']=='2026-10-14'
 
 
+@pytest.mark.parametrize('repeat_item', [False, True])
+def test_delivered_existing_item_choice_can_be_applied_with_a_resolved_date(repeat_item):
+    from test_catalog_names_v09 import entry, harness, prepare
+
+    h = harness(('grab bike', 'GrabBike'))
+    offered = prepare(h, 'grab  bike 37 บาท', [entry()])
+    assert offered.status == 'clarification'
+    assert 'GrabBike' in {m['item'] for m in offered.data['tool_result']['catalog_matches']}
+    amount_sources = h.draft()['entries'][0]['fact_sources']['amount'][:]
+
+    def choose(body):
+        result = apply(['date_text'], domain='expense')(body)
+        call = result['output'][0]
+        args = json.loads(call['arguments'])
+        changes = args['records'][0]['changes']
+        for field in (('item', 'existing_item') if repeat_item else ('existing_item',)):
+            changes.append({'field': field, 'value': 'GrabBike', 'source_text': 'GrabBike',
+                            'source_ref': resolved(body)['source_ref']})
+        call['arguments'] = json.dumps(args)
+        return result
+
+    review = h.send('เลือก GrabBike เมื่อวาน', resolve('เมื่อวาน', kind='date', mode='offset', days=-1), choose)
+
+    assert review.status == 'preview', review
+    current = h.draft()['entries'][0]
+    assert (current['item'], current['date'], current['amount']) == ('GrabBike', '2026-10-15', '37')
+    assert current['fact_sources']['amount'] == amount_sources
+    assert not h.sheets.entries
+    saved = h.send(review.data['confirm_command'])
+    assert saved.status == 'recorded' and len(h.sheets.entries) == 1
+
+
+@pytest.mark.parametrize('new_amount', [None, '54'])
+def test_pending_catalog_question_is_bound_alongside_recent_saved_records(new_amount):
+    from owner_features_hosted import OwnerHosted, turn
+    from state_records_hosted import RecordsProtocol
+    from test_owner_features import record
+    from test_previous_expense_prices import prepare
+
+    class Hosted(RecordsProtocol, OwnerHosted):
+        pass
+
+    api = Hosted('sheets')
+    record(api)
+    for col, value in enumerate(('Comet Transit', 'Transportation', ''), 1):
+        api.google.cells[('Database', 8, col)] = value
+    offered, _ = turn(api, 'Comet Transi 43 บาท', prepare(('Comet Transi',), amounts={'Comet Transi': 43}))
+    assert offered.status == 'clarification' and 'Comet Transit' in offered.message
+    question = offered.data['tool_result']
+    writes = api.expense_writes
+
+    def date_plan(body):
+        context = json.loads(body['input'][0]['content'])
+        assert any(tool['name'] == 'find_saved_records' for tool in body['tools'])
+        assert any(row['item'] == 'Spotify' for row in context['recent_recorded_expenses'])
+        draft, = context['pending_records']
+        target, = draft['records']
+        assert (draft['draft_ref'], draft['version'], target['record_ref']) == (
+            question['draft_ref'], question['draft_version'], question['catalog_entry_ref'])
+        assert target['delivered_question']['answer_fields'] == [
+            {'field': 'existing_item', 'choices': ['Comet Transit']},
+            {'field': 'catalog_action', 'choices': ['new']},
+        ]
+        return resolve('เมื่อวาน', kind='date', mode='offset', days=-1)(body)
+
+    def choose(body):
+        value = resolved(body)
+
+        def cite(args):
+            args['records'][0]['changes'][1]['temporal_ref'] = value['temporal_ref']
+
+        changes = [('existing_item', 'Comet Transit', 'ใช่ครับ'),
+                   ('date_text', value['date'], value['source_text'])]
+        if new_amount:
+            changes.append(('amount', new_amount, new_amount))
+        return patch({0: changes}, mutate=cite)(body)
+
+    text = f'ใช่ครับ ยอดจริง {new_amount} บาท เป็นของเมื่อวาน' if new_amount else 'ใช่ครับ เป็นยอดของเมื่อวาน'
+    review, _ = turn(api, text, date_plan, choose)
+
+    assert review.status == 'preview', review
+    entry, = review.data['tool_result']['entries']
+    assert (entry['item'], entry['amount'], entry['date']) == ('Comet Transit', new_amount or '43', '2026-10-17')
+    assert api.expense_writes == writes
+
+
 def test_new_expense_temporal_date_keeps_historical_provenance_after_cold_restore():
     from test_weekday_enrollment_v11 import harness,active
     from test_catalog_names_v09 import entry

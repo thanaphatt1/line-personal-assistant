@@ -41,10 +41,40 @@ def field(name,label,kind='text',**extra):
     return {'name':name,'label':label,'type':kind,**extra}
 
 
+def question_answers(focus, fields):
+    """Expose patch fields for the delivered question on this draft version."""
+    asked = focus.get('field')
+    names = ('existing_item', 'catalog_action') if asked == 'item_resolution' else (asked,)
+    if asked in {'date', 'date.day', 'date.month'}:
+        names = ('date_text',)
+    available = {f['name']: f for f in fields}
+    answers = []
+    for name in names:
+        if name not in available:
+            continue
+        answer = {'field': name}
+        if asked == 'item_resolution':
+            choices = available[name]['choices']
+            if name == 'existing_item':
+                choices = [v for v in choices if v in focus.get('offered_items', ())]
+            if not choices:
+                continue
+            answer['choices'] = choices
+        answers.append(answer)
+    return answers
+
+
 def views(h):
     result=[]
     _,shown=h._presented_result()
-    focus=(shown.data.get('tool_result',{}).get('pending_focus') or shown.data.get('clarification_focus',{})) if shown else {}
+    output=shown.data.get('tool_result',{}) if shown else {}
+    focus=(output.get('pending_focus') or shown.data.get('clarification_focus',{})) if shown else {}
+    enrollment=output.get('item_enrollment') or {}
+    if shown and shown.status=='clarification' and (output.get('catalog_question') or enrollment):
+        focus={'draft_ref':output.get('draft_ref'),'version':output.get('draft_version'),
+               'record_ref':enrollment.get('entry_ref') or output.get('catalog_entry_ref'),
+               'field':enrollment.get('field','item_resolution'),
+               'offered_items':{v['item'] for v in output.get('catalog_matches',[])}}
     for view in h._workflow():
         d=h._draft(view['draft_ref']);tax=h._taxonomy()
         records=[]
@@ -64,9 +94,13 @@ def views(h):
                 subs=list(dict.fromkeys(s['label'] for c in categories for s in c['subcategories']))
                 if subs:fields.append(field('subcategory','หมวดย่อย','enum',choices=subs,required=True,interpretation='choice',
                     description='Select an existing subcategory of the chosen category (or a category selected in this patch). When an empty choice is listed, "" or explicit null selects no subcategory. Omit this field to retain the previous selection.'))
-            records.append({'record_ref':e['entry_ref'],'ordinal':ordinal,'values':{k:deepcopy(e.get(k)) for k in ['item','amount','date','note']},
-                'fields':fields,'question_focus':bool(resolution and resolution['question_focus'] or
-                    focus.get('draft_ref')==d['draft_ref'] and focus.get('version')==d['version'] and focus.get('record_ref')==e['entry_ref'])})
+            asked=(focus.get('draft_ref')==d['draft_ref'] and focus.get('version')==d['version']
+                   and focus.get('record_ref')==e['entry_ref'])
+            record={'record_ref':e['entry_ref'],'ordinal':ordinal,'values':{k:deepcopy(e.get(k)) for k in ['item','amount','date','note']},
+                    'fields':fields,'question_focus':asked or bool(resolution and resolution['question_focus'])}
+            if asked and (answers:=question_answers(focus,fields)):
+                record['delivered_question']={'answer_fields':answers}
+            records.append(record)
         result.append({'draft_ref':d['draft_ref'],'version':d['version'],'domain':'expense','records':records,
             'missing':deepcopy(d['missing_fields'])})
     draft=h.table_flow.draft()
@@ -298,6 +332,9 @@ def staged_expense(h,p):
     stage._patch_field_sources={r.record_ref:evidence(h,r) for r in p.records}
     d=stage._draft(p.draft_ref)
     if h._request_views.get(p.draft_ref)!=h._view(d):raise PatchError('patch_unoffered_draft')
+    # Keep the original version for a name offer on the same unresolved item.
+    catalog_offer_version=d['version']
+    original_items={entry['entry_ref']:entry['item'] for entry in d['entries']}
     from .pending_catalog import revalidate
     d=revalidate(d,stage._taxonomy())
     stage.state.drafts[p.draft_ref]=d;stage._seal(d)
@@ -305,6 +342,11 @@ def staged_expense(h,p):
     facts=[]
     for record in p.records:
         changes=[v for v in record.changes if v.field in {'item','amount','date_text','note','previous_price_ref'}]
+        existing_item=next((v.value for v in record.changes if v.field=='existing_item'),None)
+        if existing_item is not None and any(v.field=='item' and v.value==existing_item for v in changes):
+            # The existing-name choice sets the item itself after offer validation.
+            changes=[v for v in changes if v.field!='item']
+            stage._patch_field_sources[record.record_ref].pop('item')
         if not changes:continue
         args={v.field:v.value for v in changes}
         for v in changes:
@@ -331,8 +373,10 @@ def staged_expense(h,p):
         if 'existing_item' in choices:step='use_existing_item'
         elif 'subcategory' in choices and 'category' not in choices:step='choose_subcategory'
         else:step='begin_new_item' if e.get('enrollment') is None else 'choose_category' if 'category' in choices else 'show_choices'
+        offer_version=catalog_offer_version if e['item']==original_items[record.record_ref] else None
         result=stage._enroll_item({'draft_ref':d['draft_ref'],'draft_version':d['version'],'entry_ref':record.record_ref,
-            'resolution_step':step,'category':None,'subcategory':None,'existing_item':None,**choices},interpreted_patch=True)
+            'resolution_step':step,'category':None,'subcategory':None,'existing_item':None,**choices},
+            interpreted_patch=True,catalog_offer_version=offer_version)
         if not result.get('ok'):return result
     d=stage._draft(p.draft_ref)
     if d==h._draft(p.draft_ref):raise PatchError('patch_no_changes')
